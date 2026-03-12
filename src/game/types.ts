@@ -20,6 +20,14 @@ export interface Upgrade {
   color: string;
 }
 
+export interface Achievement {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  unlocked: boolean;
+}
+
 export const initialGameState: GameState = {
   score: 0,
   energy: 100,
@@ -39,6 +47,15 @@ export const upgrades: Upgrade[] = [
   { id: 'interfaces', name: 'Интерфейсы', baseCost: 2000, income: 25, count: 0, icon: '🔌', color: '#FF5722' },
   { id: 'goroutines', name: 'Горутины', baseCost: 10000, income: 100, count: 0, icon: '🔄', color: '#FFC107' },
   { id: 'channels', name: 'Каналы', baseCost: 50000, income: 400, count: 0, icon: '📡', color: '#00BCD4' },
+];
+
+export const achievements: Achievement[] = [
+  { id: 'first_blood', name: 'Первый тап', description: 'Сделай первый тап', icon: '🎯', unlocked: false },
+  { id: 'combo_10', name: 'Комбо мастер', description: 'Достигни комбо x10', icon: '🔥', unlocked: false },
+  { id: 'level_5', name: 'Новичок', description: 'Достигни 5 уровня', icon: '⭐', unlocked: false },
+  { id: 'rich', name: 'Богач', description: 'Накопи 1000 монет', icon: '💰', unlocked: false },
+  { id: 'level_10', name: 'Опытный', description: 'Достигни 10 уровня', icon: '🏅', unlocked: false },
+  { id: 'millionaire', name: 'Миллионер', description: 'Накопи 1,000,000 монет', icon: '💎', unlocked: false },
 ];
 
 export const goFacts: string[] = [

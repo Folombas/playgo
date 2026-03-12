@@ -7,7 +7,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="theme-color" content="#1a1a2e">
     <meta name="mobile-web-app-capable" content="yes">
-    <title>Go Tap Master — Изучай Go играя</title>
+    <title>Go Tap Master — Тапай и изучай Go!</title>
     <style>
         * {
             margin: 0;
@@ -49,9 +49,9 @@
         }
         
         .loading-spinner {
-            width: 60px;
-            height: 60px;
-            border: 5px solid rgba(0, 173, 216, 0.3);
+            width: 70px;
+            height: 70px;
+            border: 6px solid rgba(0, 173, 216, 0.3);
             border-top-color: #00ADD8;
             border-radius: 50%;
             animation: spin 1s linear infinite;
@@ -61,11 +61,22 @@
             to { transform: rotate(360deg); }
         }
         
+        .loading-gopher {
+            font-size: 60px;
+            margin-top: 20px;
+            animation: bounce 0.5s ease infinite alternate;
+        }
+        
+        @keyframes bounce {
+            from { transform: translateY(0); }
+            to { transform: translateY(-10px); }
+        }
+        
         .loading-text {
             color: #00ADD8;
             margin-top: 25px;
             font-family: Arial, sans-serif;
-            font-size: 18px;
+            font-size: 20px;
             font-weight: bold;
         }
         
@@ -81,8 +92,9 @@
     <div id="root">
         <div class="loading" id="loading">
             <div class="loading-spinner"></div>
+            <div class="loading-gopher">🐹</div>
             <div class="loading-text">Загрузка Go Tap Master...</div>
-            <div class="loading-subtext">Тапай по Гоферу и изучай Go!</div>
+            <div class="loading-subtext">Готовься тапать!</div>
         </div>
     </div>
     

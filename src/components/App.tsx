@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import Phaser from 'phaser';
 import { GameScene } from '../game/GameScene';
-import { GameState, Upgrade, initialGameState, upgrades as initialUpgrades, getUpgradeCost } from '../game/types';
+import { GameState, Upgrade, Achievement, initialGameState, upgrades as initialUpgrades, getUpgradeCost } from '../game/types';
 
 const App: React.FC = () => {
   const gameRef = useRef<Phaser.Game | null>(null);
@@ -10,21 +10,10 @@ const App: React.FC = () => {
   
   const [gameState, setGameState] = useState<GameState>(initialGameState);
   const [upgrades, setUpgrades] = useState<Upgrade[]>(initialUpgrades);
+  const [achievements, setAchievements] = useState<Achievement[]>([]);
   const [isPanelOpen, setIsPanelOpen] = useState(false);
   const [audioEnabled, setAudioEnabled] = useState(true);
-  const [isMobile, setIsMobile] = useState(false);
-
-  useEffect(() => {
-    const checkMobile = () => {
-      const mobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
-        || window.innerWidth <= 768;
-      setIsMobile(mobile);
-    };
-    
-    checkMobile();
-    window.addEventListener('resize', checkMobile);
-    return () => window.removeEventListener('resize', checkMobile);
-  }, []);
+  const [activeTab, setActiveTab] = useState<'upgrades' | 'achievements'>('upgrades');
 
   const initGame = useCallback(() => {
     if (!containerRef.current || gameRef.current) return;
@@ -88,7 +77,16 @@ const App: React.FC = () => {
         setAudioEnabled(enabled);
       };
 
+      scene.onAchievementUnlocked = (achievement: Achievement) => {
+        setAchievements(prev => {
+          const exists = prev.find(a => a.id === achievement.id);
+          if (exists) return prev;
+          return [...prev, achievement];
+        });
+      };
+
       setAudioEnabled(scene.isAudioEnabled());
+      setAchievements(scene.getAchievements());
     }
   }, []);
 
@@ -128,6 +126,8 @@ const App: React.FC = () => {
     }
   };
 
+  const unlockedCount = achievements.filter(a => a.unlocked).length;
+
   return (
     <div className="game-container" ref={containerRef}>
       {/* Audio Toggle Button */}
@@ -139,65 +139,98 @@ const App: React.FC = () => {
         {audioEnabled ? '🔊' : '🔇'}
       </button>
 
-      {/* Stats Overlay */}
-      <div className="stats-overlay">
-        <div>📊 Ур: {gameState.level}</div>
-        <div>💪 Тап: {gameState.tapValue}</div>
-        <div>🤖 {gameState.autoTapPerSec.toFixed(1)}/сек</div>
-      </div>
-
       {/* Upgrade Button */}
       <button
         onClick={togglePanel}
         className="upgrade-toggle-btn"
       >
-        {isPanelOpen ? '✕ Закрыть' : '⬆ Улучшения'}
+        {isPanelOpen ? '✕' : '⬆'}
       </button>
 
-      {/* Upgrade Panel */}
-      <div className={`upgrade-panel ${isPanelOpen ? 'open' : ''}`}>
-        <div className="upgrade-panel-header">
-          <h2>🚀 УЛУЧШЕНИЯ</h2>
+      {/* Side Panel */}
+      <div className={`side-panel ${isPanelOpen ? 'open' : ''}`}>
+        {/* Panel Header with Tabs */}
+        <div className="panel-header">
           <button
-            className="close-panel-btn"
+            className={`panel-tab ${activeTab === 'upgrades' ? 'active' : ''}`}
+            onClick={() => setActiveTab('upgrades')}
+          >
+            🚀 Улучшения
+          </button>
+          <button
+            className={`panel-tab ${activeTab === 'achievements' ? 'active' : ''}`}
+            onClick={() => setActiveTab('achievements')}
+          >
+            🏆 ({unlockedCount}/{achievements.length})
+          </button>
+          <button
+            className="panel-close-btn"
             onClick={togglePanel}
           >
             ✕
           </button>
         </div>
-        
-        <div className="upgrade-list">
-          {upgrades.map((upgrade, index) => {
-            const cost = getUpgradeCost(upgrade);
-            const canAfford = gameState.score >= cost;
 
-            return (
-              <div
-                key={upgrade.id}
-                className={`upgrade-item ${!canAfford ? 'disabled' : ''}`}
-                onClick={() => canAfford && handleBuyUpgrade(index)}
-                role="button"
-                tabIndex={0}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ' && canAfford) {
-                    handleBuyUpgrade(index);
-                  }
-                }}
-              >
+        {/* Panel Content */}
+        <div className="panel-content">
+          {activeTab === 'upgrades' && (
+            <div className="upgrade-list">
+              {upgrades.map((upgrade, index) => {
+                const cost = getUpgradeCost(upgrade);
+                const canAfford = gameState.score >= cost;
+
+                return (
+                  <div
+                    key={upgrade.id}
+                    className={`upgrade-item ${!canAfford ? 'disabled' : ''}`}
+                    onClick={() => canAfford && handleBuyUpgrade(index)}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        handleBuyUpgrade(index);
+                      }
+                    }}
+                  >
+                    <div
+                      className="upgrade-icon"
+                      style={{ background: upgrade.color }}
+                    >
+                      {upgrade.icon}
+                    </div>
+                    <div className="upgrade-info">
+                      <div className="upgrade-name">{upgrade.name}</div>
+                      <div className="upgrade-cost">💰 {cost.toLocaleString()}</div>
+                      <div className="upgrade-income">+{upgrade.income}/сек</div>
+                    </div>
+                    <div className="upgrade-count">ур. {upgrade.count}</div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {activeTab === 'achievements' && (
+            <div className="achievements-list">
+              {achievements.map((achievement) => (
                 <div
-                  className="upgrade-icon"
-                  style={{ background: upgrade.color }}
+                  key={achievement.id}
+                  className={`achievement-item ${achievement.unlocked ? 'unlocked' : 'locked'}`}
                 >
-                  {upgrade.icon}
+                  <div className="achievement-icon">
+                    {achievement.unlocked ? achievement.icon : '🔒'}
+                  </div>
+                  <div className="achievement-info">
+                    <div className="achievement-name">{achievement.name}</div>
+                    <div className="achievement-description">{achievement.description}</div>
+                  </div>
+                  {achievement.unlocked && (
+                    <div className="achievement-check">✅</div>
+                  )}
                 </div>
-                <div className="upgrade-info">
-                  <div className="upgrade-name">{upgrade.name}</div>
-                  <div className="upgrade-cost">💰 {cost.toLocaleString()} | +{upgrade.income}/сек</div>
-                </div>
-                <div className="upgrade-count">ур. {upgrade.count}</div>
-              </div>
-            );
-          })}
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>

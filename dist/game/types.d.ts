@@ -18,8 +18,16 @@ export interface Upgrade {
     icon: string;
     color: string;
 }
+export interface Achievement {
+    id: string;
+    name: string;
+    description: string;
+    icon: string;
+    unlocked: boolean;
+}
 export declare const initialGameState: GameState;
 export declare const upgrades: Upgrade[];
+export declare const achievements: Achievement[];
 export declare const goFacts: string[];
 export declare const getUpgradeCost: (upgrade: Upgrade) => number;
 //# sourceMappingURL=types.d.ts.map

@@ -48,13 +48,13 @@ html, body {
   position: absolute;
   top: 15px;
   right: 15px;
-  width: 48px;
-  height: 48px;
+  width: 44px;
+  height: 44px;
   background: rgba(0, 173, 216, 0.4);
   border: 2px solid rgba(0, 173, 216, 0.6);
   border-radius: 50%;
   cursor: pointer;
-  font-size: 22px;
+  font-size: 20px;
   z-index: 150;
   display: flex;
   align-items: center;
@@ -72,53 +72,29 @@ html, body {
   transform: scale(0.95);
 }
 
-/* Stats Overlay */
-.stats-overlay {
-  position: absolute;
-  bottom: 25px;
-  left: 15px;
-  color: #ccc;
-  font-size: 13px;
-  background: rgba(0, 0, 0, 0.6);
-  padding: 12px 16px;
-  border-radius: 12px;
-  backdrop-filter: blur(5px);
-  z-index: 150;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.stats-overlay div {
-  margin-bottom: 6px;
-  white-space: nowrap;
-}
-
-.stats-overlay div:last-child {
-  margin-bottom: 0;
-}
-
 /* Upgrade Toggle Button */
 .upgrade-toggle-btn {
   position: absolute;
   bottom: 25px;
   right: 25px;
+  width: 60px;
+  height: 60px;
   background: linear-gradient(135deg, #00ADD8 0%, #0097B5 100%);
   color: white;
   border: none;
-  padding: 18px 32px;
   border-radius: 16px;
   cursor: pointer;
-  font-size: 17px;
-  font-weight: bold;
+  font-size: 28px;
   box-shadow: 0 6px 25px rgba(0, 173, 216, 0.5);
   transition: all 0.3s ease;
   z-index: 150;
   display: flex;
   align-items: center;
-  gap: 10px;
+  justify-content: center;
 }
 
 .upgrade-toggle-btn:hover {
-  transform: translateY(-3px);
+  transform: translateY(-3px) scale(1.05);
   box-shadow: 0 8px 30px rgba(0, 173, 216, 0.7);
 }
 
@@ -126,17 +102,16 @@ html, body {
   transform: translateY(0) scale(0.95);
 }
 
-/* Upgrade Panel */
-.upgrade-panel {
+/* Side Panel */
+.side-panel {
   position: absolute;
   right: 0;
   top: 0;
   bottom: 0;
-  width: 360px;
-  max-width: 90%;
+  width: 380px;
+  max-width: 85%;
   background: linear-gradient(180deg, rgba(22, 33, 62, 0.98) 0%, rgba(15, 23, 42, 0.98) 100%);
   border-radius: 20px 0 0 20px;
-  padding: 0;
   overflow: hidden;
   transform: translateX(100%);
   transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
@@ -146,59 +121,79 @@ html, body {
   flex-direction: column;
 }
 
-.upgrade-panel.open {
+.side-panel.open {
   transform: translateX(0);
 }
 
-.upgrade-panel-header {
+/* Panel Header with Tabs */
+.panel-header {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  padding: 20px 25px;
+  padding: 0;
   background: linear-gradient(90deg, rgba(0, 173, 216, 0.3) 0%, rgba(0, 151, 181, 0.2) 100%);
   border-bottom: 1px solid rgba(0, 173, 216, 0.3);
   flex-shrink: 0;
 }
 
-.upgrade-panel-header h2 {
-  color: #00ADD8;
-  font-size: 22px;
-  text-transform: uppercase;
-  letter-spacing: 2px;
-  margin: 0;
-  text-shadow: 0 0 10px rgba(0, 173, 216, 0.5);
+.panel-tab {
+  flex: 1;
+  padding: 18px 12px;
+  background: transparent;
+  border: none;
+  border-bottom: 3px solid transparent;
+  color: #888;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
 }
 
-.close-panel-btn {
-  width: 40px;
-  height: 40px;
+.panel-tab:hover {
+  background: rgba(0, 173, 216, 0.1);
+  color: #ccc;
+}
+
+.panel-tab.active {
+  color: #00ADD8;
+  border-bottom-color: #00ADD8;
+  background: rgba(0, 173, 216, 0.15);
+}
+
+.panel-close-btn {
+  width: 44px;
+  height: 100%;
   background: linear-gradient(135deg, #FF5722 0%, #E64A19 100%);
   color: white;
   border: none;
-  border-radius: 10px;
   cursor: pointer;
-  font-size: 20px;
+  font-size: 22px;
   font-weight: bold;
   transition: all 0.2s ease;
-  box-shadow: 0 4px 15px rgba(255, 87, 34, 0.4);
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
-.close-panel-btn:hover {
+.panel-close-btn:hover {
   background: linear-gradient(135deg, #F4511E 0%, #D84315 100%);
-  transform: scale(1.1) rotate(90deg);
 }
 
-.close-panel-btn:active {
-  transform: scale(0.95) rotate(90deg);
+.panel-close-btn:active {
+  transform: scale(0.9);
 }
 
-.upgrade-list {
+/* Panel Content */
+.panel-content {
   flex: 1;
   overflow-y: auto;
   padding: 15px;
+}
+
+/* Upgrade List */
+.upgrade-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
 .upgrade-item {
@@ -206,8 +201,7 @@ html, body {
   align-items: center;
   background: linear-gradient(135deg, rgba(42, 42, 78, 0.9) 0%, rgba(35, 35, 65, 0.9) 100%);
   border-radius: 14px;
-  padding: 16px;
-  margin-bottom: 12px;
+  padding: 14px;
   cursor: pointer;
   transition: all 0.25s ease;
   border: 2px solid transparent;
@@ -215,7 +209,7 @@ html, body {
 
 .upgrade-item:hover:not(.disabled) {
   background: linear-gradient(135deg, rgba(52, 52, 88, 0.95) 0%, rgba(45, 45, 75, 0.95) 100%);
-  transform: translateX(-8px);
+  transform: translateX(-5px);
   border-color: #00ADD8;
   box-shadow: 0 4px 20px rgba(0, 173, 216, 0.3);
 }
@@ -230,10 +224,10 @@ html, body {
 }
 
 .upgrade-icon {
-  width: 50px;
-  height: 50px;
+  width: 48px;
+  height: 48px;
   border-radius: 50%;
-  margin-right: 15px;
+  margin-right: 12px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -250,44 +244,121 @@ html, body {
 
 .upgrade-name {
   color: #fff;
-  font-size: 16px;
+  font-size: 15px;
   font-weight: bold;
-  margin-bottom: 5px;
+  margin-bottom: 4px;
 }
 
 .upgrade-cost {
   color: #FFD700;
   font-size: 14px;
-  font-weight: 500;
+  font-weight: 600;
+}
+
+.upgrade-income {
+  color: #4CAF50;
+  font-size: 12px;
+  margin-top: 2px;
 }
 
 .upgrade-count {
   color: #4CAF50;
-  font-size: 15px;
+  font-size: 14px;
   font-weight: bold;
-  margin-left: 12px;
-  padding: 6px 12px;
+  margin-left: 10px;
+  padding: 6px 10px;
   background: rgba(76, 175, 80, 0.2);
   border-radius: 8px;
   white-space: nowrap;
 }
 
+/* Achievements List */
+.achievements-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.achievement-item {
+  display: flex;
+  align-items: center;
+  background: linear-gradient(135deg, rgba(42, 42, 78, 0.9) 0%, rgba(35, 35, 65, 0.9) 100%);
+  border-radius: 14px;
+  padding: 14px;
+  border: 2px solid transparent;
+  transition: all 0.25s ease;
+}
+
+.achievement-item.unlocked {
+  border-color: #FFD700;
+  box-shadow: 0 4px 15px rgba(255, 215, 0, 0.2);
+}
+
+.achievement-item.locked {
+  opacity: 0.6;
+}
+
+.achievement-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  margin-right: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  flex-shrink: 0;
+  background: rgba(0, 0, 0, 0.3);
+  border: 2px solid rgba(255, 255, 255, 0.1);
+}
+
+.achievement-item.unlocked .achievement-icon {
+  background: linear-gradient(135deg, rgba(255, 215, 0, 0.3) 0%, rgba(255, 171, 0, 0.3) 100%);
+  border-color: #FFD700;
+}
+
+.achievement-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.achievement-name {
+  color: #fff;
+  font-size: 15px;
+  font-weight: bold;
+  margin-bottom: 4px;
+}
+
+.achievement-item.unlocked .achievement-name {
+  color: #FFD700;
+}
+
+.achievement-description {
+  color: #888;
+  font-size: 12px;
+}
+
+.achievement-check {
+  font-size: 20px;
+  margin-left: 10px;
+}
+
 /* Scrollbar */
-.upgrade-list::-webkit-scrollbar {
+.panel-content::-webkit-scrollbar {
   width: 8px;
 }
 
-.upgrade-list::-webkit-scrollbar-track {
+.panel-content::-webkit-scrollbar-track {
   background: rgba(0, 0, 0, 0.3);
   border-radius: 4px;
 }
 
-.upgrade-list::-webkit-scrollbar-thumb {
+.panel-content::-webkit-scrollbar-thumb {
   background: linear-gradient(180deg, #00ADD8 0%, #00838F 100%);
   border-radius: 4px;
 }
 
-.upgrade-list::-webkit-scrollbar-thumb:hover {
+.panel-content::-webkit-scrollbar-thumb:hover {
   background: linear-gradient(180deg, #00BCD4 0%, #0097A7 100%);
 }
 
@@ -303,49 +374,47 @@ html, body {
     box-shadow: none;
   }
   
-  .upgrade-panel {
+  .side-panel {
     width: 95%;
     border-radius: 15px 0 0 15px;
-  }
-  
-  .stats-overlay {
-    top: 10px;
-    left: 10px;
-    font-size: 11px;
-    padding: 8px 12px;
   }
   
   .audio-btn {
     top: 10px;
     right: 10px;
-    width: 42px;
-    height: 42px;
+    width: 40px;
+    height: 40px;
     font-size: 18px;
   }
   
   .upgrade-toggle-btn {
     bottom: 15px;
     right: 15px;
-    padding: 14px 24px;
-    font-size: 14px;
+    width: 55px;
+    height: 55px;
+    font-size: 24px;
+  }
+  
+  .panel-tab {
+    font-size: 12px;
+    padding: 15px 8px;
   }
 }
 
 /* Landscape mode */
 @media (max-height: 500px) and (orientation: landscape) {
-  .upgrade-panel {
-    width: 300px;
+  .side-panel {
+    width: 320px;
   }
   
   .upgrade-item {
     padding: 10px;
-    margin-bottom: 8px;
   }
   
   .upgrade-icon {
-    width: 38px;
-    height: 38px;
-    font-size: 18px;
+    width: 40px;
+    height: 40px;
+    font-size: 20px;
     margin-right: 10px;
   }
   
@@ -353,20 +422,14 @@ html, body {
     font-size: 13px;
   }
   
-  .upgrade-cost {
+  .upgrade-cost,
+  .upgrade-income {
     font-size: 11px;
   }
   
   .upgrade-count {
     font-size: 12px;
     padding: 4px 8px;
-  }
-}
-
-/* Tablet */
-@media (min-width: 481px) and (max-width: 768px) {
-  .upgrade-panel {
-    width: 320px;
   }
 }
 

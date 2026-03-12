@@ -1,21 +1,30 @@
 import Phaser from 'phaser';
-import { GameState, Upgrade } from './types';
+import { GameState, Upgrade, Achievement } from './types';
 export declare class GameScene extends Phaser.Scene {
     private gameState;
     private upgrades;
+    private achievements;
+    private levelText;
+    private levelBadge;
+    private xpBar;
+    private xpFill;
+    private scoreText;
+    private scoreContainer;
+    private incomeText;
     private energyBar;
     private energyFill;
-    private scoreText;
-    private levelText;
-    private xpBar;
-    private incomeText;
     private energyText;
-    private factText;
     private tapButton;
+    private gopherImage;
+    private comboText;
+    private comboContainer;
     private floatingTexts;
     private lastRegenTime;
     private lastAutoTapTime;
     private currentFactIndex;
+    private combo;
+    private comboTimer;
+    private maxCombo;
     private audioEnabled;
     private audioCtx;
     onScoreChange: ((score: number) => void) | null;
@@ -24,6 +33,7 @@ export declare class GameScene extends Phaser.Scene {
     onIncomeChange: ((income: number) => void) | null;
     onUpgradePurchased: ((upgradeId: string) => void) | null;
     onToggleAudio: ((enabled: boolean) => void) | null;
+    onAchievementUnlocked: ((achievement: Achievement) => void) | null;
     constructor();
     setGameState(state: GameState): void;
     setUpgrades(upgrades: Upgrade[]): void;
@@ -35,12 +45,16 @@ export declare class GameScene extends Phaser.Scene {
     private handleTap;
     private addScore;
     buyUpgrade(upgradeIndex: number): void;
+    private checkAchievements;
+    private unlockAchievement;
     private updateUI;
     private createFloatingText;
     private createParticles;
+    private factText;
     private getNewFact;
     getGameState(): GameState;
     getUpgrades(): Upgrade[];
+    getAchievements(): Achievement[];
     isAudioEnabled(): boolean;
 }
 //# sourceMappingURL=GameScene.d.ts.map
