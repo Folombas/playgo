@@ -14,7 +14,6 @@ const App: React.FC = () => {
   const [audioEnabled, setAudioEnabled] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
 
-  // Detect mobile device
   useEffect(() => {
     const checkMobile = () => {
       const mobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
@@ -60,7 +59,6 @@ const App: React.FC = () => {
       scene.setGameState(gameState);
       scene.setUpgrades(upgrades);
 
-      // Setup callbacks
       scene.onScoreChange = (score: number) => {
         setGameState(prev => ({ ...prev, score }));
       };
@@ -105,7 +103,6 @@ const App: React.FC = () => {
     };
   }, [initGame]);
 
-  // Sync upgrades with scene
   useEffect(() => {
     if (sceneRef.current && upgrades) {
       sceneRef.current.setUpgrades(upgrades);
@@ -136,102 +133,72 @@ const App: React.FC = () => {
       {/* Audio Toggle Button */}
       <button
         onClick={toggleAudio}
-        title={audioEnabled ? 'Mute' : 'Unmute'}
-        style={{
-          position: 'absolute',
-          top: 20,
-          right: 20,
-          background: audioEnabled ? 'rgba(0, 173, 216, 0.5)' : 'rgba(100, 100, 100, 0.5)',
-          border: 'none',
-          borderRadius: '50%',
-          width: 44,
-          height: 44,
-          cursor: 'pointer',
-          fontSize: 20,
-          zIndex: 100,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          transition: 'all 0.2s',
-          color: '#fff',
-        }}
+        title={audioEnabled ? 'Выключить звук' : 'Включить звук'}
+        className="audio-btn"
       >
         {audioEnabled ? '🔊' : '🔇'}
       </button>
 
+      {/* Stats Overlay */}
+      <div className="stats-overlay">
+        <div>📊 Уровень: {gameState.level}</div>
+        <div>💪 Сила тапа: {gameState.tapValue}</div>
+        <div>🤖 Авто: {gameState.autoTapPerSec.toFixed(1)}/сек</div>
+      </div>
+
       {/* Upgrade Button */}
       <button
         onClick={togglePanel}
-        style={{
-          position: 'absolute',
-          bottom: isMobile ? 15 : 20,
-          right: isMobile ? 15 : 20,
-          background: 'linear-gradient(135deg, #00ADD8 0%, #0097B5 100%)',
-          color: 'white',
-          border: 'none',
-          padding: '16px 28px',
-          borderRadius: '12px',
-          cursor: 'pointer',
-          fontSize: '16px',
-          fontWeight: 'bold',
-          boxShadow: '0 4px 20px rgba(0, 173, 216, 0.5)',
-          transition: 'all 0.2s',
-          zIndex: 100,
-        }}
+        className="upgrade-toggle-btn"
       >
-        {isPanelOpen ? '✕ Close' : '⬆ Upgrades'}
+        {isPanelOpen ? '✕ Закрыть' : '⬆ Улучшения'}
       </button>
 
       {/* Upgrade Panel */}
       <div className={`upgrade-panel ${isPanelOpen ? 'open' : ''}`}>
-        <h2>UPGRADES</h2>
+        <div className="upgrade-panel-header">
+          <h2>🚀 УЛУЧШЕНИЯ</h2>
+          <button
+            className="close-panel-btn"
+            onClick={togglePanel}
+          >
+            ✕
+          </button>
+        </div>
         
-        {upgrades.map((upgrade, index) => {
-          const cost = getUpgradeCost(upgrade);
-          const canAfford = gameState.score >= cost;
+        <div className="upgrade-list">
+          {upgrades.map((upgrade, index) => {
+            const cost = getUpgradeCost(upgrade);
+            const canAfford = gameState.score >= cost;
 
-          return (
-            <div
-              key={upgrade.id}
-              className="upgrade-item"
-              onClick={() => handleBuyUpgrade(index)}
-              style={{ opacity: canAfford ? 1 : 0.5 }}
-              role="button"
-              tabIndex={0}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  handleBuyUpgrade(index);
-                }
-              }}
-            >
+            return (
               <div
-                className="upgrade-icon"
-                style={{ background: upgrade.color }}
+                key={upgrade.id}
+                className={`upgrade-item ${!canAfford ? 'disabled' : ''}`}
+                onClick={() => canAfford && handleBuyUpgrade(index)}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ' && canAfford) {
+                    handleBuyUpgrade(index);
+                  }
+                }}
               >
-                {upgrade.icon}
+                <div
+                  className="upgrade-icon"
+                  style={{ background: upgrade.color }}
+                >
+                  {upgrade.icon}
+                </div>
+                <div className="upgrade-info">
+                  <div className="upgrade-name">{upgrade.name}</div>
+                  <div className="upgrade-cost">💰 {cost.toLocaleString()} | +{upgrade.income}/сек</div>
+                </div>
+                <div className="upgrade-count">ур. {upgrade.count}</div>
               </div>
-              <div className="upgrade-info">
-                <div className="upgrade-name">{upgrade.name}</div>
-                <div className="upgrade-cost">💰 {cost} | +{upgrade.income}/sec</div>
-              </div>
-              <div className="upgrade-count">x{upgrade.count}</div>
-            </div>
-          );
-        })}
-
-        <button
-          className="close-panel-btn"
-          onClick={togglePanel}
-        >
-          CLOSE
-        </button>
-      </div>
-
-      {/* Stats Overlay */}
-      <div className="stats-overlay">
-        <div>Level: {gameState.level}</div>
-        <div>Tap Power: {gameState.tapValue}</div>
-        <div>Auto: {gameState.autoTapPerSec.toFixed(1)}/sec</div>
+            );
+          })}
+        </div>
       </div>
     </div>
   );

@@ -59,7 +59,6 @@ export class GameScene extends Phaser.Scene {
   }
 
   preload(): void {
-    // Create textures programmatically
     const graphics = this.make.graphics({ x: 0, y: 0 });
 
     // Go gopher mascot
@@ -111,7 +110,6 @@ export class GameScene extends Phaser.Scene {
   }
 
   create(): void {
-    // Initialize audio context on user interaction
     const initAudio = () => {
       if (!this.audioCtx) {
         this.audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
@@ -143,49 +141,55 @@ export class GameScene extends Phaser.Scene {
     // Header background
     const headerBg = this.add.graphics();
     headerBg.fillStyle(0x16213e, 0.8);
-    headerBg.fillRoundedRect(15, 15, width - 30, 140, 15);
+    headerBg.fillRoundedRect(15, 15, width - 30, 150, 15);
 
     // Level text
-    this.levelText = this.add.text(30, 30, 'Level 1', {
+    this.levelText = this.add.text(30, 25, 'Уровень 1', {
       fontFamily: 'Arial',
-      fontSize: '18px',
+      fontSize: '20px',
       color: '#00ADD8',
       fontStyle: 'bold',
     });
 
-    // XP bar
-    this.add.rectangle(width / 2, 65, width - 60, 12, 0x2a2a4e).setOrigin(0.5);
-    this.xpBar = this.add.rectangle(30, 65, 0, 12, 0x00ADD8).setOrigin(0, 0.5);
+    // XP bar background
+    this.add.rectangle(width / 2, 55, width - 60, 14, 0x2a2a4e).setOrigin(0.5);
+    this.xpBar = this.add.rectangle(30, 55, 0, 14, 0x00ADD8).setOrigin(0, 0.5);
+
+    // XP text
+    this.add.text(30, 75, 'Опыт', {
+      fontFamily: 'Arial',
+      fontSize: '12px',
+      color: '#888888',
+    });
 
     // Score text
-    this.scoreText = this.add.text(width / 2, 95, '0 GopherCoins', {
+    this.scoreText = this.add.text(width / 2, 110, '0 Гоферокоинов', {
       fontFamily: 'Arial',
-      fontSize: '28px',
+      fontSize: '26px',
       color: '#FFD700',
       fontStyle: 'bold',
     }).setOrigin(0.5);
 
     // Income text
-    this.incomeText = this.add.text(width / 2, 125, '+0/sec', {
+    this.incomeText = this.add.text(width / 2, 140, '+0/сек', {
       fontFamily: 'Arial',
       fontSize: '16px',
       color: '#4CAF50',
     }).setOrigin(0.5);
 
-    // Energy label
-    this.add.text(30, 170, '⚡ Energy', {
+    // Energy bar
+    this.add.text(30, 180, '⚡ Энергия', {
       fontFamily: 'Arial',
       fontSize: '16px',
       color: '#FFD700',
     });
 
-    // Energy bar
-    this.energyBar = this.add.rectangle(30, 195, width - 60, 20, 0x2a2a4e).setOrigin(0, 0.5);
-    this.energyFill = this.add.rectangle(30, 195, width - 60, 20, 0xFFD700).setOrigin(0, 0.5);
+    this.energyBar = this.add.rectangle(30, 205, width - 60, 20, 0x2a2a4e).setOrigin(0, 0.5);
+    this.energyFill = this.add.rectangle(30, 205, width - 60, 20, 0xFFD700).setOrigin(0, 0.5);
 
     // Tap area with Gopher
     const centerX = width / 2;
-    const centerY = height / 2;
+    const centerY = height / 2 + 20;
 
     // Glow effect
     this.add.circle(centerX, centerY, 120, 0x00ADD8, 0.3);
@@ -195,11 +199,10 @@ export class GameScene extends Phaser.Scene {
     this.tapButton.setScale(1.5);
     this.tapButton.setInteractive({ useHandCursor: true });
 
-    // Hit area - supports both mouse and touch
+    // Hit area
     const hitArea = this.add.circle(centerX, centerY, 100);
     hitArea.setInteractive({ useHandCursor: true });
     
-    // Touch and click support
     hitArea.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
       initAudio();
       this.handleTap(pointer.x, pointer.y);
@@ -214,11 +217,12 @@ export class GameScene extends Phaser.Scene {
     }).setOrigin(0.5);
 
     // Fact text
-    this.factText = this.add.text(centerX, height - 25, this.getNewFact(), {
+    this.factText = this.add.text(centerX, height - 30, this.getNewFact(), {
       fontFamily: 'Arial',
-      fontSize: '11px',
+      fontSize: '12px',
       color: '#888888',
       fontStyle: 'italic',
+      wordWrap: { width: width - 40 }
     }).setOrigin(0.5);
 
     // Update fact every 10 seconds
@@ -336,7 +340,7 @@ export class GameScene extends Phaser.Scene {
       this.gameState.xpToNextLevel = Math.floor(this.gameState.xpToNextLevel * 1.5);
       this.gameState.tapValue++;
 
-      this.createFloatingText(this.scale.width / 2, this.scale.height / 2, 'LEVEL UP!', '#00FF00', 30);
+      this.createFloatingText(this.scale.width / 2, this.scale.height / 2, 'УРОВЕНЬ ПОВЫШЕН!', '#00FF00', 28);
       
       // Level up sound
       this.playSound(523, 0.15);
@@ -364,7 +368,7 @@ export class GameScene extends Phaser.Scene {
       upgrade.count++;
       this.gameState.autoTapPerSec += upgrade.income;
 
-      this.createFloatingText(this.scale.width / 2, this.scale.height / 2 - 100, `+${upgrade.income}/sec`, '#4CAF50');
+      this.createFloatingText(this.scale.width / 2, this.scale.height / 2 - 100, `+${upgrade.income}/сек`, '#4CAF50');
       
       // Upgrade sound
       this.playSound(440, 0.1, 'square');
@@ -386,12 +390,12 @@ export class GameScene extends Phaser.Scene {
   private updateUI(): void {
     const { width } = this.scale;
 
-    this.scoreText.setText(`${Math.floor(this.gameState.score)} GopherCoins`);
-    this.levelText.setText(`Level ${this.gameState.level}`);
+    this.scoreText.setText(`${Math.floor(this.gameState.score)} Гоферокоинов`);
+    this.levelText.setText(`Уровень ${this.gameState.level}`);
     this.xpBar.width = (this.gameState.xp / this.gameState.xpToNextLevel) * (width - 60);
     this.energyFill.width = (this.gameState.energy / this.gameState.maxEnergy) * (width - 60);
     this.energyText.setText(`${Math.floor(this.gameState.energy)}/${this.gameState.maxEnergy}`);
-    this.incomeText.setText(`+${this.gameState.autoTapPerSec.toFixed(1)}/sec`);
+    this.incomeText.setText(`+${this.gameState.autoTapPerSec.toFixed(1)}/сек`);
   }
 
   private createFloatingText(x: number, y: number, text: string, color: string = '#FFFFFF', size: number = 20): void {
