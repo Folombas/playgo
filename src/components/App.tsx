@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import Phaser from 'phaser';
 import { GameScene } from '../game/GameScene';
-import { GameState, Upgrade, Achievement, initialGameState, upgrades as initialUpgrades, getUpgradeCost } from '../game/types';
+import { GameState, Upgrade, Quest, initialGameState, upgrades as initialUpgrades, getUpgradeCost } from '../game/types';
 
 const App: React.FC = () => {
   const gameRef = useRef<Phaser.Game | null>(null);
@@ -10,10 +10,10 @@ const App: React.FC = () => {
   
   const [gameState, setGameState] = useState<GameState>(initialGameState);
   const [upgrades, setUpgrades] = useState<Upgrade[]>(initialUpgrades);
-  const [achievements, setAchievements] = useState<Achievement[]>([]);
+  const [quests, setQuests] = useState<Quest[]>([]);
   const [isPanelOpen, setIsPanelOpen] = useState(false);
   const [audioEnabled, setAudioEnabled] = useState(true);
-  const [activeTab, setActiveTab] = useState<'upgrades' | 'achievements'>('upgrades');
+  const [activeTab, setActiveTab] = useState<'upgrades' | 'quests' | 'stats'>('upgrades');
 
   const initGame = useCallback(() => {
     if (!containerRef.current || gameRef.current) return;
@@ -23,7 +23,7 @@ const App: React.FC = () => {
       width: 400,
       height: 700,
       parent: containerRef.current,
-      backgroundColor: '#1a1a2e',
+      backgroundColor: '#0a0a1a',
       physics: {
         default: 'arcade',
         arcade: {
@@ -77,16 +77,12 @@ const App: React.FC = () => {
         setAudioEnabled(enabled);
       };
 
-      scene.onAchievementUnlocked = (achievement: Achievement) => {
-        setAchievements(prev => {
-          const exists = prev.find(a => a.id === achievement.id);
-          if (exists) return prev;
-          return [...prev, achievement];
-        });
+      scene.onQuestCompleted = (quest: Quest) => {
+        setQuests(prev => prev.map(q => q.id === quest.id ? quest : q));
       };
 
       setAudioEnabled(scene.isAudioEnabled());
-      setAchievements(scene.getAchievements());
+      setQuests(scene.getQuests());
     }
   }, []);
 
@@ -126,109 +122,128 @@ const App: React.FC = () => {
     }
   };
 
-  const unlockedCount = achievements.filter(a => a.unlocked).length;
+  const totalProgress = quests.reduce((acc, q) => acc + (q.completed ? 1 : 0), 0);
 
   return (
-    <div className="game-container" ref={containerRef}>
-      {/* Audio Toggle Button */}
-      <button
-        onClick={toggleAudio}
-        title={audioEnabled ? 'Выключить звук' : 'Включить звук'}
-        className="audio-btn"
-      >
+    <div className="cyberpunk-container" ref={containerRef}>
+      {/* Audio Toggle */}
+      <button onClick={toggleAudio} className="cyber-btn audio-btn" title={audioEnabled ? 'Выключить звук' : 'Включить звук'}>
         {audioEnabled ? '🔊' : '🔇'}
       </button>
 
-      {/* Upgrade Button */}
-      <button
-        onClick={togglePanel}
-        className="upgrade-toggle-btn"
-      >
-        {isPanelOpen ? '✕' : '⬆'}
+      {/* Menu Button */}
+      <button onClick={togglePanel} className="cyber-btn menu-btn">
+        {isPanelOpen ? '✕' : '☰'}
       </button>
 
       {/* Side Panel */}
-      <div className={`side-panel ${isPanelOpen ? 'open' : ''}`}>
-        {/* Panel Header with Tabs */}
+      <div className={`cyber-panel ${isPanelOpen ? 'open' : ''}`}>
+        {/* Panel Header */}
         <div className="panel-header">
-          <button
-            className={`panel-tab ${activeTab === 'upgrades' ? 'active' : ''}`}
-            onClick={() => setActiveTab('upgrades')}
-          >
-            🚀 Улучшения
-          </button>
-          <button
-            className={`panel-tab ${activeTab === 'achievements' ? 'active' : ''}`}
-            onClick={() => setActiveTab('achievements')}
-          >
-            🏆 ({unlockedCount}/{achievements.length})
-          </button>
-          <button
-            className="panel-close-btn"
-            onClick={togglePanel}
-          >
-            ✕
-          </button>
+          <div className="panel-tabs">
+            <button className={`panel-tab ${activeTab === 'upgrades' ? 'active' : ''}`} onClick={() => setActiveTab('upgrades')}>
+              🚀
+            </button>
+            <button className={`panel-tab ${activeTab === 'quests' ? 'active' : ''}`} onClick={() => setActiveTab('quests')}>
+              📋
+            </button>
+            <button className={`panel-tab ${activeTab === 'stats' ? 'active' : ''}`} onClick={() => setActiveTab('stats')}>
+              📊
+            </button>
+          </div>
+          <button className="panel-close" onClick={togglePanel}>✕</button>
         </div>
 
         {/* Panel Content */}
         <div className="panel-content">
+          {/* UPGRADES TAB */}
           {activeTab === 'upgrades' && (
-            <div className="upgrade-list">
+            <div className="upgrades-container">
+              <h2 className="section-title">⚡ УЛУЧШЕНИЯ</h2>
               {upgrades.map((upgrade, index) => {
                 const cost = getUpgradeCost(upgrade);
                 const canAfford = gameState.score >= cost;
-
                 return (
-                  <div
+                  <button
                     key={upgrade.id}
-                    className={`upgrade-item ${!canAfford ? 'disabled' : ''}`}
+                    className={`cyber-card upgrade-card ${!canAfford ? 'disabled' : ''}`}
                     onClick={() => canAfford && handleBuyUpgrade(index)}
-                    role="button"
-                    tabIndex={0}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        handleBuyUpgrade(index);
-                      }
-                    }}
+                    disabled={!canAfford}
                   >
-                    <div
-                      className="upgrade-icon"
-                      style={{ background: upgrade.color }}
-                    >
-                      {upgrade.icon}
+                    <div className="card-icon" style={{ background: upgrade.color }}>{upgrade.icon}</div>
+                    <div className="card-info">
+                      <div className="card-name">{upgrade.name}</div>
+                      <div className="card-cost">💰 {cost.toLocaleString()}</div>
+                      <div className="card-bonus">+{upgrade.income}/сек</div>
                     </div>
-                    <div className="upgrade-info">
-                      <div className="upgrade-name">{upgrade.name}</div>
-                      <div className="upgrade-cost">💰 {cost.toLocaleString()}</div>
-                      <div className="upgrade-income">+{upgrade.income}/сек</div>
+                    <div className="card-level">ур.{upgrade.count}</div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {/* QUESTS TAB */}
+          {activeTab === 'quests' && (
+            <div className="quests-container">
+              <h2 className="section-title">📋 ЗАДАНИЯ</h2>
+              <div className="progress-summary">
+                Выполнено: {totalProgress}/{quests.length}
+              </div>
+              {quests.map(quest => {
+                const progress = Math.min((quest.progress / quest.target) * 100, 100);
+                return (
+                  <div key={quest.id} className={`cyber-card quest-card ${quest.completed ? 'completed' : ''}`}>
+                    <div className="quest-info">
+                      <div className="quest-name">{quest.name}</div>
+                      <div className="quest-progress">{quest.progress} / {quest.target}</div>
                     </div>
-                    <div className="upgrade-count">ур. {upgrade.count}</div>
+                    <div className="quest-bar">
+                      <div className="quest-fill" style={{ width: `${progress}%` }}></div>
+                    </div>
+                    <div className="quest-reward">💰 {quest.reward}</div>
                   </div>
                 );
               })}
             </div>
           )}
 
-          {activeTab === 'achievements' && (
-            <div className="achievements-list">
-              {achievements.map((achievement) => (
-                <div
-                  key={achievement.id}
-                  className={`achievement-item ${achievement.unlocked ? 'unlocked' : 'locked'}`}
-                >
-                  <div className="achievement-icon">
-                    {achievement.unlocked ? achievement.icon : '🔒'}
-                  </div>
-                  <div className="achievement-info">
-                    <div className="achievement-name">{achievement.name}</div>
-                    <div className="achievement-description">{achievement.description}</div>
-                  </div>
-                  {achievement.unlocked && (
-                    <div className="achievement-check">✅</div>
-                  )}
+          {/* STATS TAB */}
+          {activeTab === 'stats' && (
+            <div className="stats-container">
+              <h2 className="section-title">📊 СТАТИСТИКА</h2>
+              <div className="stat-grid">
+                <div className="stat-card">
+                  <div className="stat-icon">👆</div>
+                  <div className="stat-value">{gameState.totalTaps.toLocaleString()}</div>
+                  <div className="stat-label">Всего тапов</div>
                 </div>
-              ))}
+                <div className="stat-card">
+                  <div className="stat-icon">⚡</div>
+                  <div className="stat-value">{gameState.criticalHits.toLocaleString()}</div>
+                  <div className="stat-label">Критов</div>
+                </div>
+                <div className="stat-card">
+                  <div className="stat-icon">💰</div>
+                  <div className="stat-value">{gameState.score.toLocaleString()}</div>
+                  <div className="stat-label">Монеты</div>
+                </div>
+                <div className="stat-card">
+                  <div className="stat-icon">🔥</div>
+                  <div className="stat-value">{gameState.autoTapPerSec.toFixed(1)}</div>
+                  <div className="stat-label">Доход/сек</div>
+                </div>
+                <div className="stat-card">
+                  <div className="stat-icon">⭐</div>
+                  <div className="stat-value">{gameState.level}</div>
+                  <div className="stat-label">Уровень</div>
+                </div>
+                <div className="stat-card">
+                  <div className="stat-icon">💪</div>
+                  <div className="stat-value">{gameState.tapValue}</div>
+                  <div className="stat-label">Сила тапа</div>
+                </div>
+              </div>
             </div>
           )}
         </div>

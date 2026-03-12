@@ -8,12 +8,11 @@ html, body {
   width: 100%;
   height: 100%;
   overflow: hidden;
-  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+  background: #0a0a1a;
   touch-action: none;
   -webkit-touch-callout: none;
   -webkit-user-select: none;
   user-select: none;
-  -webkit-tap-highlight-color: transparent;
 }
 
 #root {
@@ -24,326 +23,346 @@ html, body {
   align-items: center;
 }
 
-.game-container {
+.cyberpunk-container {
   position: relative;
   width: 100%;
   height: 100%;
   max-width: 450px;
   max-height: 800px;
-  display: flex;
-  justify-content: center;
-  align-items: center;
 }
 
-.game-container canvas {
-  border-radius: 20px;
-  box-shadow: 0 0 50px rgba(0, 217, 255, 0.3);
-  max-width: 100%;
-  max-height: 100%;
-  display: block;
+.cyberpunk-container canvas {
+  border-radius: 0;
+  box-shadow: none;
+  width: 100%;
+  height: 100%;
 }
 
-/* Audio Button */
-.audio-btn {
+/* CYBER BUTTONS */
+.cyber-btn {
   position: absolute;
+  z-index: 150;
+  border: none;
+  cursor: pointer;
+  font-size: 24px;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.audio-btn {
   top: 15px;
   right: 15px;
-  width: 44px;
-  height: 44px;
-  background: rgba(0, 173, 216, 0.4);
-  border: 2px solid rgba(0, 173, 216, 0.6);
-  border-radius: 50%;
-  cursor: pointer;
-  font-size: 20px;
-  z-index: 150;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.2s ease;
-  backdrop-filter: blur(5px);
+  width: 48px;
+  height: 48px;
+  background: linear-gradient(135deg, rgba(0, 255, 136, 0.3), rgba(0, 255, 204, 0.3));
+  border: 2px solid #00FF88;
+  border-radius: 12px;
+  box-shadow: 0 0 20px rgba(0, 255, 136, 0.5), inset 0 0 10px rgba(0, 255, 136, 0.2);
 }
 
 .audio-btn:hover {
-  background: rgba(0, 173, 216, 0.6);
+  background: linear-gradient(135deg, rgba(0, 255, 136, 0.5), rgba(0, 255, 204, 0.5));
+  box-shadow: 0 0 30px rgba(0, 255, 136, 0.8), inset 0 0 15px rgba(0, 255, 136, 0.3);
   transform: scale(1.1);
 }
 
-.audio-btn:active {
-  transform: scale(0.95);
+.menu-btn {
+  top: 15px;
+  left: 15px;
+  width: 52px;
+  height: 52px;
+  background: linear-gradient(135deg, rgba(0, 255, 255, 0.3), rgba(0, 191, 255, 0.3));
+  border: 2px solid #00FFFF;
+  border-radius: 12px;
+  box-shadow: 0 0 20px rgba(0, 255, 255, 0.5), inset 0 0 10px rgba(0, 255, 255, 0.2);
 }
 
-/* Upgrade Toggle Button */
-.upgrade-toggle-btn {
-  position: absolute;
-  bottom: 25px;
-  right: 25px;
-  width: 60px;
-  height: 60px;
-  background: linear-gradient(135deg, #00ADD8 0%, #0097B5 100%);
-  color: white;
-  border: none;
-  border-radius: 16px;
-  cursor: pointer;
-  font-size: 28px;
-  box-shadow: 0 6px 25px rgba(0, 173, 216, 0.5);
-  transition: all 0.3s ease;
-  z-index: 150;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.menu-btn:hover {
+  background: linear-gradient(135deg, rgba(0, 255, 255, 0.5), rgba(0, 191, 255, 0.5));
+  box-shadow: 0 0 30px rgba(0, 255, 255, 0.8), inset 0 0 15px rgba(0, 255, 255, 0.3);
+  transform: scale(1.1);
 }
 
-.upgrade-toggle-btn:hover {
-  transform: translateY(-3px) scale(1.05);
-  box-shadow: 0 8px 30px rgba(0, 173, 216, 0.7);
-}
-
-.upgrade-toggle-btn:active {
-  transform: translateY(0) scale(0.95);
-}
-
-/* Side Panel */
-.side-panel {
+/* CYBER PANEL */
+.cyber-panel {
   position: absolute;
   right: 0;
   top: 0;
   bottom: 0;
-  width: 380px;
-  max-width: 85%;
-  background: linear-gradient(180deg, rgba(22, 33, 62, 0.98) 0%, rgba(15, 23, 42, 0.98) 100%);
-  border-radius: 20px 0 0 20px;
-  overflow: hidden;
+  width: 400px;
+  max-width: 90%;
+  background: linear-gradient(180deg, rgba(10, 10, 30, 0.98) 0%, rgba(20, 20, 50, 0.98) 100%);
+  border-left: 3px solid #00FFFF;
   transform: translateX(100%);
-  transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
   z-index: 200;
-  box-shadow: -10px 0 40px rgba(0, 0, 0, 0.6);
   display: flex;
   flex-direction: column;
+  box-shadow: -10px 0 50px rgba(0, 255, 255, 0.3);
 }
 
-.side-panel.open {
+.cyber-panel.open {
   transform: translateX(0);
 }
 
-/* Panel Header with Tabs */
+/* PANEL HEADER */
 .panel-header {
   display: flex;
+  justify-content: space-between;
   align-items: center;
-  padding: 0;
-  background: linear-gradient(90deg, rgba(0, 173, 216, 0.3) 0%, rgba(0, 151, 181, 0.2) 100%);
-  border-bottom: 1px solid rgba(0, 173, 216, 0.3);
-  flex-shrink: 0;
+  padding: 15px;
+  background: linear-gradient(90deg, rgba(0, 255, 255, 0.2) 0%, rgba(0, 191, 255, 0.1) 100%);
+  border-bottom: 2px solid rgba(0, 255, 255, 0.3);
+}
+
+.panel-tabs {
+  display: flex;
+  gap: 8px;
 }
 
 .panel-tab {
-  flex: 1;
-  padding: 18px 12px;
-  background: transparent;
-  border: none;
-  border-bottom: 3px solid transparent;
-  color: #888;
-  font-size: 14px;
-  font-weight: 600;
+  width: 50px;
+  height: 50px;
+  background: rgba(0, 0, 0, 0.5);
+  border: 2px solid rgba(0, 255, 255, 0.3);
+  border-radius: 10px;
+  font-size: 24px;
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
 .panel-tab:hover {
-  background: rgba(0, 173, 216, 0.1);
-  color: #ccc;
+  border-color: #00FFFF;
+  box-shadow: 0 0 15px rgba(0, 255, 255, 0.4);
+  transform: translateY(-2px);
 }
 
 .panel-tab.active {
-  color: #00ADD8;
-  border-bottom-color: #00ADD8;
-  background: rgba(0, 173, 216, 0.15);
+  background: linear-gradient(135deg, rgba(0, 255, 255, 0.3), rgba(0, 191, 255, 0.3));
+  border-color: #00FFFF;
+  box-shadow: 0 0 20px rgba(0, 255, 255, 0.6);
 }
 
-.panel-close-btn {
+.panel-close {
   width: 44px;
-  height: 100%;
-  background: linear-gradient(135deg, #FF5722 0%, #E64A19 100%);
+  height: 44px;
+  background: linear-gradient(135deg, #FF1493, #FF1493);
+  border: 2px solid #FF1493;
+  border-radius: 10px;
   color: white;
-  border: none;
-  cursor: pointer;
   font-size: 22px;
   font-weight: bold;
+  cursor: pointer;
   transition: all 0.2s ease;
-  display: flex;
-  align-items: center;
-  justify-content: center;
 }
 
-.panel-close-btn:hover {
-  background: linear-gradient(135deg, #F4511E 0%, #D84315 100%);
+.panel-close:hover {
+  background: #FF1493;
+  box-shadow: 0 0 20px rgba(255, 20, 147, 0.6);
+  transform: rotate(90deg);
 }
 
-.panel-close-btn:active {
-  transform: scale(0.9);
-}
-
-/* Panel Content */
+/* PANEL CONTENT */
 .panel-content {
   flex: 1;
   overflow-y: auto;
-  padding: 15px;
+  padding: 20px;
 }
 
-/* Upgrade List */
-.upgrade-list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+.section-title {
+  font-family: 'Arial Black', Arial, sans-serif;
+  font-size: 20px;
+  color: #00FFFF;
+  text-align: center;
+  margin-bottom: 20px;
+  text-transform: uppercase;
+  letter-spacing: 3px;
+  text-shadow: 0 0 10px rgba(0, 255, 255, 0.8);
 }
 
-.upgrade-item {
+/* CYBER CARDS */
+.cyber-card {
   display: flex;
   align-items: center;
-  background: linear-gradient(135deg, rgba(42, 42, 78, 0.9) 0%, rgba(35, 35, 65, 0.9) 100%);
-  border-radius: 14px;
-  padding: 14px;
+  background: linear-gradient(135deg, rgba(30, 30, 60, 0.9), rgba(20, 20, 50, 0.9));
+  border: 2px solid rgba(0, 255, 255, 0.3);
+  border-radius: 15px;
+  padding: 15px;
+  margin-bottom: 12px;
   cursor: pointer;
-  transition: all 0.25s ease;
-  border: 2px solid transparent;
+  transition: all 0.3s ease;
+  width: 100%;
 }
 
-.upgrade-item:hover:not(.disabled) {
-  background: linear-gradient(135deg, rgba(52, 52, 88, 0.95) 0%, rgba(45, 45, 75, 0.95) 100%);
-  transform: translateX(-5px);
-  border-color: #00ADD8;
-  box-shadow: 0 4px 20px rgba(0, 173, 216, 0.3);
+.cyber-card:hover:not(.disabled) {
+  border-color: #00FFFF;
+  box-shadow: 0 0 25px rgba(0, 255, 255, 0.4);
+  transform: translateX(-8px);
 }
 
-.upgrade-item.disabled {
+.cyber-card.disabled {
   opacity: 0.5;
   cursor: not-allowed;
+  filter: grayscale(0.5);
 }
 
-.upgrade-item:active:not(.disabled) {
-  transform: scale(0.98);
-}
-
-.upgrade-icon {
-  width: 48px;
-  height: 48px;
+.card-icon {
+  width: 55px;
+  height: 55px;
   border-radius: 50%;
-  margin-right: 12px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 24px;
+  font-size: 28px;
+  margin-right: 15px;
   flex-shrink: 0;
-  box-shadow: 0 3px 15px rgba(0, 0, 0, 0.4);
-  border: 3px solid rgba(255, 255, 255, 0.2);
+  border: 3px solid rgba(255, 255, 255, 0.3);
+  box-shadow: 0 0 15px rgba(0, 0, 0, 0.5);
 }
 
-.upgrade-info {
+.card-info {
   flex: 1;
   min-width: 0;
 }
 
-.upgrade-name {
-  color: #fff;
-  font-size: 15px;
+.card-name {
+  color: #FFFFFF;
+  font-size: 16px;
   font-weight: bold;
-  margin-bottom: 4px;
+  margin-bottom: 5px;
 }
 
-.upgrade-cost {
+.card-cost {
   color: #FFD700;
   font-size: 14px;
   font-weight: 600;
 }
 
-.upgrade-income {
-  color: #4CAF50;
+.card-bonus {
+  color: #00FF88;
   font-size: 12px;
-  margin-top: 2px;
+  margin-top: 3px;
 }
 
-.upgrade-count {
-  color: #4CAF50;
+.card-level {
+  color: #00FF88;
   font-size: 14px;
   font-weight: bold;
-  margin-left: 10px;
-  padding: 6px 10px;
-  background: rgba(76, 175, 80, 0.2);
+  padding: 8px 12px;
+  background: rgba(0, 255, 136, 0.2);
   border-radius: 8px;
-  white-space: nowrap;
+  margin-left: 10px;
 }
 
-/* Achievements List */
-.achievements-list {
-  display: flex;
+/* QUEST CARDS */
+.quest-card {
   flex-direction: column;
-  gap: 10px;
+  align-items: stretch;
 }
 
-.achievement-item {
+.quest-card.completed {
+  border-color: #00FF00;
+  box-shadow: 0 0 20px rgba(0, 255, 0, 0.3);
+}
+
+.quest-info {
   display: flex;
-  align-items: center;
-  background: linear-gradient(135deg, rgba(42, 42, 78, 0.9) 0%, rgba(35, 35, 65, 0.9) 100%);
-  border-radius: 14px;
-  padding: 14px;
-  border: 2px solid transparent;
-  transition: all 0.25s ease;
+  justify-content: space-between;
+  margin-bottom: 10px;
 }
 
-.achievement-item.unlocked {
-  border-color: #FFD700;
-  box-shadow: 0 4px 15px rgba(255, 215, 0, 0.2);
-}
-
-.achievement-item.locked {
-  opacity: 0.6;
-}
-
-.achievement-icon {
-  width: 48px;
-  height: 48px;
-  border-radius: 50%;
-  margin-right: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 24px;
-  flex-shrink: 0;
-  background: rgba(0, 0, 0, 0.3);
-  border: 2px solid rgba(255, 255, 255, 0.1);
-}
-
-.achievement-item.unlocked .achievement-icon {
-  background: linear-gradient(135deg, rgba(255, 215, 0, 0.3) 0%, rgba(255, 171, 0, 0.3) 100%);
-  border-color: #FFD700;
-}
-
-.achievement-info {
-  flex: 1;
-  min-width: 0;
-}
-
-.achievement-name {
-  color: #fff;
+.quest-name {
+  color: #FFFFFF;
   font-size: 15px;
   font-weight: bold;
-  margin-bottom: 4px;
 }
 
-.achievement-item.unlocked .achievement-name {
+.quest-progress {
+  color: #00FFFF;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.quest-bar {
+  height: 10px;
+  background: rgba(0, 0, 0, 0.5);
+  border-radius: 5px;
+  overflow: hidden;
+  border: 1px solid rgba(0, 255, 255, 0.3);
+}
+
+.quest-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #00FF88, #00FFFF);
+  border-radius: 5px;
+  transition: width 0.3s ease;
+  box-shadow: 0 0 10px rgba(0, 255, 136, 0.6);
+}
+
+.quest-reward {
   color: #FFD700;
+  font-size: 16px;
+  font-weight: bold;
+  text-align: right;
+  margin-top: 8px;
 }
 
-.achievement-description {
-  color: #888;
-  font-size: 12px;
+.progress-summary {
+  text-align: center;
+  color: #00FFFF;
+  font-size: 14px;
+  margin-bottom: 15px;
+  padding: 10px;
+  background: rgba(0, 255, 255, 0.1);
+  border-radius: 8px;
+  border: 1px solid rgba(0, 255, 255, 0.3);
 }
 
-.achievement-check {
-  font-size: 20px;
-  margin-left: 10px;
+/* STATS GRID */
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
 }
 
-/* Scrollbar */
+.stat-card {
+  background: linear-gradient(135deg, rgba(30, 30, 60, 0.9), rgba(20, 20, 50, 0.9));
+  border: 2px solid rgba(0, 255, 255, 0.3);
+  border-radius: 15px;
+  padding: 15px;
+  text-align: center;
+  transition: all 0.2s ease;
+}
+
+.stat-card:hover {
+  border-color: #00FFFF;
+  box-shadow: 0 0 20px rgba(0, 255, 255, 0.4);
+  transform: translateY(-3px);
+}
+
+.stat-icon {
+  font-size: 32px;
+  margin-bottom: 8px;
+}
+
+.stat-value {
+  color: #00FFFF;
+  font-size: 22px;
+  font-weight: bold;
+  font-family: 'Arial Black', Arial, sans-serif;
+  margin-bottom: 5px;
+}
+
+.stat-label {
+  color: #888888;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+/* SCROLLBAR */
 .panel-content::-webkit-scrollbar {
   width: 8px;
 }
@@ -354,85 +373,89 @@ html, body {
 }
 
 .panel-content::-webkit-scrollbar-thumb {
-  background: linear-gradient(180deg, #00ADD8 0%, #00838F 100%);
+  background: linear-gradient(180deg, #00FFFF, #00BFFF);
   border-radius: 4px;
+  box-shadow: 0 0 10px rgba(0, 255, 255, 0.5);
 }
 
-.panel-content::-webkit-scrollbar-thumb:hover {
-  background: linear-gradient(180deg, #00BCD4 0%, #0097A7 100%);
-}
-
-/* Responsive */
+/* RESPONSIVE */
 @media (max-width: 480px) {
-  .game-container {
+  .cyberpunk-container {
     max-width: 100%;
     max-height: 100%;
   }
   
-  .game-container canvas {
-    border-radius: 0;
-    box-shadow: none;
-  }
-  
-  .side-panel {
+  .cyber-panel {
     width: 95%;
-    border-radius: 15px 0 0 15px;
   }
   
-  .audio-btn {
-    top: 10px;
-    right: 10px;
-    width: 40px;
-    height: 40px;
-    font-size: 18px;
-  }
-  
-  .upgrade-toggle-btn {
-    bottom: 15px;
-    right: 15px;
-    width: 55px;
-    height: 55px;
-    font-size: 24px;
-  }
-  
-  .panel-tab {
-    font-size: 12px;
-    padding: 15px 8px;
-  }
-}
-
-/* Landscape mode */
-@media (max-height: 500px) and (orientation: landscape) {
-  .side-panel {
-    width: 320px;
-  }
-  
-  .upgrade-item {
-    padding: 10px;
-  }
-  
-  .upgrade-icon {
-    width: 40px;
-    height: 40px;
+  .audio-btn,
+  .menu-btn {
+    width: 44px;
+    height: 44px;
     font-size: 20px;
-    margin-right: 10px;
   }
   
-  .upgrade-name {
-    font-size: 13px;
-  }
-  
-  .upgrade-cost,
-  .upgrade-income {
-    font-size: 11px;
-  }
-  
-  .upgrade-count {
-    font-size: 12px;
-    padding: 4px 8px;
+  .stat-grid {
+    grid-template-columns: repeat(2, 1fr);
   }
 }
 
-body {
-  overscroll-behavior-y: contain;
+/* LOADING SCREEN */
+.loading {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  background: linear-gradient(135deg, #0a0a1a 0%, #1a1a3a 50%, #0f0f2a 100%);
+  z-index: 9999;
+}
+
+.loading-spinner {
+  width: 80px;
+  height: 80px;
+  border: 6px solid rgba(0, 255, 255, 0.2);
+  border-top-color: #00FFFF;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  box-shadow: 0 0 30px rgba(0, 255, 255, 0.5);
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.loading-gopher {
+  font-size: 70px;
+  margin-top: 25px;
+  animation: bounce 0.5s ease infinite alternate;
+  filter: drop-shadow(0 0 20px rgba(0, 255, 255, 0.6));
+}
+
+@keyframes bounce {
+  from { transform: translateY(0); }
+  to { transform: translateY(-15px); }
+}
+
+.loading-text {
+  color: #00FFFF;
+  margin-top: 30px;
+  font-family: 'Arial Black', Arial, sans-serif;
+  font-size: 22px;
+  text-transform: uppercase;
+  letter-spacing: 3px;
+  text-shadow: 0 0 10px rgba(0, 255, 255, 0.8);
+}
+
+.loading-subtext {
+  color: #00FF88;
+  margin-top: 12px;
+  font-family: Arial, sans-serif;
+  font-size: 14px;
+  letter-spacing: 2px;
 }
