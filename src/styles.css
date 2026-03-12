@@ -75,7 +75,7 @@ html, body {
 /* Stats Overlay */
 .stats-overlay {
   position: absolute;
-  top: 15px;
+  bottom: 25px;
   left: 15px;
   color: #ccc;
   font-size: 13px;

@@ -141,9 +141,9 @@ const App: React.FC = () => {
 
       {/* Stats Overlay */}
       <div className="stats-overlay">
-        <div>📊 Уровень: {gameState.level}</div>
-        <div>💪 Сила тапа: {gameState.tapValue}</div>
-        <div>🤖 Авто: {gameState.autoTapPerSec.toFixed(1)}/сек</div>
+        <div>📊 Ур: {gameState.level}</div>
+        <div>💪 Тап: {gameState.tapValue}</div>
+        <div>🤖 {gameState.autoTapPerSec.toFixed(1)}/сек</div>
       </div>
 
       {/* Upgrade Button */}
