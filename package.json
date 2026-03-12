@@ -1,0 +1,31 @@
+{
+  "name": "playgo",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "dev": "webpack serve",
+    "build": "webpack --mode production",
+    "start": "webpack serve --open"
+  },
+  "keywords": ["go", "phaser", "react", "typescript", "game", "tap"],
+  "author": "",
+  "license": "ISC",
+  "description": "Go Tap Master - A Hamster Combat-style tap game about Go programming",
+  "dependencies": {
+    "phaser": "^3.90.0",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "css-loader": "^7.1.4",
+    "html-webpack-plugin": "^5.6.6",
+    "style-loader": "^4.0.0",
+    "ts-loader": "^9.5.4",
+    "typescript": "^5.9.3",
+    "webpack": "^5.105.4",
+    "webpack-cli": "^6.0.1",
+    "webpack-dev-server": "^5.2.3"
+  }
+}

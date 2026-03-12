@@ -1,0 +1,40 @@
+import Phaser from 'phaser';
+import { GameState, Upgrade } from './types';
+export declare class GameScene extends Phaser.Scene {
+    private gameState;
+    private upgrades;
+    private energyBar;
+    private energyFill;
+    private scoreText;
+    private levelText;
+    private xpBar;
+    private incomeText;
+    private energyText;
+    private factText;
+    private tapButton;
+    private floatingTexts;
+    private lastRegenTime;
+    private lastAutoTapTime;
+    private currentFactIndex;
+    onScoreChange: ((score: number) => void) | null;
+    onEnergyChange: ((energy: number, maxEnergy: number) => void) | null;
+    onLevelChange: ((level: number, xp: number, xpToNext: number) => void) | null;
+    onIncomeChange: ((income: number) => void) | null;
+    onUpgradePurchased: ((upgradeId: string) => void) | null;
+    constructor();
+    setGameState(state: GameState): void;
+    setUpgrades(upgrades: Upgrade[]): void;
+    preload(): void;
+    create(): void;
+    update(time: number): void;
+    private handleTap;
+    private addScore;
+    buyUpgrade(upgradeIndex: number): void;
+    private updateUI;
+    private createFloatingText;
+    private createParticles;
+    private getNewFact;
+    getGameState(): GameState;
+    getUpgrades(): Upgrade[];
+}
+//# sourceMappingURL=GameScene.d.ts.map
