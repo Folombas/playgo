@@ -141,55 +141,48 @@ export class GameScene extends Phaser.Scene {
     // Header background
     const headerBg = this.add.graphics();
     headerBg.fillStyle(0x16213e, 0.8);
-    headerBg.fillRoundedRect(15, 15, width - 30, 150, 15);
+    headerBg.fillRoundedRect(15, 15, width - 30, 130, 15);
 
     // Level text
-    this.levelText = this.add.text(30, 25, 'Уровень 1', {
+    this.levelText = this.add.text(30, 28, 'Уровень 1', {
       fontFamily: 'Arial',
-      fontSize: '20px',
+      fontSize: '18px',
       color: '#00ADD8',
       fontStyle: 'bold',
     });
 
     // XP bar background
-    this.add.rectangle(width / 2, 55, width - 60, 14, 0x2a2a4e).setOrigin(0.5);
-    this.xpBar = this.add.rectangle(30, 55, 0, 14, 0x00ADD8).setOrigin(0, 0.5);
-
-    // XP text
-    this.add.text(30, 75, 'Опыт', {
-      fontFamily: 'Arial',
-      fontSize: '12px',
-      color: '#888888',
-    });
+    this.add.rectangle(width / 2, 58, width - 60, 12, 0x2a2a4e).setOrigin(0.5);
+    this.xpBar = this.add.rectangle(30, 58, 0, 12, 0x00ADD8).setOrigin(0, 0.5);
 
     // Score text
-    this.scoreText = this.add.text(width / 2, 110, '0 Гоферокоинов', {
+    this.scoreText = this.add.text(width / 2, 85, '0 Гоферокоинов', {
       fontFamily: 'Arial',
-      fontSize: '26px',
+      fontSize: '24px',
       color: '#FFD700',
       fontStyle: 'bold',
     }).setOrigin(0.5);
 
     // Income text
-    this.incomeText = this.add.text(width / 2, 140, '+0/сек', {
+    this.incomeText = this.add.text(width / 2, 115, '+0/сек', {
       fontFamily: 'Arial',
-      fontSize: '16px',
+      fontSize: '15px',
       color: '#4CAF50',
     }).setOrigin(0.5);
 
     // Energy bar
-    this.add.text(30, 180, '⚡ Энергия', {
+    this.add.text(30, 165, '⚡ Энергия', {
       fontFamily: 'Arial',
       fontSize: '16px',
       color: '#FFD700',
     });
 
-    this.energyBar = this.add.rectangle(30, 205, width - 60, 20, 0x2a2a4e).setOrigin(0, 0.5);
-    this.energyFill = this.add.rectangle(30, 205, width - 60, 20, 0xFFD700).setOrigin(0, 0.5);
+    this.energyBar = this.add.rectangle(30, 190, width - 60, 20, 0x2a2a4e).setOrigin(0, 0.5);
+    this.energyFill = this.add.rectangle(30, 190, width - 60, 20, 0xFFD700).setOrigin(0, 0.5);
 
     // Tap area with Gopher
     const centerX = width / 2;
-    const centerY = height / 2 + 20;
+    const centerY = height / 2;
 
     // Glow effect
     this.add.circle(centerX, centerY, 120, 0x00ADD8, 0.3);
