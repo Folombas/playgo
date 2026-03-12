@@ -6,12 +6,14 @@ import { GameState, Upgrade, initialGameState, upgrades as initialUpgrades, getU
 const App: React.FC = () => {
   const gameRef = useRef<Phaser.Game | null>(null);
   const sceneRef = useRef<GameScene | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
   
   const [gameState, setGameState] = useState<GameState>(initialGameState);
   const [upgrades, setUpgrades] = useState<Upgrade[]>(initialUpgrades);
   const [isPanelOpen, setIsPanelOpen] = useState(false);
   const [audioEnabled, setAudioEnabled] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
+  const [isLoaded, setIsLoaded] = useState(false);
 
   // Detect mobile device
   useEffect(() => {
@@ -27,26 +29,13 @@ const App: React.FC = () => {
   }, []);
 
   const initGame = useCallback(() => {
-    if (gameRef.current) return;
-
-    // Calculate responsive dimensions
-    const maxWidth = Math.min(450, window.innerWidth - 20);
-    const maxHeight = window.innerHeight - 20;
-    const aspectRatio = 400 / 700;
-    
-    let width = maxWidth;
-    let height = width / aspectRatio;
-    
-    if (height > maxHeight) {
-      height = maxHeight;
-      width = height * aspectRatio;
-    }
+    if (!containerRef.current || gameRef.current) return;
 
     const config: Phaser.Types.Core.GameConfig = {
       type: Phaser.AUTO,
       width: 400,
       height: 700,
-      parent: 'game-canvas',
+      parent: containerRef.current,
       backgroundColor: '#1a1a2e',
       physics: {
         default: 'arcade',
@@ -72,6 +61,7 @@ const App: React.FC = () => {
         sceneRef.current = scene;
         scene.setGameState(gameState);
         scene.setUpgrades(upgrades);
+        setIsLoaded(true);
 
         // Setup callbacks
         scene.onScoreChange = (score: number) => {
@@ -121,7 +111,7 @@ const App: React.FC = () => {
 
   // Sync upgrades with scene
   useEffect(() => {
-    if (sceneRef.current) {
+    if (sceneRef.current && upgrades) {
       sceneRef.current.setUpgrades(upgrades);
     }
   }, [upgrades]);
@@ -146,13 +136,12 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="game-container">
-      <div id="game-canvas" className="game-canvas"></div>
+    <div className="game-container" ref={containerRef}>
+      {/* Game canvas will be injected here by Phaser */}
       
       {/* Audio Toggle Button */}
       <button
         onClick={toggleAudio}
-        className="audio-indicator"
         title={audioEnabled ? 'Mute' : 'Unmute'}
         style={{
           position: 'absolute',
@@ -165,11 +154,12 @@ const App: React.FC = () => {
           height: 44,
           cursor: 'pointer',
           fontSize: 20,
-          zIndex: 50,
+          zIndex: 100,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           transition: 'all 0.2s',
+          color: '#fff',
         }}
       >
         {audioEnabled ? '🔊' : '🔇'}
@@ -178,11 +168,21 @@ const App: React.FC = () => {
       {/* Upgrade Button */}
       <button
         onClick={togglePanel}
-        className="upgrade-toggle-btn"
         style={{
           position: 'absolute',
           bottom: isMobile ? 15 : 20,
           right: isMobile ? 15 : 20,
+          background: 'linear-gradient(135deg, #00ADD8 0%, #0097B5 100%)',
+          color: 'white',
+          border: 'none',
+          padding: '16px 28px',
+          borderRadius: '12px',
+          cursor: 'pointer',
+          fontSize: '16px',
+          fontWeight: 'bold',
+          boxShadow: '0 4px 20px rgba(0, 173, 216, 0.5)',
+          transition: 'all 0.2s',
+          zIndex: 100,
         }}
       >
         {isPanelOpen ? '✕ Close' : '⬆ Upgrades'}

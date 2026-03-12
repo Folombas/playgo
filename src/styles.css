@@ -4,24 +4,21 @@
   box-sizing: border-box;
 }
 
-body {
-  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+html, body {
+  width: 100%;
+  height: 100%;
   overflow: hidden;
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
   touch-action: none;
-  min-height: 100vh;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  -webkit-tap-highlight-color: transparent;
   -webkit-touch-callout: none;
   -webkit-user-select: none;
   user-select: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
 #root {
   width: 100%;
-  height: 100vh;
+  height: 100%;
   display: flex;
   justify-content: center;
   align-items: center;
@@ -29,33 +26,25 @@ body {
 
 .game-container {
   position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
   width: 100%;
   height: 100%;
-  max-width: 500px;
-  margin: 0 auto;
+  max-width: 450px;
+  max-height: 800px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
 }
 
-.game-canvas {
+/* Phaser canvas styling */
+.game-container canvas {
   border-radius: 20px;
   box-shadow: 0 0 50px rgba(0, 217, 255, 0.3);
   max-width: 100%;
   max-height: 100%;
+  display: block;
 }
 
-.ui-overlay {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
-}
-
-/* Upgrade Panel - Responsive */
+/* Upgrade Panel */
 .upgrade-panel {
   position: absolute;
   right: 0;
@@ -66,11 +55,10 @@ body {
   background: rgba(22, 33, 62, 0.98);
   border-radius: 20px 0 0 20px;
   padding: 20px;
-  pointer-events: auto;
   overflow-y: auto;
   transform: translateX(100%);
   transition: transform 0.3s ease;
-  z-index: 100;
+  z-index: 200;
   box-shadow: -5px 0 20px rgba(0, 0, 0, 0.5);
 }
 
@@ -137,7 +125,6 @@ body {
 .upgrade-cost {
   color: #FFD700;
   font-size: 13px;
-  white-space: nowrap;
 }
 
 .upgrade-count {
@@ -169,40 +156,6 @@ body {
   background: #F4511E;
 }
 
-.close-panel-btn:active {
-  transform: scale(0.95);
-}
-
-/* Upgrade Button - Mobile Friendly */
-.upgrade-toggle-btn {
-  position: absolute;
-  bottom: 20px;
-  right: 20px;
-  background: linear-gradient(135deg, #00ADD8 0%, #0097B5 100%);
-  color: white;
-  border: none;
-  padding: 16px 28px;
-  border-radius: 12px;
-  cursor: pointer;
-  font-size: 16px;
-  font-weight: bold;
-  box-shadow: 0 4px 20px rgba(0, 173, 216, 0.5);
-  transition: all 0.2s;
-  z-index: 50;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.upgrade-toggle-btn:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 25px rgba(0, 173, 216, 0.6);
-}
-
-.upgrade-toggle-btn:active {
-  transform: translateY(0) scale(0.95);
-}
-
 /* Stats Overlay */
 .stats-overlay {
   position: absolute;
@@ -214,6 +167,7 @@ body {
   padding: 10px 15px;
   border-radius: 10px;
   backdrop-filter: blur(5px);
+  z-index: 100;
 }
 
 .stats-overlay div {
@@ -224,13 +178,29 @@ body {
   margin-bottom: 0;
 }
 
-/* Responsive adjustments */
+/* Scrollbar styling */
+.upgrade-panel::-webkit-scrollbar {
+  width: 6px;
+}
+
+.upgrade-panel::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 3px;
+}
+
+.upgrade-panel::-webkit-scrollbar-thumb {
+  background: #00ADD8;
+  border-radius: 3px;
+}
+
+/* Responsive */
 @media (max-width: 480px) {
   .game-container {
     max-width: 100%;
+    max-height: 100%;
   }
   
-  .game-canvas {
+  .game-container canvas {
     border-radius: 0;
     box-shadow: none;
   }
@@ -238,13 +208,6 @@ body {
   .upgrade-panel {
     width: 90%;
     border-radius: 15px 0 0 15px;
-  }
-  
-  .upgrade-toggle-btn {
-    padding: 14px 24px;
-    font-size: 14px;
-    bottom: 15px;
-    right: 15px;
   }
   
   .stats-overlay {
@@ -255,7 +218,7 @@ body {
   }
 }
 
-/* Landscape mode on mobile */
+/* Landscape mode */
 @media (max-height: 500px) and (orientation: landscape) {
   .upgrade-panel {
     width: 280px;
@@ -281,63 +244,7 @@ body {
   }
 }
 
-/* Tablet adjustments */
-@media (min-width: 481px) and (max-width: 768px) {
-  .upgrade-panel {
-    width: 300px;
-  }
-  
-  .game-canvas {
-    max-height: 90vh;
-  }
-}
-
-/* Scrollbar styling */
-.upgrade-panel::-webkit-scrollbar {
-  width: 6px;
-}
-
-.upgrade-panel::-webkit-scrollbar-track {
-  background: rgba(0, 0, 0, 0.2);
-  border-radius: 3px;
-}
-
-.upgrade-panel::-webkit-scrollbar-thumb {
-  background: #00ADD8;
-  border-radius: 3px;
-}
-
-.upgrade-panel::-webkit-scrollbar-thumb:hover {
-  background: #0097B5;
-}
-
-/* Prevent pull-to-refresh on mobile */
+/* Prevent pull-to-refresh */
 body {
   overscroll-behavior-y: contain;
-}
-
-/* Audio indicator */
-.audio-indicator {
-  position: absolute;
-  top: 15px;
-  right: 15px;
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  background: rgba(0, 173, 216, 0.3);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: all 0.2s;
-  z-index: 50;
-}
-
-.audio-indicator:hover {
-  background: rgba(0, 173, 216, 0.5);
-  transform: scale(1.1);
-}
-
-.audio-indicator:active {
-  transform: scale(0.95);
 }
