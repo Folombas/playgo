@@ -125,19 +125,19 @@ const App: React.FC = () => {
   const totalProgress = quests.reduce((acc, q) => acc + (q.completed ? 1 : 0), 0);
 
   return (
-    <div className="cyberpunk-container" ref={containerRef}>
+    <div className="game-container" ref={containerRef}>
       {/* Audio Toggle */}
-      <button onClick={toggleAudio} className="cyber-btn audio-btn" title={audioEnabled ? 'Выключить звук' : 'Включить звук'}>
+      <button onClick={toggleAudio} className="game-btn audio-btn" title={audioEnabled ? 'Выключить звук' : 'Включить звук'}>
         {audioEnabled ? '🔊' : '🔇'}
       </button>
 
       {/* Menu Button */}
-      <button onClick={togglePanel} className="cyber-btn menu-btn">
+      <button onClick={togglePanel} className="game-btn menu-btn">
         {isPanelOpen ? '✕' : '☰'}
       </button>
 
       {/* Side Panel */}
-      <div className={`cyber-panel ${isPanelOpen ? 'open' : ''}`}>
+      <div className={`side-panel ${isPanelOpen ? 'open' : ''}`}>
         {/* Panel Header */}
         <div className="panel-header">
           <div className="panel-tabs">
@@ -166,7 +166,7 @@ const App: React.FC = () => {
                 return (
                   <button
                     key={upgrade.id}
-                    className={`cyber-card upgrade-card ${!canAfford ? 'disabled' : ''}`}
+                    className={`game-card upgrade-card ${!canAfford ? 'disabled' : ''}`}
                     onClick={() => canAfford && handleBuyUpgrade(index)}
                     disabled={!canAfford}
                   >
@@ -193,7 +193,7 @@ const App: React.FC = () => {
               {quests.map(quest => {
                 const progress = Math.min((quest.progress / quest.target) * 100, 100);
                 return (
-                  <div key={quest.id} className={`cyber-card quest-card ${quest.completed ? 'completed' : ''}`}>
+                  <div key={quest.id} className={`game-card quest-card ${quest.completed ? 'completed' : ''}`}>
                     <div className="quest-info">
                       <div className="quest-name">{quest.name}</div>
                       <div className="quest-progress">{quest.progress} / {quest.target}</div>

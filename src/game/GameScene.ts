@@ -141,6 +141,16 @@ export class GameScene extends Phaser.Scene {
   }
 
   create(): void {
+    // Initialize audio on first interaction
+    const initAudio = () => {
+      if (!this.audioCtx) {
+        this.audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      }
+      if (this.audioCtx.state === 'suspended') {
+        this.audioCtx.resume();
+      }
+    };
+
     const { width, height } = this.scale;
 
     // BACKGROUND
@@ -211,7 +221,10 @@ export class GameScene extends Phaser.Scene {
 
     const hitArea = this.add.circle(centerX, centerY, 100);
     hitArea.setInteractive({ useHandCursor: true });
-    hitArea.on('pointerdown', (pointer: Phaser.Input.Pointer) => this.handleTap(pointer.x, pointer.y));
+    hitArea.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+      initAudio();
+      this.handleTap(pointer.x, pointer.y);
+    });
 
     // COMBO DISPLAY
     this.comboContainer = this.add.container(width / 2, 130);
