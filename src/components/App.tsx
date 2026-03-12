@@ -13,7 +13,6 @@ const App: React.FC = () => {
   const [isPanelOpen, setIsPanelOpen] = useState(false);
   const [audioEnabled, setAudioEnabled] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
-  const [isLoaded, setIsLoaded] = useState(false);
 
   // Detect mobile device
   useEffect(() => {
@@ -55,47 +54,44 @@ const App: React.FC = () => {
 
     gameRef.current = new Phaser.Game(config);
 
-    gameRef.current.events.once('ready', () => {
-      const scene = gameRef.current?.scene.getScene('GameScene') as GameScene;
-      if (scene) {
-        sceneRef.current = scene;
-        scene.setGameState(gameState);
-        scene.setUpgrades(upgrades);
-        setIsLoaded(true);
+    const scene = gameRef.current.scene.getScene('GameScene') as GameScene;
+    if (scene) {
+      sceneRef.current = scene;
+      scene.setGameState(gameState);
+      scene.setUpgrades(upgrades);
 
-        // Setup callbacks
-        scene.onScoreChange = (score: number) => {
-          setGameState(prev => ({ ...prev, score }));
-        };
+      // Setup callbacks
+      scene.onScoreChange = (score: number) => {
+        setGameState(prev => ({ ...prev, score }));
+      };
 
-        scene.onEnergyChange = (energy: number, maxEnergy: number) => {
-          setGameState(prev => ({ ...prev, energy, maxEnergy }));
-        };
+      scene.onEnergyChange = (energy: number, maxEnergy: number) => {
+        setGameState(prev => ({ ...prev, energy, maxEnergy }));
+      };
 
-        scene.onLevelChange = (level: number, xp: number, xpToNext: number) => {
-          setGameState(prev => ({ ...prev, level, xp, xpToNextLevel: xpToNext }));
-        };
+      scene.onLevelChange = (level: number, xp: number, xpToNext: number) => {
+        setGameState(prev => ({ ...prev, level, xp, xpToNextLevel: xpToNext }));
+      };
 
-        scene.onIncomeChange = (income: number) => {
-          setGameState(prev => ({ ...prev, autoTapPerSec: income }));
-        };
+      scene.onIncomeChange = (income: number) => {
+        setGameState(prev => ({ ...prev, autoTapPerSec: income }));
+      };
 
-        scene.onUpgradePurchased = (upgradeId: string) => {
-          setUpgrades(prev => prev.map(u => {
-            if (u.id === upgradeId) {
-              return { ...u, count: u.count + 1 };
-            }
-            return u;
-          }));
-        };
+      scene.onUpgradePurchased = (upgradeId: string) => {
+        setUpgrades(prev => prev.map(u => {
+          if (u.id === upgradeId) {
+            return { ...u, count: u.count + 1 };
+          }
+          return u;
+        }));
+      };
 
-        scene.onToggleAudio = (enabled: boolean) => {
-          setAudioEnabled(enabled);
-        };
+      scene.onToggleAudio = (enabled: boolean) => {
+        setAudioEnabled(enabled);
+      };
 
-        setAudioEnabled(scene.isAudioEnabled());
-      }
-    });
+      setAudioEnabled(scene.isAudioEnabled());
+    }
   }, []);
 
   useEffect(() => {
@@ -137,8 +133,6 @@ const App: React.FC = () => {
 
   return (
     <div className="game-container" ref={containerRef}>
-      {/* Game canvas will be injected here by Phaser */}
-      
       {/* Audio Toggle Button */}
       <button
         onClick={toggleAudio}

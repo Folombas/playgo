@@ -16,10 +16,8 @@ export declare class GameScene extends Phaser.Scene {
     private lastRegenTime;
     private lastAutoTapTime;
     private currentFactIndex;
-    private tapSound;
-    private levelUpSound;
-    private upgradeSound;
     private audioEnabled;
+    private audioCtx;
     onScoreChange: ((score: number) => void) | null;
     onEnergyChange: ((energy: number, maxEnergy: number) => void) | null;
     onLevelChange: ((level: number, xp: number, xpToNext: number) => void) | null;
@@ -30,11 +28,8 @@ export declare class GameScene extends Phaser.Scene {
     setGameState(state: GameState): void;
     setUpgrades(upgrades: Upgrade[]): void;
     preload(): void;
-    private createSoundEffects;
-    private createSoundFile;
-    private audioBufferToWav;
-    private writeString;
     create(): void;
+    private playSound;
     toggleAudio(): void;
     update(time: number): void;
     private handleTap;

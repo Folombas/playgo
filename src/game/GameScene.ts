@@ -23,10 +23,8 @@ export class GameScene extends Phaser.Scene {
   private currentFactIndex: number = 0;
   
   // Audio
-  private tapSound!: Phaser.Sound.BaseSound;
-  private levelUpSound!: Phaser.Sound.BaseSound;
-  private upgradeSound!: Phaser.Sound.BaseSound;
   private audioEnabled: boolean = true;
+  private audioCtx: AudioContext | null = null;
 
   // Callbacks
   onScoreChange: ((score: number) => void) | null = null;
@@ -109,150 +107,20 @@ export class GameScene extends Phaser.Scene {
       graphics.clear();
     });
 
-    // Sound icons
-    graphics.fillStyle(0x00ADD8);
-    graphics.fillCircle(15, 15, 12);
-    graphics.fillStyle(0xFFFFFF);
-    graphics.fillTriangle(10, 10, 10, 20, 18, 15);
-    graphics.generateTexture('audioOn', 30, 30);
     graphics.clear();
-
-    graphics.fillStyle(0x666666);
-    graphics.fillCircle(15, 15, 12);
-    graphics.fillStyle(0xFFFFFF);
-    graphics.fillTriangle(10, 10, 10, 20, 18, 15);
-    graphics.fillStyle(0xFF0000);
-    graphics.fillRect(18, 8, 3, 14);
-    graphics.generateTexture('audioOff', 30, 30);
-    graphics.clear();
-
-    // Generate sound effects using Web Audio API
-    this.createSoundEffects();
-  }
-
-  private createSoundEffects(): void {
-    // Create audio context for generating sounds
-    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-    
-    // Create audio files for Phaser
-    this.createSoundFile('tap', audioContext, [
-      { freq: 800, duration: 0.1, type: 'sine' },
-      { freq: 600, duration: 0.1, type: 'sine', delay: 0.05 }
-    ]);
-    
-    this.createSoundFile('levelup', audioContext, [
-      { freq: 523, duration: 0.15, type: 'sine' },
-      { freq: 659, duration: 0.15, type: 'sine', delay: 0.1 },
-      { freq: 784, duration: 0.3, type: 'sine', delay: 0.2 }
-    ]);
-    
-    this.createSoundFile('upgrade', audioContext, [
-      { freq: 440, duration: 0.1, type: 'square' },
-      { freq: 880, duration: 0.15, type: 'square', delay: 0.08 }
-    ]);
-  }
-
-  private createSoundFile(name: string, audioContext: AudioContext, notes: Array<{freq: number, duration: number, type: OscillatorType, delay?: number}>): void {
-    const sampleRate = audioContext.sampleRate;
-    const totalDuration = notes.reduce((acc, note) => Math.max(acc, (note.delay || 0) + note.duration), 0);
-    const numSamples = Math.ceil(sampleRate * totalDuration);
-    const audioBuffer = audioContext.createBuffer(1, numSamples, sampleRate);
-    const channelData = audioBuffer.getChannelData(0);
-    
-    notes.forEach(note => {
-      const startSample = Math.floor((note.delay || 0) * sampleRate);
-      const endSample = Math.floor(((note.delay || 0) + note.duration) * sampleRate);
-      
-      for (let i = startSample; i < endSample && i < numSamples; i++) {
-        const t = (i - startSample) / sampleRate;
-        const envelope = Math.exp(-3 * t / note.duration);
-        
-        if (note.type === 'sine') {
-          channelData[i] += envelope * Math.sin(2 * Math.PI * note.freq * t);
-        } else if (note.type === 'square') {
-          channelData[i] += envelope * (Math.sin(2 * Math.PI * note.freq * t) > 0 ? 1 : -1);
-        }
-      }
-    });
-    
-    // Convert to WAV format
-    const wavData = this.audioBufferToWav(audioBuffer);
-    
-    // Create blob and object URL
-    const blob = new Blob([wavData], { type: 'audio/wav' });
-    const url = URL.createObjectURL(blob);
-    
-    // Load into Phaser
-    this.load.audio(name, url);
-  }
-
-  private audioBufferToWav(buffer: AudioBuffer): ArrayBuffer {
-    const numChannels = buffer.numberOfChannels;
-    const sampleRate = buffer.sampleRate;
-    const format = 1; // PCM
-    const bitDepth = 16;
-    
-    const bytesPerSample = bitDepth / 8;
-    const blockAlign = numChannels * bytesPerSample;
-    
-    const data = [];
-    for (let i = 0; i < 44; i++) data.push(0);
-    
-    const numSamples = buffer.length;
-    const channelData = [];
-    for (let i = 0; i < numChannels; i++) {
-      channelData.push(buffer.getChannelData(i));
-    }
-    
-    for (let i = 0; i < numSamples; i++) {
-      for (let channel = 0; channel < numChannels; channel++) {
-        let sample = channelData[channel][i];
-        sample = Math.max(-1, Math.min(1, sample));
-        sample = sample < 0 ? sample * 0x8000 : sample * 0x7FFF;
-        data.push(sample & 0xFF);
-        data.push((sample >> 8) & 0xFF);
-      }
-    }
-    
-    // Write WAV header
-    const dataSize = numSamples * blockAlign;
-    const view = new DataView(new ArrayBuffer(44 + dataSize));
-    
-    // RIFF chunk
-    this.writeString(view, 0, 'RIFF');
-    view.setUint32(4, 36 + dataSize, true);
-    this.writeString(view, 8, 'WAVE');
-    
-    // fmt sub-chunk
-    this.writeString(view, 12, 'fmt ');
-    view.setUint32(16, 16, true); // Subchunk1Size
-    view.setUint16(20, format, true); // AudioFormat
-    view.setUint16(22, numChannels, true); // NumChannels
-    view.setUint32(24, sampleRate, true); // SampleRate
-    view.setUint32(28, sampleRate * blockAlign, true); // ByteRate
-    view.setUint16(32, blockAlign, true); // BlockAlign
-    view.setUint16(34, bitDepth, true); // BitsPerSample
-    
-    // data sub-chunk
-    this.writeString(view, 36, 'data');
-    view.setUint32(40, dataSize, true);
-    
-    // Write audio data
-    let offset = 44;
-    for (const byte of data) {
-      view.setUint8(offset++, byte);
-    }
-    
-    return view.buffer;
-  }
-
-  private writeString(view: DataView, offset: number, string: string): void {
-    for (let i = 0; i < string.length; i++) {
-      view.setUint8(offset + i, string.charCodeAt(i));
-    }
   }
 
   create(): void {
+    // Initialize audio context on user interaction
+    const initAudio = () => {
+      if (!this.audioCtx) {
+        this.audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      }
+      if (this.audioCtx.state === 'suspended') {
+        this.audioCtx.resume();
+      }
+    };
+
     const { width, height } = this.scale;
 
     // Background
@@ -333,6 +201,7 @@ export class GameScene extends Phaser.Scene {
     
     // Touch and click support
     hitArea.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+      initAudio();
       this.handleTap(pointer.x, pointer.y);
     });
 
@@ -343,14 +212,6 @@ export class GameScene extends Phaser.Scene {
       color: '#FFD700',
       fontStyle: 'bold',
     }).setOrigin(0.5);
-
-    // Audio toggle button
-    const audioBtn = this.add.image(width - 40, 40, 'audioOn');
-    audioBtn.setInteractive({ useHandCursor: true });
-    audioBtn.on('pointerdown', () => {
-      this.toggleAudio();
-      audioBtn.setTexture(this.audioEnabled ? 'audioOn' : 'audioOff');
-    });
 
     // Fact text
     this.factText = this.add.text(centerX, height - 25, this.getNewFact(), {
@@ -369,24 +230,34 @@ export class GameScene extends Phaser.Scene {
       loop: true,
     });
 
-    // Load sounds after they're created
-    this.load.once('complete', () => {
-      this.tapSound = this.sound.add('tap');
-      this.levelUpSound = this.sound.add('levelup');
-      this.upgradeSound = this.sound.add('upgrade');
-    });
-    this.load.start();
-
     this.updateUI();
+  }
+
+  private playSound(frequency: number, duration: number, type: OscillatorType = 'sine') {
+    if (!this.audioEnabled || !this.audioCtx) return;
+    
+    try {
+      const oscillator = this.audioCtx.createOscillator();
+      const gainNode = this.audioCtx.createGain();
+      
+      oscillator.connect(gainNode);
+      gainNode.connect(this.audioCtx.destination);
+      
+      oscillator.frequency.value = frequency;
+      oscillator.type = type;
+      
+      gainNode.gain.setValueAtTime(0.3, this.audioCtx.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioCtx.currentTime + duration);
+      
+      oscillator.start(this.audioCtx.currentTime);
+      oscillator.stop(this.audioCtx.currentTime + duration);
+    } catch (e) {
+      // Ignore audio errors
+    }
   }
 
   public toggleAudio(): void {
     this.audioEnabled = !this.audioEnabled;
-    if (this.audioEnabled) {
-      this.sound.setMute(false);
-    } else {
-      this.sound.setMute(true);
-    }
     if (this.onToggleAudio) {
       this.onToggleAudio(this.audioEnabled);
     }
@@ -437,9 +308,7 @@ export class GameScene extends Phaser.Scene {
     });
 
     // Sound effect
-    if (this.audioEnabled && this.tapSound) {
-      this.tapSound.play();
-    }
+    this.playSound(800, 0.1);
 
     // Floating text
     this.createFloatingText(x, y - 50, `+${this.gameState.tapValue}`);
@@ -470,9 +339,9 @@ export class GameScene extends Phaser.Scene {
       this.createFloatingText(this.scale.width / 2, this.scale.height / 2, 'LEVEL UP!', '#00FF00', 30);
       
       // Level up sound
-      if (this.audioEnabled && this.levelUpSound) {
-        this.levelUpSound.play();
-      }
+      this.playSound(523, 0.15);
+      setTimeout(() => this.playSound(659, 0.15), 100);
+      setTimeout(() => this.playSound(784, 0.3), 200);
     }
 
     this.updateUI();
@@ -498,9 +367,8 @@ export class GameScene extends Phaser.Scene {
       this.createFloatingText(this.scale.width / 2, this.scale.height / 2 - 100, `+${upgrade.income}/sec`, '#4CAF50');
       
       // Upgrade sound
-      if (this.audioEnabled && this.upgradeSound) {
-        this.upgradeSound.play();
-      }
+      this.playSound(440, 0.1, 'square');
+      setTimeout(() => this.playSound(880, 0.15, 'square'), 80);
       
       this.updateUI();
       if (this.onScoreChange) {
