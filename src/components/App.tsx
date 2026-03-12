@@ -10,9 +10,37 @@ const App: React.FC = () => {
   const [gameState, setGameState] = useState<GameState>(initialGameState);
   const [upgrades, setUpgrades] = useState<Upgrade[]>(initialUpgrades);
   const [isPanelOpen, setIsPanelOpen] = useState(false);
+  const [audioEnabled, setAudioEnabled] = useState(true);
+  const [isMobile, setIsMobile] = useState(false);
+
+  // Detect mobile device
+  useEffect(() => {
+    const checkMobile = () => {
+      const mobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
+        || window.innerWidth <= 768;
+      setIsMobile(mobile);
+    };
+    
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
 
   const initGame = useCallback(() => {
     if (gameRef.current) return;
+
+    // Calculate responsive dimensions
+    const maxWidth = Math.min(450, window.innerWidth - 20);
+    const maxHeight = window.innerHeight - 20;
+    const aspectRatio = 400 / 700;
+    
+    let width = maxWidth;
+    let height = width / aspectRatio;
+    
+    if (height > maxHeight) {
+      height = maxHeight;
+      width = height * aspectRatio;
+    }
 
     const config: Phaser.Types.Core.GameConfig = {
       type: Phaser.AUTO,
@@ -31,6 +59,8 @@ const App: React.FC = () => {
       scale: {
         mode: Phaser.Scale.FIT,
         autoCenter: Phaser.Scale.CENTER_BOTH,
+        width: 400,
+        height: 700,
       },
     };
 
@@ -68,6 +98,12 @@ const App: React.FC = () => {
             return u;
           }));
         };
+
+        scene.onToggleAudio = (enabled: boolean) => {
+          setAudioEnabled(enabled);
+        };
+
+        setAudioEnabled(scene.isAudioEnabled());
       }
     });
   }, []);
@@ -103,27 +139,50 @@ const App: React.FC = () => {
     setIsPanelOpen(!isPanelOpen);
   };
 
+  const toggleAudio = () => {
+    if (sceneRef.current) {
+      sceneRef.current.toggleAudio();
+    }
+  };
+
   return (
     <div className="game-container">
       <div id="game-canvas" className="game-canvas"></div>
       
+      {/* Audio Toggle Button */}
+      <button
+        onClick={toggleAudio}
+        className="audio-indicator"
+        title={audioEnabled ? 'Mute' : 'Unmute'}
+        style={{
+          position: 'absolute',
+          top: 20,
+          right: 20,
+          background: audioEnabled ? 'rgba(0, 173, 216, 0.5)' : 'rgba(100, 100, 100, 0.5)',
+          border: 'none',
+          borderRadius: '50%',
+          width: 44,
+          height: 44,
+          cursor: 'pointer',
+          fontSize: 20,
+          zIndex: 50,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          transition: 'all 0.2s',
+        }}
+      >
+        {audioEnabled ? '🔊' : '🔇'}
+      </button>
+
       {/* Upgrade Button */}
       <button
         onClick={togglePanel}
+        className="upgrade-toggle-btn"
         style={{
           position: 'absolute',
-          bottom: 20,
-          right: 20,
-          background: '#00ADD8',
-          color: 'white',
-          border: 'none',
-          padding: '15px 25px',
-          borderRadius: '10px',
-          cursor: 'pointer',
-          fontSize: '16px',
-          fontWeight: 'bold',
-          boxShadow: '0 4px 15px rgba(0, 173, 216, 0.4)',
-          transition: 'all 0.2s',
+          bottom: isMobile ? 15 : 20,
+          right: isMobile ? 15 : 20,
         }}
       >
         {isPanelOpen ? '✕ Close' : '⬆ Upgrades'}
@@ -131,9 +190,7 @@ const App: React.FC = () => {
 
       {/* Upgrade Panel */}
       <div className={`upgrade-panel ${isPanelOpen ? 'open' : ''}`}>
-        <h2 style={{ color: '#00ADD8', marginBottom: '20px', textAlign: 'center' }}>
-          UPGRADES
-        </h2>
+        <h2>UPGRADES</h2>
         
         {upgrades.map((upgrade, index) => {
           const cost = getUpgradeCost(upgrade);
@@ -145,6 +202,13 @@ const App: React.FC = () => {
               className="upgrade-item"
               onClick={() => handleBuyUpgrade(index)}
               style={{ opacity: canAfford ? 1 : 0.5 }}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  handleBuyUpgrade(index);
+                }
+              }}
             >
               <div
                 className="upgrade-icon"
@@ -170,15 +234,7 @@ const App: React.FC = () => {
       </div>
 
       {/* Stats Overlay */}
-      <div
-        style={{
-          position: 'absolute',
-          top: 20,
-          left: 20,
-          color: '#888',
-          fontSize: '12px',
-        }}
-      >
+      <div className="stats-overlay">
         <div>Level: {gameState.level}</div>
         <div>Tap Power: {gameState.tapValue}</div>
         <div>Auto: {gameState.autoTapPerSec.toFixed(1)}/sec</div>
