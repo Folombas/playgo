@@ -1,4 +1,22 @@
+# Frontend
 node_modules/
 dist/
 *.log
+
+# Backend
+backend/bin/
+backend/go.sum
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
 .DS_Store
+Thumbs.db
+
+# Env
+.env
+.env.local

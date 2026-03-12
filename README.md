@@ -1,6 +1,6 @@
 # Go Tap Master 🐹
 
-A Hamster Combat-style tap game about learning Go programming, built with **TypeScript + React + Phaser 3 + Webpack**.
+A Hamster Combat-style tap game about learning Go programming, built with **TypeScript + React + Phaser 3 + Webpack** and **Go backend**.
 
 ## Features
 
@@ -16,71 +16,97 @@ A Hamster Combat-style tap game about learning Go programming, built with **Type
 - **Level system** with XP progression
 - **Auto-income** from purchased upgrades
 - **Go facts** - learn Go programming while playing!
+- **Cloud save** - save progress to Go backend
+- **Leaderboard** - compete with other players
 
 ## Tech Stack
 
+### Frontend
 - **TypeScript** - Type-safe JavaScript
 - **React 19** - UI framework
 - **Phaser 3** - Game framework
 - **Webpack 5** - Module bundler
 
+### Backend
+- **Go 1.21** - Backend API
+- **chi** - Lightweight HTTP router
+- **In-memory storage** - For demo (PostgreSQL coming soon)
+
 ## Getting Started
 
-### Install dependencies
+### Frontend
 
 ```bash
+cd playgo
 npm install
-```
-
-### Development mode
-
-```bash
 npm run dev
 ```
 
-This will start the webpack dev server at `http://localhost:8080` with hot reload.
+Open http://localhost:8080
 
-### Production build
+### Backend
 
 ```bash
-npm run build
+cd backend
+go run ./cmd/server
 ```
 
-The built files will be in the `dist/` directory.
+API available at http://localhost:8081
 
 ## Project Structure
 
 ```
 playgo/
-├── public/
-│   └── index.html          # HTML template
-├── src/
-│   ├── components/
-│   │   └── App.tsx         # Main React component
-│   ├── game/
-│   │   ├── GameScene.ts    # Phaser game scene
-│   │   └── types.ts        # TypeScript types
-│   ├── index.tsx           # Entry point
-│   └── styles.css          # Styles
-├── package.json
-├── tsconfig.json
-└── webpack.config.js
+├── frontend/                    # React + Phaser frontend
+│   ├── public/
+│   ├── src/
+│   │   ├── components/
+│   │   ├── game/
+│   │   └── index.tsx
+│   ├── package.json
+│   └── webpack.config.js
+├── backend/                     # Go backend
+│   ├── cmd/
+│   │   └── server/
+│   ├── internal/
+│   │   ├── handler/
+│   │   ├── model/
+│   │   └── storage/
+│   └── go.mod
+└── README.md
 ```
 
-## How to Play
+## API Endpoints
 
-1. Run `npm run dev` to start the development server
-2. Open `http://localhost:8080` in your browser
-3. Click/tap the Gopher to earn coins
-4. Buy upgrades to earn coins automatically
-5. Level up to increase your tap value
-6. Learn Go facts displayed at the bottom
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/player/save` | Save player progress |
+| GET | `/api/player/{id}` | Get player data |
+| GET | `/api/leaderboard` | Get top players |
+| GET | `/health` | Health check |
 
-## Controls
+## Development Commands
 
-- **Click/Tap** - Tap the Gopher to earn coins
-- **Upgrades button** - Open/close the upgrades panel
-- **BUY** - Purchase upgrades to increase auto-income
+### Frontend
+```bash
+npm run dev      # Start dev server
+npm run build    # Production build
+```
+
+### Backend
+```bash
+go run ./cmd/server              # Run server
+go build -o bin/server ./cmd/server  # Build binary
+```
+
+## Roadmap
+
+- [ ] PostgreSQL integration
+- [ ] User authentication
+- [ ] Real-time multiplayer
+- [ ] Mobile app (React Native)
+- [ ] More Go concepts
+- [ ] Achievements system
 
 ## License
 
