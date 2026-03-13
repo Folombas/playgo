@@ -1,11 +1,27 @@
-# Frontend
-node_modules/
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+bin/
 dist/
-*.log
 
-# Backend
-backend/bin/
-backend/go.sum
+# Test binary
+*.test
+
+# Output files
+*.out
+
+# Go workspace file
+go.work
+
+# Dependency directories
+vendor/
+
+# Node.js
+node_modules/
+npm-debug.log
 
 # IDE
 .idea/
@@ -17,6 +33,14 @@ backend/go.sum
 .DS_Store
 Thumbs.db
 
-# Env
+# Logs
+*.log
+logs/
+
+# Database
+*.db
+*.sqlite3
+
+# Environment
 .env
 .env.local

@@ -1,113 +1,88 @@
-# Go Tap Master 🐹
+# 🌌 Go Space Runner — 3D WebGL Игра
 
-A Hamster Combat-style tap game about learning Go programming, built with **TypeScript + React + Phaser 3 + Webpack** and **Go backend**.
+**Космический раннер с аудиовизуальными эффектами на Three.js + Go**
 
-## Features
+## 🎮 Описание
 
-- **Tap to earn** GopherCoins by clicking the Go Gopher mascot
-- **Energy system** - manage your energy while tapping
-- **6 upgrade types** representing Go concepts:
-  - 📦 Variables
-  - ⚡ Functions
-  - 🏗️ Structs
-  - 🔌 Interfaces
-  - 🔄 Goroutines
-  - 📡 Channels
-- **Level system** with XP progression
-- **Auto-income** from purchased upgrades
-- **Go facts** - learn Go programming while playing!
-- **Cloud save** - save progress to Go backend
-- **Leaderboard** - compete with other players
+3D-игра в браузере, где вы управляете космическим кораблём, уклоняетесь от астероидов и собираете бонусы.
 
-## Tech Stack
+## 🚀 Технологии
 
 ### Frontend
-- **TypeScript** - Type-safe JavaScript
-- **React 19** - UI framework
-- **Phaser 3** - Game framework
-- **Webpack 5** - Module bundler
+- **Three.js** — 3D-графика в браузере
+- **Vite** — Быстрый сборщик
+- **JavaScript** — Без TypeScript для простоты
 
 ### Backend
-- **Go 1.21** - Backend API
-- **chi** - Lightweight HTTP router
-- **In-memory storage** - For demo (PostgreSQL coming soon)
+- **Go 1.21+** — REST API
+- **chi** — HTTP роутер
+- **SQLite** — Хранение рекордов
 
-## Getting Started
+## 🎯 Функции
 
-### Frontend
+- **3D-графика** — Космическая сцена с освещением
+- **Частицы** — Эффекты двигателей, взрывов
+- **Аудио** — Фоновая музыка и звуковые эффекты
+- **Лидерборд** — Таблица рекордов на Go-бэкенде
+- **Сохранения** — Автоматическое сохранение прогресса
 
-```bash
-cd playgo
-npm install
-npm run dev
-```
-
-Open http://localhost:8080
-
-### Backend
-
-```bash
-cd backend
-go run ./cmd/server
-```
-
-API available at http://localhost:8081
-
-## Project Structure
+## 📁 Структура проекта
 
 ```
 playgo/
-├── frontend/                    # React + Phaser frontend
-│   ├── public/
-│   ├── src/
-│   │   ├── components/
-│   │   ├── game/
-│   │   └── index.tsx
-│   ├── package.json
-│   └── webpack.config.js
-├── backend/                     # Go backend
+├── frontend/           # Three.js игра
+│   ├── index.html
+│   ├── main.js
+│   ├── game/
+│   │   ├── scene.js
+│   │   ├── player.js
+│   │   ├── enemies.js
+│   │   ├── effects.js
+│   │   └── audio.js
+│   ├── styles.css
+│   └── package.json
+├── backend/            # Go API
 │   ├── cmd/
 │   │   └── server/
+│   │       └── main.go
 │   ├── internal/
 │   │   ├── handler/
 │   │   ├── model/
 │   │   └── storage/
 │   └── go.mod
+├── go.mod
 └── README.md
 ```
 
-## API Endpoints
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/api/player/save` | Save player progress |
-| GET | `/api/player/{id}` | Get player data |
-| GET | `/api/leaderboard` | Get top players |
-| GET | `/health` | Health check |
-
-## Development Commands
+## 🏃 Запуск
 
 ### Frontend
 ```bash
-npm run dev      # Start dev server
-npm run build    # Production build
+cd frontend
+npm install
+npm run dev
 ```
 
 ### Backend
 ```bash
-go run ./cmd/server              # Run server
-go build -o bin/server ./cmd/server  # Build binary
+cd backend
+go run ./cmd/server
 ```
 
-## Roadmap
+## 🎮 Управление
 
-- [ ] PostgreSQL integration
-- [ ] User authentication
-- [ ] Real-time multiplayer
-- [ ] Mobile app (React Native)
-- [ ] More Go concepts
-- [ ] Achievements system
+- **WASD / Стрелки** — Движение корабля
+- **Пробел** — Ускорение
+- **M** — Вкл/выкл музыку
 
-## License
+## 🏆 Рекорды
 
-MIT
+| Место | Игрок | Очки |
+|-------|-------|------|
+| 1 | - | 0 |
+| 2 | - | 0 |
+| 3 | - | 0 |
+
+---
+
+**Go365 Day 73** — 13 марта 2026
