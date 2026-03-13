@@ -143,11 +143,11 @@ function onWindowResize() {
 
 function animate() {
     requestAnimationFrame(animate);
-    
-    if (game && game.isRunning()) {
+
+    if (game && game.isRunning) {
         game.update();
     }
-    
+
     if (game) {
         game.render();
         updateHUD();
