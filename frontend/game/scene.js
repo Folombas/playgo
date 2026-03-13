@@ -27,8 +27,11 @@ export class Game {
     }
 
     init() {
+        console.log('🌌 Creating Three.js scene...');
+        
         // Scene
         this.scene = new THREE.Scene();
+        this.scene.background = new THREE.Color(0x000011);
         this.scene.fog = new THREE.FogExp2(0x000011, 0.02);
 
         // Camera
@@ -42,14 +45,16 @@ export class Game {
         this.camera.lookAt(0, 0, 0);
 
         // Renderer
-        this.renderer = new THREE.WebGLRenderer({ 
+        this.renderer = new THREE.WebGLRenderer({
             canvas: this.canvas,
-            antialias: true 
+            antialias: true
         });
         this.renderer.setSize(this.canvas.width, this.canvas.height);
         this.renderer.setPixelRatio(window.devicePixelRatio);
         this.renderer.shadowMap.enabled = true;
         this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        
+        console.log('✅ Renderer initialized, canvas:', this.canvas.width, 'x', this.canvas.height);
 
         // Lighting
         this.setupLighting();
@@ -62,9 +67,13 @@ export class Game {
         this.enemyManager = new EnemyManager(this.scene);
         this.effectManager = new EffectManager(this.scene);
         this.audioManager = new AudioManager();
+        
+        console.log('✅ Player created at:', this.player.mesh.position);
 
         // Input
         this.setupInput();
+        
+        console.log('✅ Scene initialization complete');
     }
 
     setupLighting() {

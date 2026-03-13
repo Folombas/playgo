@@ -28,23 +28,31 @@ const backBtn = document.getElementById('back-btn');
 
 // Initialize game
 function init() {
+    console.log('🎮 Initializing Go Space Runner...');
+    
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
-    
+
     game = new Game(canvas);
     game.init();
     
+    console.log('✅ Game initialized');
+
     // Event listeners
     startBtn.addEventListener('click', startGame);
     restartBtn.addEventListener('click', restartGame);
     saveScoreBtn.addEventListener('click', saveScore);
     backBtn.addEventListener('click', showMainMenu);
     
+    console.log('🔘 Start button:', startScreen.querySelector('#start-btn'));
+
     // Handle resize
     window.addEventListener('resize', onWindowResize);
-    
+
     // Start render loop
     animate();
+    
+    console.log('🎬 Render loop started');
 }
 
 function startGame() {
