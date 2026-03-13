@@ -1,8 +1,4 @@
 import * as THREE from 'three';
-import { Player } from './player.js';
-import { EnemyManager } from './enemies.js';
-import { EffectManager } from './effects.js';
-import { AudioManager } from './audio.js';
 
 export class Game {
     constructor(canvas) {
@@ -11,133 +7,233 @@ export class Game {
         this.camera = null;
         this.renderer = null;
         this.player = null;
-        this.enemyManager = null;
-        this.effectManager = null;
-        this.audioManager = null;
+        this.enemies = [];
+        this.particles = [];
         this.clock = new THREE.Clock();
         this.score = 0;
         this.level = 1;
         this.health = 100;
         this.shield = false;
         this.combo = 0;
-        this.maxCombo = 0;
         this.scoreMultiplier = 1;
         this.isRunning = false;
         this.isGameOver = false;
+        this.lastSpawn = 0;
+        this.lastBonus = 0;
+        this.spawnInterval = 1500;
+        this.bonusInterval = 8000;
     }
 
     init() {
-        console.log('🌌 Creating Three.js scene...');
-        
-        // Scene
+        // Scene with dark background
         this.scene = new THREE.Scene();
         this.scene.background = new THREE.Color(0x000011);
-        this.scene.fog = new THREE.FogExp2(0x000011, 0.02);
+        this.scene.fog = new THREE.Fog(0x000011, 20, 100);
 
         // Camera
         this.camera = new THREE.PerspectiveCamera(
             75,
             this.canvas.width / this.canvas.height,
             0.1,
-            1000
+            100
         );
-        this.camera.position.set(0, 5, 10);
+        this.camera.position.set(0, 3, 8);
         this.camera.lookAt(0, 0, 0);
 
-        // Renderer
+        // Renderer - оптимизированный
         this.renderer = new THREE.WebGLRenderer({
             canvas: this.canvas,
-            antialias: true
+            antialias: false, // Отключаем для производительности
+            powerPreference: 'high-performance'
         });
         this.renderer.setSize(this.canvas.width, this.canvas.height);
-        this.renderer.setPixelRatio(window.devicePixelRatio);
-        this.renderer.shadowMap.enabled = true;
-        this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-        
-        console.log('✅ Renderer initialized, canvas:', this.canvas.width, 'x', this.canvas.height);
+        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
-        // Lighting
-        this.setupLighting();
-
-        // Starfield background
-        this.createStarfield();
-
-        // Game objects
-        this.player = new Player(this.scene);
-        this.enemyManager = new EnemyManager(this.scene);
-        this.effectManager = new EffectManager(this.scene);
-        this.audioManager = new AudioManager();
-        
-        console.log('✅ Player created at:', this.player.mesh.position);
-
-        // Input
-        this.setupInput();
-        
-        console.log('✅ Scene initialization complete');
-    }
-
-    setupLighting() {
-        // Ambient light
-        const ambientLight = new THREE.AmbientLight(0x404040, 0.5);
+        // Lighting - упрощённое
+        const ambientLight = new THREE.AmbientLight(0x404040, 0.6);
         this.scene.add(ambientLight);
 
-        // Directional light (sun)
-        const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
-        directionalLight.position.set(10, 20, 10);
-        directionalLight.castShadow = true;
-        directionalLight.shadow.mapSize.width = 2048;
-        directionalLight.shadow.mapSize.height = 2048;
-        this.scene.add(directionalLight);
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        dirLight.position.set(5, 10, 5);
+        this.scene.add(dirLight);
 
-        // Point lights for effects
-        const pointLight1 = new THREE.PointLight(0x667eea, 1, 50);
-        pointLight1.position.set(-5, 3, -5);
-        this.scene.add(pointLight1);
+        // Звёзды - оптимизированные
+        this.createStarfield(2000);
 
-        const pointLight2 = new THREE.PointLight(0x764ba2, 1, 50);
-        pointLight2.position.set(5, 3, -5);
-        this.scene.add(pointLight2);
-    }
+        // Игрок
+        this.player = this.createPlayer();
+        this.scene.add(this.player);
 
-    createStarfield() {
-        const starsGeometry = new THREE.BufferGeometry();
-        const starsMaterial = new THREE.PointsMaterial({
-            color: 0xffffff,
-            size: 0.1,
-            transparent: true,
-            opacity: 0.8
-        });
-
-        const starsVertices = [];
-        for (let i = 0; i < 10000; i++) {
-            const x = (Math.random() - 0.5) * 2000;
-            const y = (Math.random() - 0.5) * 2000;
-            const z = (Math.random() - 0.5) * 2000;
-            starsVertices.push(x, y, z);
-        }
-
-        starsGeometry.setAttribute(
-            'position',
-            new THREE.Float32BufferAttribute(starsVertices, 3)
-        );
-
-        this.starfield = new THREE.Points(starsGeometry, starsMaterial);
-        this.scene.add(this.starfield);
-    }
-
-    setupInput() {
+        // Input
         this.keys = {};
         window.addEventListener('keydown', (e) => {
             this.keys[e.code] = true;
-            
-            // Toggle music
             if (e.code === 'KeyM') {
-                this.audioManager.toggleMusic();
+                // Toggle music placeholder
             }
         });
-        window.addEventListener('keyup', (e) => {
-            this.keys[e.code] = false;
+        window.addEventListener('keyup', (e) => this.keys[e.code] = false);
+        window.addEventListener('resize', () => this.onResize());
+    }
+
+    createStarfield(count) {
+        const geometry = new THREE.BufferGeometry();
+        const positions = new Float32Array(count * 3);
+        
+        for (let i = 0; i < count * 3; i++) {
+            positions[i] = (Math.random() - 0.5) * 200;
+        }
+        
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        
+        const material = new THREE.PointsMaterial({
+            color: 0xffffff,
+            size: 0.15,
+            transparent: true,
+            opacity: 0.8
         });
+        
+        this.starfield = new THREE.Points(geometry, material);
+        this.scene.add(this.starfield);
+    }
+
+    createPlayer() {
+        const group = new THREE.Group();
+
+        // Корпус - простой конус
+        const bodyGeo = new THREE.ConeGeometry(0.4, 1.2, 8);
+        const bodyMat = new THREE.MeshStandardMaterial({
+            color: 0x00ff87,
+            metalness: 0.6,
+            roughness: 0.4
+        });
+        const body = new THREE.Mesh(bodyGeo, bodyMat);
+        body.rotation.x = Math.PI / 2;
+        group.add(body);
+
+        // Кокпит
+        const cockpitGeo = new THREE.SphereGeometry(0.2, 8, 8);
+        const cockpitMat = new THREE.MeshStandardMaterial({
+            color: 0x667eea,
+            metalness: 0.8,
+            roughness: 0.2
+        });
+        const cockpit = new THREE.Mesh(cockpitGeo, cockpitMat);
+        cockpit.position.z = 0.2;
+        group.add(cockpit);
+
+        // Крылья
+        const wingGeo = new THREE.BoxGeometry(1.2, 0.1, 0.3);
+        const wingMat = new THREE.MeshStandardMaterial({ color: 0x764ba2 });
+        const wings = new THREE.Mesh(wingGeo, wingMat);
+        wings.position.z = -0.3;
+        group.add(wings);
+
+        // Двигатель - свет
+        this.engineLight = new THREE.PointLight(0x00ffff, 0.5, 3);
+        this.engineLight.position.z = -0.6;
+        group.add(this.engineLight);
+
+        // Щит (скрыт)
+        const shieldGeo = new THREE.SphereGeometry(0.9, 8, 8);
+        const shieldMat = new THREE.MeshBasicMaterial({
+            color: 0x0088ff,
+            transparent: true,
+            opacity: 0.3,
+            wireframe: true
+        });
+        this.shieldMesh = new THREE.Mesh(shieldGeo, shieldMat);
+        this.shieldMesh.visible = false;
+        group.add(this.shieldMesh);
+
+        group.position.set(0, 0, 0);
+        return group;
+    }
+
+    spawnEnemy() {
+        const type = Math.random();
+        let mesh;
+
+        if (type < 0.5) {
+            // Астероид - простой
+            const geo = new THREE.DodecahedronGeometry(0.5, 0);
+            const mat = new THREE.MeshStandardMaterial({
+                color: 0x8b4513,
+                flatShading: true
+            });
+            mesh = new THREE.Mesh(geo, mat);
+        } else if (type < 0.8) {
+            // Враг
+            const geo = new THREE.ConeGeometry(0.3, 1, 6);
+            const mat = new THREE.MeshStandardMaterial({
+                color: 0xff0000,
+                metalness: 0.5
+            });
+            mesh = new THREE.Mesh(geo, mat);
+            mesh.rotation.x = Math.PI;
+        } else {
+            // Кристалл
+            const geo = new THREE.OctahedronGeometry(0.4, 0);
+            const mat = new THREE.MeshStandardMaterial({
+                color: 0x00ffff,
+                emissive: 0x00ffff,
+                emissiveIntensity: 0.3
+            });
+            mesh = new THREE.Mesh(geo, mat);
+        }
+
+        // Позиция спавна
+        const angle = Math.random() * Math.PI * 2;
+        const dist = 15 + Math.random() * 10;
+        mesh.position.set(
+            Math.cos(angle) * dist,
+            (Math.random() - 0.5) * 3,
+            this.player.position.z - 25
+        );
+
+        mesh.userData = {
+            type: type < 0.8 ? 'enemy' : 'bonus',
+            rotSpeed: {
+                x: (Math.random() - 0.5) * 2,
+                y: (Math.random() - 0.5) * 2
+            },
+            speed: 8 + this.level * 0.5
+        };
+
+        this.scene.add(mesh);
+        this.enemies.push(mesh);
+    }
+
+    createExplosion(position, color) {
+        const count = 10;
+        const geo = new THREE.BufferGeometry();
+        const positions = new Float32Array(count * 3);
+        const velocities = [];
+
+        for (let i = 0; i < count; i++) {
+            positions[i * 3] = position.x;
+            positions[i * 3 + 1] = position.y;
+            positions[i * 3 + 2] = position.z;
+            velocities.push({
+                x: (Math.random() - 0.5) * 8,
+                y: (Math.random() - 0.5) * 8,
+                z: (Math.random() - 0.5) * 8,
+                life: 0.5 + Math.random() * 0.5
+            });
+        }
+
+        geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+
+        const mat = new THREE.PointsMaterial({
+            color: color,
+            size: 0.3,
+            transparent: true
+        });
+
+        const points = new THREE.Points(geo, mat);
+        points.userData = { velocities, maxLife: 1 };
+        this.scene.add(points);
+        this.particles.push(points);
     }
 
     start() {
@@ -148,12 +244,20 @@ export class Game {
         this.health = 100;
         this.shield = false;
         this.combo = 0;
-        this.maxCombo = 0;
         this.scoreMultiplier = 1;
+        this.player.position.set(0, 0, 0);
+        this.player.visible = true;
+        this.shieldMesh.visible = false;
+
+        // Очистка врагов
+        this.enemies.forEach(e => this.scene.remove(e));
+        this.enemies = [];
+
+        // Очистка частиц
+        this.particles.forEach(p => this.scene.remove(p));
+        this.particles = [];
+
         this.clock.start();
-        this.player.reset();
-        this.enemyManager.reset();
-        this.audioManager.playMusic();
     }
 
     restart() {
@@ -161,97 +265,178 @@ export class Game {
     }
 
     update() {
-        const deltaTime = this.clock.getDelta();
+        const delta = Math.min(this.clock.getDelta(), 0.1); // Ограничение delta
+        const now = Date.now();
 
-        // Update player
-        this.player.update(deltaTime, this.keys);
+        // Игрок
+        this.updatePlayer(delta);
 
-        // Update camera follow
-        this.camera.position.x = this.player.mesh.position.x * 0.3;
-        this.camera.position.z = this.player.mesh.position.z + 10;
-        this.camera.lookAt(this.player.mesh.position.x * 0.1, 0, 0);
+        // Спавн врагов
+        if (now - this.lastSpawn > this.spawnInterval / (1 + this.level * 0.1)) {
+            this.spawnEnemy();
+            this.lastSpawn = now;
+        }
 
-        // Update enemies
-        const playerPos = this.player.mesh.position;
-        const newEnemies = this.enemyManager.update(deltaTime, playerPos, this.level);
-        
-        // Check collisions
-        for (const enemy of newEnemies) {
-            if (this.checkCollision(this.player.mesh, enemy.mesh)) {
-                if (enemy.isBonus) {
-                    // Collect bonus
-                    this.collectBonus(enemy);
+        // Спавн бонусов
+        if (now - this.lastBonus > this.bonusInterval) {
+            this.spawnBonus();
+            this.lastBonus = now;
+        }
+
+        // Враги
+        this.updateEnemies(delta);
+
+        // Частицы
+        this.updateParticles(delta);
+
+        // Звёзды
+        this.starfield.rotation.y += 0.0002;
+
+        // Level up
+        this.level = Math.floor(this.score / 100) + 1;
+        this.scoreMultiplier = 1 + Math.floor(this.combo / 5) * 0.5;
+    }
+
+    updatePlayer(delta) {
+        const speed = 12;
+        const boost = this.keys['Space'] ? 2 : 1;
+
+        let dx = 0, dz = 0;
+        if (this.keys['KeyW'] || this.keys['ArrowUp']) dz = -1;
+        if (this.keys['KeyS'] || this.keys['ArrowDown']) dz = 1;
+        if (this.keys['KeyA'] || this.keys['ArrowLeft']) dx = -1;
+        if (this.keys['KeyD'] || this.keys['ArrowRight']) dx = 1;
+
+        if (dx !== 0 || dz !== 0) {
+            const len = Math.sqrt(dx * dx + dz * dz);
+            dx /= len;
+            dz /= len;
+        }
+
+        this.player.position.x += dx * speed * boost * delta;
+        this.player.position.z += dz * speed * boost * delta;
+
+        // Границы
+        const bound = 20;
+        this.player.position.x = Math.max(-bound, Math.min(bound, this.player.position.x));
+        this.player.position.z = Math.max(-bound, Math.min(bound, this.player.position.z));
+
+        // Наклон
+        this.player.rotation.z = -dx * 0.3;
+        this.player.rotation.x = Math.PI / 2 + dz * 0.15;
+
+        // Двигатель
+        this.engineLight.intensity = 0.5 + Math.sin(now * 0.02) * 0.2;
+
+        // Камера
+        this.camera.position.x = this.player.position.x * 0.3;
+        this.camera.position.z = this.player.position.z + 8;
+        this.camera.lookAt(this.player.position.x * 0.1, 0, 0);
+    }
+
+    updateEnemies(delta) {
+        const playerPos = this.player.position;
+
+        for (let i = this.enemies.length - 1; i >= 0; i--) {
+            const enemy = this.enemies[i];
+            const data = enemy.userData;
+
+            // Движение к игроку
+            const dir = new THREE.Vector3()
+                .subVectors(playerPos, enemy.position)
+                .normalize();
+            enemy.position.add(dir.multiplyScalar(data.speed * delta));
+
+            // Вращение
+            enemy.rotation.x += data.rotSpeed.x * delta;
+            enemy.rotation.y += data.rotSpeed.y * delta;
+
+            // Удаление если далеко
+            if (enemy.position.z > playerPos.z + 5) {
+                this.scene.remove(enemy);
+                this.enemies.splice(i, 1);
+                continue;
+            }
+
+            // Коллизия
+            const dist = enemy.position.distanceTo(playerPos);
+            if (dist < 1.2) {
+                if (data.type === 'bonus') {
+                    this.collectBonus(enemy, i);
                 } else {
-                    // Hit enemy
-                    if (this.shield) {
-                        this.shield = false;
-                        this.player.setShield(false);
-                        this.effectManager.createExplosion(enemy.mesh.position, 0x0088ff);
-                        enemy.destroy();
-                    } else {
-                        this.health -= 20;
-                        this.combo = 0;
-                        this.scoreMultiplier = 1;
-                        this.effectManager.createExplosion(enemy.mesh.position, 0xff0000);
-                        enemy.destroy();
-                        
-                        if (this.health <= 0) {
-                            this.health = 0;
-                            this.gameOver();
-                        }
-                    }
+                    this.hitEnemy(enemy, i);
                 }
             }
         }
-
-        // Remove dead enemies and add score
-        const destroyedCount = this.enemyManager.removeDead();
-        if (destroyedCount > 0) {
-            this.combo += destroyedCount;
-            if (this.combo > this.maxCombo) this.maxCombo = this.combo;
-            // Combo multiplier
-            this.scoreMultiplier = 1 + Math.floor(this.combo / 5) * 0.5;
-        }
-        this.score += Math.floor(destroyedCount * 10 * this.scoreMultiplier);
-
-        // Level up every 100 points
-        this.level = Math.floor(this.score / 100) + 1;
-
-        // Update effects
-        this.effectManager.update(deltaTime);
-
-        // Update starfield
-        this.starfield.rotation.y += 0.0001;
     }
 
-    checkCollision(obj1, obj2) {
-        const distance = obj1.position.distanceTo(obj2.position);
-        return distance < 1.5;
+    collectBonus(enemy, index) {
+        this.createExplosion(enemy.position, 0x00ff00);
+        this.score += 50;
+        this.scene.remove(enemy);
+        this.enemies.splice(index, 1);
     }
 
-    collectBonus(bonus) {
-        const pos = bonus.mesh.position;
-        
-        switch(bonus.type) {
-            case 'health':
-                this.health = Math.min(100, this.health + 25);
-                this.effectManager.createExplosion(pos, 0x00ff00, 15);
-                this.audioManager.playCollectSound();
-                break;
-            case 'shield':
-                this.shield = true;
-                this.player.setShield(true);
-                this.effectManager.createExplosion(pos, 0x0088ff, 20);
-                this.audioManager.playCollectSound();
-                break;
-            case 'multiplier':
-                this.score += 50;
-                this.effectManager.createExplosion(pos, 0xffd700, 25);
-                this.audioManager.playCollectSound();
-                break;
+    hitEnemy(enemy, index) {
+        if (this.shield) {
+            this.shield = false;
+            this.shieldMesh.visible = false;
+            this.createExplosion(enemy.position, 0x0088ff);
+        } else {
+            this.health -= 20;
+            this.combo = 0;
+            this.createExplosion(enemy.position, 0xff0000);
+            if (this.health <= 0) {
+                this.gameOver();
+            }
         }
-        
-        bonus.destroy();
+        this.scene.remove(enemy);
+        this.enemies.splice(index, 1);
+    }
+
+    spawnBonus() {
+        const geo = new THREE.SphereGeometry(0.3, 8, 8);
+        const mat = new THREE.MeshStandardMaterial({
+            color: 0x00ff00,
+            emissive: 0x00ff00,
+            emissiveIntensity: 0.5
+        });
+        const mesh = new THREE.Mesh(geo, mat);
+
+        const angle = Math.random() * Math.PI * 2;
+        const dist = 15 + Math.random() * 10;
+        mesh.position.set(
+            Math.cos(angle) * dist,
+            (Math.random() - 0.5) * 3,
+            this.player.position.z - 30
+        );
+
+        mesh.userData = { type: 'bonus', rotSpeed: { x: 1, y: 1 }, speed: 6 };
+        this.scene.add(mesh);
+        this.enemies.push(mesh);
+    }
+
+    updateParticles(delta) {
+        for (let i = this.particles.length - 1; i >= 0; i--) {
+            const p = this.particles[i];
+            const positions = p.geometry.attributes.position.array;
+            const vels = p.userData.velocities;
+
+            for (let j = 0; j < vels.length; j++) {
+                positions[j * 3] += vels[j].x * delta;
+                positions[j * 3 + 1] += vels[j].y * delta;
+                positions[j * 3 + 2] += vels[j].z * delta;
+                vels[j].life -= delta;
+            }
+
+            p.geometry.attributes.position.needsUpdate = true;
+            p.material.opacity *= 0.95;
+
+            if (p.material.opacity < 0.05) {
+                this.scene.remove(p);
+                this.particles.splice(i, 1);
+            }
+        }
     }
 
     render() {
@@ -269,31 +454,14 @@ export class Game {
     gameOver() {
         this.isRunning = false;
         this.isGameOver = true;
-        this.audioManager.stopMusic();
-        this.effectManager.createExplosion(this.player.mesh.position, 0x00ff87, 50);
+        this.player.visible = false;
+        this.createExplosion(this.player.position, 0x00ff87, 30);
     }
 
-    getScore() {
-        return this.score;
-    }
-
-    getLevel() {
-        return this.level;
-    }
-
-    getHealth() {
-        return this.health;
-    }
-
-    getCombo() {
-        return this.combo;
-    }
-
-    getMultiplier() {
-        return this.scoreMultiplier;
-    }
-
-    isGameOver() {
-        return this.isGameOver;
-    }
+    getScore() { return this.score; }
+    getLevel() { return this.level; }
+    getHealth() { return this.health; }
+    getCombo() { return this.combo; }
+    getMultiplier() { return this.scoreMultiplier; }
+    isGameOver() { return this.isGameOver; }
 }
