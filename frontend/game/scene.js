@@ -18,6 +18,10 @@ export class Game {
         this.score = 0;
         this.level = 1;
         this.health = 100;
+        this.shield = false;
+        this.combo = 0;
+        this.maxCombo = 0;
+        this.scoreMultiplier = 1;
         this.isRunning = false;
         this.isGameOver = false;
     }
@@ -133,6 +137,10 @@ export class Game {
         this.score = 0;
         this.level = 1;
         this.health = 100;
+        this.shield = false;
+        this.combo = 0;
+        this.maxCombo = 0;
+        this.scoreMultiplier = 1;
         this.clock.start();
         this.player.reset();
         this.enemyManager.reset();
@@ -161,20 +169,41 @@ export class Game {
         // Check collisions
         for (const enemy of newEnemies) {
             if (this.checkCollision(this.player.mesh, enemy.mesh)) {
-                this.health -= 20;
-                this.effectManager.createExplosion(enemy.mesh.position, 0xff0000);
-                enemy.destroy();
-                
-                if (this.health <= 0) {
-                    this.health = 0;
-                    this.gameOver();
+                if (enemy.isBonus) {
+                    // Collect bonus
+                    this.collectBonus(enemy);
+                } else {
+                    // Hit enemy
+                    if (this.shield) {
+                        this.shield = false;
+                        this.player.setShield(false);
+                        this.effectManager.createExplosion(enemy.mesh.position, 0x0088ff);
+                        enemy.destroy();
+                    } else {
+                        this.health -= 20;
+                        this.combo = 0;
+                        this.scoreMultiplier = 1;
+                        this.effectManager.createExplosion(enemy.mesh.position, 0xff0000);
+                        enemy.destroy();
+                        
+                        if (this.health <= 0) {
+                            this.health = 0;
+                            this.gameOver();
+                        }
+                    }
                 }
             }
         }
 
         // Remove dead enemies and add score
         const destroyedCount = this.enemyManager.removeDead();
-        this.score += destroyedCount * 10;
+        if (destroyedCount > 0) {
+            this.combo += destroyedCount;
+            if (this.combo > this.maxCombo) this.maxCombo = this.combo;
+            // Combo multiplier
+            this.scoreMultiplier = 1 + Math.floor(this.combo / 5) * 0.5;
+        }
+        this.score += Math.floor(destroyedCount * 10 * this.scoreMultiplier);
 
         // Level up every 100 points
         this.level = Math.floor(this.score / 100) + 1;
@@ -189,6 +218,31 @@ export class Game {
     checkCollision(obj1, obj2) {
         const distance = obj1.position.distanceTo(obj2.position);
         return distance < 1.5;
+    }
+
+    collectBonus(bonus) {
+        const pos = bonus.mesh.position;
+        
+        switch(bonus.type) {
+            case 'health':
+                this.health = Math.min(100, this.health + 25);
+                this.effectManager.createExplosion(pos, 0x00ff00, 15);
+                this.audioManager.playCollectSound();
+                break;
+            case 'shield':
+                this.shield = true;
+                this.player.setShield(true);
+                this.effectManager.createExplosion(pos, 0x0088ff, 20);
+                this.audioManager.playCollectSound();
+                break;
+            case 'multiplier':
+                this.score += 50;
+                this.effectManager.createExplosion(pos, 0xffd700, 25);
+                this.audioManager.playCollectSound();
+                break;
+        }
+        
+        bonus.destroy();
     }
 
     render() {
@@ -220,6 +274,14 @@ export class Game {
 
     getHealth() {
         return this.health;
+    }
+
+    getCombo() {
+        return this.combo;
+    }
+
+    getMultiplier() {
+        return this.scoreMultiplier;
     }
 
     isGameOver() {

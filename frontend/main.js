@@ -16,6 +16,9 @@ const levelValue = document.getElementById('level-value');
 const healthFill = document.getElementById('health-fill');
 const finalScore = document.getElementById('final-score');
 const leaderboardList = document.getElementById('leaderboard-list');
+const comboElement = document.getElementById('combo');
+const comboValue = document.getElementById('combo-value');
+const multiplierValue = document.getElementById('multiplier-value');
 
 // Buttons
 const startBtn = document.getElementById('start-btn');
@@ -148,6 +151,18 @@ function updateHUD() {
         scoreValue.textContent = game.getScore();
         levelValue.textContent = game.getLevel();
         healthFill.style.width = `${game.getHealth()}%`;
+        
+        // Update combo
+        const combo = game.getCombo();
+        if (combo > 0) {
+            comboElement.classList.remove('hidden');
+            comboValue.textContent = combo;
+        } else {
+            comboElement.classList.add('hidden');
+        }
+        
+        // Update multiplier
+        multiplierValue.textContent = game.getMultiplier().toFixed(1);
         
         if (game.isGameOver()) {
             finalScore.textContent = game.getScore();

@@ -4,9 +4,11 @@ export class Player {
     constructor(scene) {
         this.scene = scene;
         this.mesh = null;
+        this.shieldMesh = null;
         this.velocity = new THREE.Vector3();
         this.speed = 15;
         this.boostSpeed = 30;
+        this.hasShield = false;
         this.createSpaceship();
     }
 
@@ -65,6 +67,23 @@ export class Player {
         this.engineLight.position.z = -1.5;
         this.mesh.add(this.engineLight);
 
+        // Shield (hidden by default)
+        const shieldGeometry = new THREE.SphereGeometry(1.2, 32, 32);
+        const shieldMaterial = new THREE.MeshStandardMaterial({
+            color: 0x0088ff,
+            metalness: 0.9,
+            roughness: 0.1,
+            emissive: 0x0088ff,
+            emissiveIntensity: 0.5,
+            transparent: true,
+            opacity: 0.3,
+            wireframe: true,
+            side: THREE.DoubleSide
+        });
+        this.shieldMesh = new THREE.Mesh(shieldGeometry, shieldMaterial);
+        this.shieldMesh.visible = false;
+        this.mesh.add(this.shieldMesh);
+
         this.scene.add(this.mesh);
         this.reset();
     }
@@ -72,6 +91,13 @@ export class Player {
     reset() {
         this.mesh.position.set(0, 0, 0);
         this.velocity.set(0, 0, 0);
+        this.hasShield = false;
+        this.shieldMesh.visible = false;
+    }
+
+    setShield(active) {
+        this.hasShield = active;
+        this.shieldMesh.visible = active;
     }
 
     update(deltaTime, keys) {
@@ -116,5 +142,11 @@ export class Player {
 
         // Engine flicker effect
         this.engine.material.opacity = 0.6 + Math.sin(Date.now() * 0.02) * 0.2;
+        
+        // Shield animation
+        if (this.hasShield) {
+            this.shieldMesh.rotation.y += 0.02;
+            this.shieldMesh.scale.setScalar(1 + Math.sin(Date.now() * 0.005) * 0.05);
+        }
     }
 }

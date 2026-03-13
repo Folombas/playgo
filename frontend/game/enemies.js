@@ -6,6 +6,8 @@ export class EnemyManager {
         this.enemies = [];
         this.spawnTimer = 0;
         this.spawnInterval = 2;
+        this.bonusTimer = 0;
+        this.bonusInterval = 10;
         this.createEnemyTypes();
     }
 
@@ -37,6 +39,43 @@ export class EnemyManager {
             roughness: 0.1,
             emissive: 0x00ffff,
             emissiveIntensity: 0.5,
+            transparent: true,
+            opacity: 0.8
+        });
+
+        // Bonus: Health
+        this.healthGeometry = new THREE.SphereGeometry(0.5, 16, 16);
+        this.healthMaterial = new THREE.MeshStandardMaterial({
+            color: 0x00ff00,
+            metalness: 0.5,
+            roughness: 0.2,
+            emissive: 0x00ff00,
+            emissiveIntensity: 0.8,
+            transparent: true,
+            opacity: 0.9
+        });
+
+        // Bonus: Shield
+        this.shieldGeometry = new THREE.IcosahedronGeometry(0.5, 0);
+        this.shieldMaterial = new THREE.MeshStandardMaterial({
+            color: 0x0088ff,
+            metalness: 0.8,
+            roughness: 0.1,
+            emissive: 0x0088ff,
+            emissiveIntensity: 0.6,
+            transparent: true,
+            opacity: 0.7,
+            wireframe: true
+        });
+
+        // Bonus: Score multiplier
+        this.multiplierGeometry = new THREE.TorusGeometry(0.4, 0.15, 8, 16);
+        this.multiplierMaterial = new THREE.MeshStandardMaterial({
+            color: 0xffd700,
+            metalness: 0.9,
+            roughness: 0.1,
+            emissive: 0xffd700,
+            emissiveIntensity: 0.7,
             transparent: true,
             opacity: 0.8
         });
@@ -96,9 +135,63 @@ export class EnemyManager {
         this.enemies.push(enemy);
     }
 
+    spawnBonus(playerZ) {
+        const types = ['health', 'shield', 'multiplier'];
+        const type = types[Math.floor(Math.random() * types.length)];
+        
+        let geometry, material;
+        
+        switch(type) {
+            case 'health':
+                geometry = this.healthGeometry;
+                material = this.healthMaterial;
+                break;
+            case 'shield':
+                geometry = this.shieldGeometry;
+                material = this.shieldMaterial;
+                break;
+            case 'multiplier':
+                geometry = this.multiplierGeometry;
+                material = this.multiplierMaterial;
+                break;
+        }
+
+        const mesh = new THREE.Mesh(geometry, material);
+        
+        // Random position ahead of player
+        const angle = Math.random() * Math.PI * 2;
+        const radius = 15 + Math.random() * 10;
+        mesh.position.x = Math.cos(angle) * radius;
+        mesh.position.z = playerZ - 40 - Math.random() * 10;
+        mesh.position.y = (Math.random() - 0.5) * 3;
+        
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+
+        // Add point light for bonus
+        const light = new THREE.PointLight(
+            type === 'health' ? 0x00ff00 : (type === 'shield' ? 0x0088ff : 0xffd700),
+            1, 10
+        );
+        light.position.z = 0.5;
+        mesh.add(light);
+
+        const bonus = {
+            mesh: mesh,
+            type: type,
+            speed: 8,
+            rotationSpeed: new THREE.Vector3(1, 1, 0.5),
+            isBonus: true
+        };
+
+        this.scene.add(mesh);
+        this.enemies.push(bonus);
+    }
+
     update(deltaTime, playerPosition, level) {
         const newEnemies = [];
         this.spawnTimer += deltaTime;
+        this.bonusTimer += deltaTime;
         
         // Spawn interval decreases with level
         const currentSpawnInterval = Math.max(0.5, this.spawnInterval - (level - 1) * 0.2);
@@ -106,6 +199,13 @@ export class EnemyManager {
         if (this.spawnTimer >= currentSpawnInterval) {
             this.spawnEnemy(playerPosition.z);
             this.spawnTimer = 0;
+        }
+        
+        // Spawn bonus every bonusInterval seconds
+        const currentBonusInterval = Math.max(5, this.bonusInterval - (level - 1) * 0.3);
+        if (this.bonusTimer >= currentBonusInterval) {
+            this.spawnBonus(playerPosition.z);
+            this.bonusTimer = 0;
         }
 
         // Update enemies
@@ -121,6 +221,11 @@ export class EnemyManager {
             enemy.mesh.rotation.x += enemy.rotationSpeed.x * deltaTime;
             enemy.mesh.rotation.y += enemy.rotationSpeed.y * deltaTime;
             enemy.mesh.rotation.z += enemy.rotationSpeed.z * deltaTime;
+            
+            // Bonus rotation effect
+            if (enemy.isBonus) {
+                enemy.mesh.position.y += Math.sin(Date.now() * 0.003) * 0.02;
+            }
 
             // Remove if too far behind
             if (enemy.mesh.position.z > playerPosition.z + 10) {
