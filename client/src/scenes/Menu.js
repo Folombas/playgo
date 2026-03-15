@@ -338,7 +338,9 @@ class Menu extends Phaser.Scene {
             this.levelPanel.destroy();
         });
 
-        this.levelPanel.add([bg, title, desc, backBtn]);
+        // Добавляем фон ПЕРВЫМ (чтобы был под кнопками)
+        this.levelPanel.add(bg);
+        this.levelPanel.add([title, desc, backBtn]);
         
         console.log('✅ Панель создана, элементов:', this.levelPanel.list.length);
     }
