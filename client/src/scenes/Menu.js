@@ -264,17 +264,17 @@ class Menu extends Phaser.Scene {
             this.levelPanel.destroy();
         }
 
-        // Панель на весь экран (центр 400, 550)
+        // Панель на весь экран (центр 400, 500)
         this.levelPanel = this.add.container(0, 0);
         this.levelPanel.setDepth(100);
         this.levelPanel.setScrollFactor(0);
 
-        // Фон панели (позиция Y = 550)
-        const bg = this.add.rectangle(400, 550, 500, 120, 0x000000, 0.9);
+        // Фон панели (позиция Y = 500)
+        const bg = this.add.rectangle(400, 500, 500, 120, 0x000000, 0.9);
         bg.setStrokeStyle(3, tech.color);
 
         // Название
-        const title = this.add.text(160, 520, `${tech.icon} ${tech.name}`, {
+        const title = this.add.text(160, 470, `${tech.icon} ${tech.name}`, {
             fontSize: '20px',
             fontFamily: 'Courier New',
             color: '#ffffff',
@@ -282,7 +282,7 @@ class Menu extends Phaser.Scene {
         });
 
         // Описание
-        const desc = this.add.text(160, 545, tech.description, {
+        const desc = this.add.text(160, 495, tech.description, {
             fontSize: '14px',
             fontFamily: 'Courier New',
             color: '#888888'
@@ -298,7 +298,7 @@ class Menu extends Phaser.Scene {
             
             console.log(`  - Уровень ${levelId}: ${btnText}`);
             
-            const btn = this.add.text(160 + index * 130, 580, btnText, {
+            const btn = this.add.text(160 + index * 130, 530, btnText, {
                 fontSize: '16px',
                 fontFamily: 'Courier New',
                 color: btnColor,
@@ -324,7 +324,7 @@ class Menu extends Phaser.Scene {
         });
 
         // Кнопка назад
-        const backBtn = this.add.text(640, 580, '❌ Назад', {
+        const backBtn = this.add.text(640, 530, '❌ Назад', {
             fontSize: '16px',
             fontFamily: 'Courier New',
             color: '#ff4444',
