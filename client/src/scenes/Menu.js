@@ -173,15 +173,20 @@ class Menu extends Phaser.Scene {
     
     createTechNode(node) {
         const container = this.add.container(node.x, node.y);
-        
+
+        // Невидимая зона для клика (должна быть первой!)
+        const hitZone = this.add.circle(0, 0, 40, 0x000000, 0);
+        hitZone.setInteractive({ useHandCursor: true });
+
         // Круг узла
         const circle = this.add.circle(0, 0, 35, node.color, 0.3);
         circle.setStrokeStyle(3, node.color);
-        
+
         // Иконка
         const icon = this.add.text(0, 0, node.icon, { fontSize: '28px' });
         icon.setOrigin(0.5);
-        
+        icon.setDepth(10);
+
         // Название
         const name = this.add.text(0, 45, node.name, {
             fontSize: '14px',
@@ -190,7 +195,8 @@ class Menu extends Phaser.Scene {
             align: 'center'
         });
         name.setOrigin(0.5);
-        
+        name.setDepth(10);
+
         // Проверка доступности
         const isUnlocked = this.progress.completedLevels.length > 0 || node.id === 'web';
         if (!isUnlocked) {
@@ -198,31 +204,48 @@ class Menu extends Phaser.Scene {
             icon.setAlpha(0.5);
             name.setAlpha(0.5);
         }
-        
-        container.add([circle, icon, name]);
-        
-        // Интерактивность
-        container.setSize(70, 70);
-        container.setInteractive({ useHandCursor: true });
-        
-        container.on('pointerover', () => {
+
+        container.add([hitZone, circle, icon, name]);
+
+        // Интерактивность на hitZone
+        hitZone.on('pointerover', () => {
             if (isUnlocked) {
-                circle.setScale(1.2);
-                name.setStyle({ color: node.color.toString(16) });
+                this.tweens.add({
+                    targets: circle,
+                    scaleX: 1.2,
+                    scaleY: 1.2,
+                    duration: 200
+                });
+                name.setStyle({ color: '#' + node.color.toString(16).padStart(6, '0') });
             }
         });
-        
-        container.on('pointerout', () => {
-            circle.setScale(1);
-            name.setStyle({ color: '#ffffff' });
-        });
-        
-        container.on('pointerdown', () => {
+
+        hitZone.on('pointerout', () => {
             if (isUnlocked) {
+                this.tweens.add({
+                    targets: circle,
+                    scaleX: 1,
+                    scaleY: 1,
+                    duration: 200
+                });
+                name.setStyle({ color: '#ffffff' });
+            }
+        });
+
+        hitZone.on('pointerdown', () => {
+            if (isUnlocked) {
+                // Визуальный эффект клика
+                this.tweens.add({
+                    targets: circle,
+                    scaleX: 0.9,
+                    scaleY: 0.9,
+                    duration: 100,
+                    yoyo: true
+                });
                 this.selectTechnology(node);
             }
         });
-        
+
         node.container = container;
     }
     
