@@ -306,8 +306,10 @@ class Menu extends Phaser.Scene {
                 padding: { x: 15, y: 8 }
             });
             btn.setInteractive({ useHandCursor: true });
+            btn.setDepth(101); // Выше чем панель
 
             btn.on('pointerover', () => {
+                console.log('👆 Наведение на кнопку:', levelId);
                 btn.setStyle({ backgroundColor: '#' + tech.color.toString(16).padStart(6, '0') });
             });
 
@@ -316,7 +318,7 @@ class Menu extends Phaser.Scene {
             });
 
             btn.on('pointerdown', () => {
-                console.log('🎮 Запуск уровня:', levelId);
+                console.log('🖱️ Клик по кнопке уровня:', levelId);
                 this.startLevel(levelId, tech);
             });
 
