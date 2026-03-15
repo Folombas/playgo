@@ -182,7 +182,7 @@ class Menu extends Phaser.Scene {
         // Иконка
         const icon = this.add.text(0, 0, node.icon, { fontSize: '28px' });
         icon.setOrigin(0.5);
-        icon.setInteractive({ useHandCursor: true });
+        icon.setDepth(10);
 
         // Название
         const name = this.add.text(0, 45, node.name, {
@@ -192,7 +192,7 @@ class Menu extends Phaser.Scene {
             align: 'center'
         });
         name.setOrigin(0.5);
-        name.setInteractive({ useHandCursor: true });
+        name.setDepth(10);
 
         // Проверка доступности
         const isUnlocked = this.progress.completedLevels.length > 0 || node.id === 'web';
@@ -203,7 +203,6 @@ class Menu extends Phaser.Scene {
         }
 
         container.add([circle, icon, name]);
-        container.setInteractive({ useHandCursor: true });
 
         // Функция клика
         const handleClick = () => {
@@ -222,7 +221,7 @@ class Menu extends Phaser.Scene {
             }
         };
 
-        // Интерактивность на круг
+        // Интерактивность только на круге
         circle.on('pointerover', () => {
             if (isUnlocked) {
                 this.tweens.add({
@@ -248,9 +247,6 @@ class Menu extends Phaser.Scene {
         });
 
         circle.on('pointerdown', handleClick);
-        icon.on('pointerdown', handleClick);
-        name.on('pointerdown', handleClick);
-        container.on('pointerdown', handleClick);
 
         node.container = container;
     }
