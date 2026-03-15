@@ -192,10 +192,10 @@ func (s *Server) GetLeaderboardHandler(w http.ResponseWriter, r *http.Request) {
 	defer s.mu.RUnlock()
 
 	query := `
-	SELECT player_id, total_crystals, 
+	SELECT id, total_crystals,
 	       json_array_length(completed_levels) as completed_count
-	FROM players 
-	ORDER BY total_crystals DESC 
+	FROM players
+	ORDER BY total_crystals DESC
 	LIMIT 10
 	`
 
