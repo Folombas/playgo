@@ -15,7 +15,7 @@ function generatePlayerId() {
 const playerId = generatePlayerId();
 
 // Загрузка прогресса
-export async function loadProgress() {
+async function loadProgress() {
     try {
         const response = await fetch(`${API_BASE_URL}/progress?playerId=${playerId}`);
         if (!response.ok) throw new Error('Failed to load progress');
@@ -33,7 +33,7 @@ export async function loadProgress() {
 }
 
 // Сохранение прогресса
-export async function saveProgress(progress) {
+async function saveProgress(progress) {
     try {
         const response = await fetch(`${API_BASE_URL}/save`, {
             method: 'POST',
@@ -55,7 +55,7 @@ export async function saveProgress(progress) {
 }
 
 // Получение таблицы лидеров
-export async function getLeaderboard() {
+async function getLeaderboard() {
     try {
         const response = await fetch(`${API_BASE_URL}/leaderboard`);
         if (!response.ok) throw new Error('Failed to load leaderboard');
