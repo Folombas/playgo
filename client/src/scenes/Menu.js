@@ -206,7 +206,9 @@ class Menu extends Phaser.Scene {
 
         // Функция клика
         const handleClick = () => {
+            console.log('🔵 Клик по технологии:', node.name, 'isUnlocked:', isUnlocked);
             if (isUnlocked) {
+                console.log('✅ Разблокировано, открываем панель');
                 // Визуальный эффект клика
                 this.tweens.add({
                     targets: circle,
@@ -215,9 +217,12 @@ class Menu extends Phaser.Scene {
                     duration: 100,
                     yoyo: true,
                     onComplete: () => {
+                        console.log('🚀 Запуск selectTechnology для:', node.id);
                         this.selectTechnology(node);
                     }
                 });
+            } else {
+                console.log('❌ Заблокировано');
             }
         };
 
