@@ -4,24 +4,23 @@
 *.dll
 *.so
 *.dylib
-bin/
-dist/
 
 # Test binary
 *.test
 
-# Output files
+# Output of the go coverage tool
 *.out
-
-# Go workspace file
-go.work
 
 # Dependency directories
 vendor/
 
-# Node.js
-node_modules/
-npm-debug.log
+# Go workspace file
+go.work
+
+# SQLite database
+*.db
+*.sqlite
+*.sqlite3
 
 # IDE
 .idea/
@@ -35,12 +34,6 @@ Thumbs.db
 
 # Logs
 *.log
-logs/
-
-# Database
-*.db
-*.sqlite3
 
 # Environment
 .env
-.env.local
