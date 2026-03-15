@@ -115,14 +115,50 @@
         const progressBar = document.getElementById('loading-progress');
         const loadingScreen = document.getElementById('loading');
         
+        // Debug info
+        window.gameLoadErrors = [];
+        window.addEventListener('error', (e) => {
+            console.error('❌ Error:', e.error);
+            window.gameLoadErrors.push(e.error?.message || e.message);
+            updateDebugInfo();
+        });
+        
+        window.addEventListener('unhandledrejection', (e) => {
+            console.error('❌ Promise rejection:', e.reason);
+            window.gameLoadErrors.push('Promise error: ' + e.reason);
+            updateDebugInfo();
+        });
+        
+        function updateDebugInfo() {
+            const debugDiv = document.getElementById('debug-info');
+            if (debugDiv && window.gameLoadErrors.length > 0) {
+                debugDiv.innerHTML = '<p style="color: #ff4444; margin-top: 10px;">' +
+                    '<strong>❌ Ошибки:</strong><br>' +
+                    window.gameLoadErrors.map(e => '• ' + e).join('<br>') +
+                    '</p>';
+            }
+        }
+        
+        // Check if Phaser loaded
+        if (typeof Phaser === 'undefined') {
+            window.gameLoadErrors.push('Phaser не загружен!');
+            updateDebugInfo();
+        } else {
+            console.log('✅ Phaser version:', Phaser.VERSION);
+        }
+        
         // Hide loading screen after game starts
         setTimeout(() => {
-            loadingScreen.style.opacity = '0';
-            loadingScreen.style.transition = 'opacity 0.5s';
-            setTimeout(() => {
-                loadingScreen.style.display = 'none';
-            }, 500);
-        }, 2000);
+            if (window.gameInstance) {
+                loadingScreen.style.opacity = '0';
+                loadingScreen.style.transition = 'opacity 0.5s';
+                setTimeout(() => {
+                    loadingScreen.style.display = 'none';
+                }, 500);
+            }
+        }, 3000);
     </script>
+    
+    <div id="debug-info" style="position: fixed; bottom: 60px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.9); padding: 15px; border-radius: 8px; border: 2px solid #ff4444; max-width: 500px; font-size: 12px; z-index: 9999;"></div>
 </body>
 </html>
