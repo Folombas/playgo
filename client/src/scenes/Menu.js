@@ -264,30 +264,29 @@ class Menu extends Phaser.Scene {
             this.levelPanel.destroy();
         }
 
-        this.levelPanel = this.add.container(400, 550);
+        // Панель на весь экран (центр 400, 550)
+        this.levelPanel = this.add.container(0, 0);
         this.levelPanel.setDepth(100);
+        this.levelPanel.setScrollFactor(0);
 
-        // Фон панели
-        const bg = this.add.rectangle(0, 0, 500, 120, 0x000000, 0.9);
+        // Фон панели (позиция Y = 550)
+        const bg = this.add.rectangle(400, 550, 500, 120, 0x000000, 0.9);
         bg.setStrokeStyle(3, tech.color);
-        bg.setOrigin(0.5);
 
         // Название
-        const title = this.add.text(-240, -40, `${tech.icon} ${tech.name}`, {
+        const title = this.add.text(160, 520, `${tech.icon} ${tech.name}`, {
             fontSize: '20px',
             fontFamily: 'Courier New',
             color: '#ffffff',
             fontStyle: 'bold'
         });
-        title.setOrigin(0, 0.5);
 
         // Описание
-        const desc = this.add.text(-240, -15, tech.description, {
+        const desc = this.add.text(160, 545, tech.description, {
             fontSize: '14px',
             fontFamily: 'Courier New',
             color: '#888888'
         });
-        desc.setOrigin(0, 0.5);
 
         console.log('🔘 Создаю кнопки для уровней:', tech.levels);
         
@@ -299,14 +298,13 @@ class Menu extends Phaser.Scene {
             
             console.log(`  - Уровень ${levelId}: ${btnText}`);
             
-            const btn = this.add.text(-240 + index * 130, 20, btnText, {
+            const btn = this.add.text(160 + index * 130, 580, btnText, {
                 fontSize: '16px',
                 fontFamily: 'Courier New',
                 color: btnColor,
                 backgroundColor: '#333333',
                 padding: { x: 15, y: 8 }
             });
-            btn.setOrigin(0, 0.5);
             btn.setInteractive({ useHandCursor: true });
 
             btn.on('pointerover', () => {
@@ -326,14 +324,13 @@ class Menu extends Phaser.Scene {
         });
 
         // Кнопка назад
-        const backBtn = this.add.text(240, 20, '❌ Назад', {
+        const backBtn = this.add.text(640, 580, '❌ Назад', {
             fontSize: '16px',
             fontFamily: 'Courier New',
             color: '#ff4444',
             backgroundColor: '#333333',
             padding: { x: 15, y: 8 }
         });
-        backBtn.setOrigin(0, 0.5);
         backBtn.setInteractive({ useHandCursor: true });
         backBtn.on('pointerdown', () => {
             this.levelPanel.destroy();
