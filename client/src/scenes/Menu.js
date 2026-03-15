@@ -174,18 +174,15 @@ class Menu extends Phaser.Scene {
     createTechNode(node) {
         const container = this.add.container(node.x, node.y);
 
-        // Невидимая зона для клика (должна быть первой!)
-        const hitZone = this.add.circle(0, 0, 40, 0x000000, 0);
-        hitZone.setInteractive({ useHandCursor: true });
-
-        // Круг узла
+        // Круг узла (он же зона клика)
         const circle = this.add.circle(0, 0, 35, node.color, 0.3);
         circle.setStrokeStyle(3, node.color);
+        circle.setInteractive({ useHandCursor: true });
 
         // Иконка
         const icon = this.add.text(0, 0, node.icon, { fontSize: '28px' });
         icon.setOrigin(0.5);
-        icon.setDepth(10);
+        icon.setInteractive({ useHandCursor: true });
 
         // Название
         const name = this.add.text(0, 45, node.name, {
@@ -195,7 +192,7 @@ class Menu extends Phaser.Scene {
             align: 'center'
         });
         name.setOrigin(0.5);
-        name.setDepth(10);
+        name.setInteractive({ useHandCursor: true });
 
         // Проверка доступности
         const isUnlocked = this.progress.completedLevels.length > 0 || node.id === 'web';
@@ -205,10 +202,28 @@ class Menu extends Phaser.Scene {
             name.setAlpha(0.5);
         }
 
-        container.add([hitZone, circle, icon, name]);
+        container.add([circle, icon, name]);
+        container.setInteractive({ useHandCursor: true });
 
-        // Интерактивность на hitZone
-        hitZone.on('pointerover', () => {
+        // Функция клика
+        const handleClick = () => {
+            if (isUnlocked) {
+                // Визуальный эффект клика
+                this.tweens.add({
+                    targets: circle,
+                    scaleX: 0.9,
+                    scaleY: 0.9,
+                    duration: 100,
+                    yoyo: true,
+                    onComplete: () => {
+                        this.selectTechnology(node);
+                    }
+                });
+            }
+        };
+
+        // Интерактивность на круг
+        circle.on('pointerover', () => {
             if (isUnlocked) {
                 this.tweens.add({
                     targets: circle,
@@ -220,7 +235,7 @@ class Menu extends Phaser.Scene {
             }
         });
 
-        hitZone.on('pointerout', () => {
+        circle.on('pointerout', () => {
             if (isUnlocked) {
                 this.tweens.add({
                     targets: circle,
@@ -232,19 +247,10 @@ class Menu extends Phaser.Scene {
             }
         });
 
-        hitZone.on('pointerdown', () => {
-            if (isUnlocked) {
-                // Визуальный эффект клика
-                this.tweens.add({
-                    targets: circle,
-                    scaleX: 0.9,
-                    scaleY: 0.9,
-                    duration: 100,
-                    yoyo: true
-                });
-                this.selectTechnology(node);
-            }
-        });
+        circle.on('pointerdown', handleClick);
+        icon.on('pointerdown', handleClick);
+        name.on('pointerdown', handleClick);
+        container.on('pointerdown', handleClick);
 
         node.container = container;
     }
