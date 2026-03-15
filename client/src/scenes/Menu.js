@@ -257,17 +257,21 @@ class Menu extends Phaser.Scene {
     }
     
     selectTechnology(tech) {
+        console.log('📋 selectTechnology:', tech.name);
+        
         // Показываем уровни технологии
         if (this.levelPanel) {
             this.levelPanel.destroy();
         }
-        
+
         this.levelPanel = this.add.container(400, 550);
-        
+        this.levelPanel.setDepth(100);
+
         // Фон панели
-        const bg = this.add.rectangle(0, 0, 500, 120, 0x000000, 0.8);
-        bg.setStrokeStyle(2, tech.color);
-        
+        const bg = this.add.rectangle(0, 0, 500, 120, 0x000000, 0.9);
+        bg.setStrokeStyle(3, tech.color);
+        bg.setOrigin(0.5);
+
         // Название
         const title = this.add.text(-240, -40, `${tech.icon} ${tech.name}`, {
             fontSize: '20px',
@@ -275,44 +279,52 @@ class Menu extends Phaser.Scene {
             color: '#ffffff',
             fontStyle: 'bold'
         });
-        
+        title.setOrigin(0, 0.5);
+
         // Описание
         const desc = this.add.text(-240, -15, tech.description, {
             fontSize: '14px',
             fontFamily: 'Courier New',
             color: '#888888'
         });
+        desc.setOrigin(0, 0.5);
+
+        console.log('🔘 Создаю кнопки для уровней:', tech.levels);
         
         // Кнопки уровней
         tech.levels.forEach((levelId, index) => {
             const isCompleted = this.progress.completedLevels.includes(levelId);
-            const btn = this.add.text(-240 + index * 130, 20, 
-                isCompleted ? `✅ ${levelId}` : `▶️ ${levelId}`, 
-                {
-                    fontSize: '16px',
-                    fontFamily: 'Courier New',
-                    color: isCompleted ? '#00ff00' : '#ffffff',
-                    backgroundColor: '#333333',
-                    padding: { x: 15, y: 8 }
-                }
-            );
-            btn.setInteractive({ useHandCursor: true });
+            const btnText = isCompleted ? `✅ ${levelId}` : `▶️ ${levelId}`;
+            const btnColor = isCompleted ? '#00ff00' : '#ffffff';
             
-            btn.on('pointerover', () => {
-                btn.setStyle({ backgroundColor: tech.color.toString(16) });
+            console.log(`  - Уровень ${levelId}: ${btnText}`);
+            
+            const btn = this.add.text(-240 + index * 130, 20, btnText, {
+                fontSize: '16px',
+                fontFamily: 'Courier New',
+                color: btnColor,
+                backgroundColor: '#333333',
+                padding: { x: 15, y: 8 }
             });
-            
+            btn.setOrigin(0, 0.5);
+            btn.setInteractive({ useHandCursor: true });
+
+            btn.on('pointerover', () => {
+                btn.setStyle({ backgroundColor: '#' + tech.color.toString(16).padStart(6, '0') });
+            });
+
             btn.on('pointerout', () => {
                 btn.setStyle({ backgroundColor: '#333333' });
             });
-            
+
             btn.on('pointerdown', () => {
+                console.log('🎮 Запуск уровня:', levelId);
                 this.startLevel(levelId, tech);
             });
-            
+
             this.levelPanel.add(btn);
         });
-        
+
         // Кнопка назад
         const backBtn = this.add.text(240, 20, '❌ Назад', {
             fontSize: '16px',
@@ -321,13 +333,15 @@ class Menu extends Phaser.Scene {
             backgroundColor: '#333333',
             padding: { x: 15, y: 8 }
         });
+        backBtn.setOrigin(0, 0.5);
         backBtn.setInteractive({ useHandCursor: true });
         backBtn.on('pointerdown', () => {
             this.levelPanel.destroy();
         });
-        
+
         this.levelPanel.add([bg, title, desc, backBtn]);
-        this.levelPanel.setDepth(100);
+        
+        console.log('✅ Панель создана, элементов:', this.levelPanel.list.length);
     }
     
     startLevel(levelId, tech) {
