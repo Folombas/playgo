@@ -410,23 +410,20 @@ func (g *Game) Update() error {
 
 func (g *Game) checkHouseEntry() {
 	// Check if player is near the door
-	playerCenterX := g.player.x + float64(g.player.width)/2
-	playerBottomY := g.player.y + float64(g.player.height)
+	playerRight := g.player.x + float64(g.player.width)
+	playerBottom := g.player.y + float64(g.player.height)
 
-	doorCenterX := float64(g.house.doorX) + float64(g.house.doorW)/2
-	doorTopY := float64(g.house.doorY) - float64(g.house.doorH)
+	doorLeft := float64(g.house.doorX)
+	doorBottom := float64(g.house.doorY)
 
-	// Check if player is in front of door (within 30 pixels)
-	dx := playerCenterX - doorCenterX
-	if dx < 0 {
-		dx = -dx
-	}
-	dy := playerBottomY - doorTopY
-	if dy < 0 {
-		dy = -dy
+	// Check if player is in front of door (within 40 pixels horizontally and standing on ground)
+	horizontalDist := playerRight - doorLeft
+	if horizontalDist < 0 {
+		horizontalDist = -horizontalDist
 	}
 
-	if dx < 30 && dy < 10 {
+	// Player must be close to door horizontally and near the door vertically
+	if horizontalDist < 40 && playerBottom > doorBottom-10 && playerBottom < doorBottom+10 {
 		// Player is near door - check for enter key
 		if inpututil.IsKeyJustPressed(ebiten.KeyE) || inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
 			g.state = InsideHouse
@@ -533,23 +530,18 @@ func (g *Game) drawHouse(screen *ebiten.Image) {
 	wallColor := color.RGBA{245, 230, 200, 255}
 	vector.DrawFilledRect(screen, h.x, h.y-h.height, h.width, h.height, wallColor, false)
 
-	// Draw gabled roof (red-brown) - peak at top
+	// Draw gabled roof (red-brown) - triangle with peak at top
 	roofColor := color.RGBA{139, 69, 50, 255}
-	roofPeakY := h.y - h.height - 50
+	roofBaseY := h.y - h.height  // Top of walls
+	roofPeakY := roofBaseY - 50  // Peak is 50 pixels above base
 	
-	// Fill roof triangle first (draw from peak down to base)
-	for i := 0; i <= 50; i++ {
-		y := roofPeakY + float32(i)
-		progress := float32(i) / 50.0
-		xLeft := h.x + (h.width/2) - (h.width/2+10)*(1-progress)
-		xRight := h.x + (h.width/2) + (h.width/2+10)*(1-progress)
+	// Draw filled triangle for roof
+	for y := roofPeakY; y <= roofBaseY; y++ {
+		progress := (y - roofPeakY) / 50.0
+		xLeft := h.x + (h.width/2) - (h.width/2+10)*progress
+		xRight := h.x + (h.width/2) + (h.width/2+10)*progress
 		vector.StrokeLine(screen, xLeft, y, xRight, y, 1, roofColor, false)
 	}
-	
-	// Left roof slope (outline)
-	vector.StrokeLine(screen, h.x-10, h.y-h.height, h.x+h.width/2, roofPeakY, 15, roofColor, false)
-	// Right roof slope (outline)
-	vector.StrokeLine(screen, h.x+h.width+10, h.y-h.height, h.x+h.width/2, roofPeakY, 15, roofColor, false)
 
 	// Draw chimney (dark gray)
 	chimneyColor := color.RGBA{80, 80, 80, 255}
@@ -574,6 +566,29 @@ func (g *Game) drawHouse(screen *ebiten.Image) {
 	// Draw house foundation (gray stone)
 	foundationColor := color.RGBA{120, 120, 120, 255}
 	vector.DrawFilledRect(screen, h.x-5, h.y, h.width+10, 10, foundationColor, false)
+
+	// Draw "Press E" hint if player is near door
+	g.drawHouseEntryHint(screen)
+}
+
+func (g *Game) drawHouseEntryHint(screen *ebiten.Image) {
+	playerRight := g.player.x + float64(g.player.width)
+	playerBottom := g.player.y + float64(g.player.height)
+	doorLeft := float64(g.house.doorX)
+	doorBottom := float64(g.house.doorY)
+
+	horizontalDist := playerRight - doorLeft
+	if horizontalDist < 0 {
+		horizontalDist = -horizontalDist
+	}
+
+	if horizontalDist < 60 && playerBottom > doorBottom-10 && playerBottom < doorBottom+10 {
+		// Show hint above door
+		hintText := "Press E"
+		hintX := int(float64(g.house.doorX) + float64(g.house.doorW)/2) - len(hintText)*4
+		hintY := int(g.house.doorY - g.house.doorH - 15)
+		ebitenutil.DebugPrintAt(screen, hintText, hintX, hintY)
+	}
 }
 
 func (g *Game) drawHouseWindow(screen *ebiten.Image, x, y, w, h float32) {
