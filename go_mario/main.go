@@ -22,11 +22,25 @@ type Cloud struct {
 	speed float32
 }
 
+type Apple struct {
+	x      float32
+	y      float32
+	offset float32 // для анимации покачивания
+}
+
+type Tree struct {
+	x      float32
+	y      float32
+	height float32
+	apples []Apple
+}
+
 type Game struct {
 	playerX    float64
 	playerY    float64
 	frameCount int
 	clouds     []Cloud
+	trees      []Tree
 }
 
 func NewGame() *Game {
@@ -38,11 +52,37 @@ func NewGame() *Game {
 		{x: 700, y: 100, size: 45, speed: 0.4},
 	}
 	
+	// Initialize apple trees
+	trees := []Tree{
+		createTree(150, screenHeight-groundHeight, 120),
+		createTree(400, screenHeight-groundHeight, 140),
+		createTree(650, screenHeight-groundHeight, 130),
+	}
+	
 	return &Game{
 		playerX:    100,
 		playerY:    screenHeight - groundHeight - 50,
 		frameCount: 0,
 		clouds:     clouds,
+		trees:      trees,
+	}
+}
+
+func createTree(x, y float32, height float32) Tree {
+	// Create apples at random positions in the tree canopy
+	apples := []Apple{
+		{x: x - 25, y: y - height + 20, offset: 0},
+		{x: x + 30, y: y - height + 15, offset: 0.5},
+		{x: x, y: y - height + 35, offset: 1.0},
+		{x: x - 15, y: y - height + 45, offset: 1.5},
+		{x: x + 20, y: y - height + 40, offset: 2.0},
+	}
+	
+	return Tree{
+		x:      x,
+		y:      y,
+		height: height,
+		apples: apples,
 	}
 }
 
@@ -59,6 +99,13 @@ func (g *Game) Update() error {
 		}
 	}
 	
+	// Update apple sway animation
+	for i := range g.trees {
+		for j := range g.trees[i].apples {
+			g.trees[i].apples[j].offset = float32(g.frameCount)*0.02 + float32(j)*0.5
+		}
+	}
+	
 	return nil
 }
 
@@ -71,6 +118,9 @@ func (g *Game) Draw(screen *ebiten.Image) {
 
 	// Draw clouds
 	g.drawClouds(screen)
+
+	// Draw trees
+	g.drawTrees(screen)
 
 	// Draw ground
 	g.drawGround(screen)
@@ -159,6 +209,96 @@ func (g *Game) drawCloud(screen *ebiten.Image, x, y, size float32) {
 	vector.DrawFilledCircle(screen, xFloat, yFloat-sizeFloat/8, sizeFloat/2, cloudColor, false)
 	// Top right puff
 	vector.DrawFilledCircle(screen, xFloat+sizeFloat/3, yFloat-sizeFloat/6, sizeFloat/3.5, cloudColor, false)
+}
+
+func (g *Game) drawTrees(screen *ebiten.Image) {
+	for _, tree := range g.trees {
+		g.drawTree(screen, tree)
+	}
+}
+
+func (g *Game) drawTree(screen *ebiten.Image, tree Tree) {
+	// Draw tree trunk
+	g.drawTreeTrunk(screen, tree.x, tree.y, tree.height)
+	
+	// Draw tree canopy (foliage)
+	g.drawTreeCanopy(screen, tree.x, tree.y, tree.height)
+	
+	// Draw apples
+	for _, apple := range tree.apples {
+		g.drawApple(screen, apple.x, apple.y, apple.offset)
+	}
+}
+
+func (g *Game) drawTreeTrunk(screen *ebiten.Image, x, y, height float32) {
+	trunkWidth := float32(20)
+	trunkHeight := height * 0.6
+	
+	// Main trunk (brown)
+	trunkColor := color.RGBA{101, 67, 33, 255}
+	vector.DrawFilledRect(screen, x-trunkWidth/2, y-height+trunkHeight, trunkWidth, trunkHeight, trunkColor, false)
+	
+	// Bark texture (darker lines)
+	barkColor := color.RGBA{60, 40, 20, 255}
+	for i := 0; i < 3; i++ {
+		lineY := y - height + trunkHeight + float32(i)*8
+		vector.StrokeLine(screen, x-trunkWidth/2+3, lineY, x+trunkWidth/2-3, lineY+2, 2, barkColor, false)
+	}
+}
+
+func (g *Game) drawTreeCanopy(screen *ebiten.Image, x, y, height float32) {
+	canopyY := y - height
+	canopyRadius := float32(50)
+	
+	// Main foliage (dark green)
+	foliageColor := color.RGBA{34, 139, 34, 255}
+	vector.DrawFilledCircle(screen, x, canopyY, canopyRadius, foliageColor, false)
+	
+	// Add depth with overlapping circles
+	vector.DrawFilledCircle(screen, x-25, canopyY+10, canopyRadius-15, foliageColor, false)
+	vector.DrawFilledCircle(screen, x+25, canopyY+10, canopyRadius-15, foliageColor, false)
+	vector.DrawFilledCircle(screen, x, canopyY-15, canopyRadius-20, foliageColor, false)
+	
+	// Lighter green highlights for volume
+	highlightColor := color.RGBA{100, 180, 100, 255}
+	vector.DrawFilledCircle(screen, x-15, canopyY-10, 15, highlightColor, false)
+	vector.DrawFilledCircle(screen, x+10, canopyY-20, 12, highlightColor, false)
+}
+
+func (g *Game) drawApple(screen *ebiten.Image, x, y, offset float32) {
+	// Animate apple sway (gentle swinging)
+	sway := float32(math.Sin(float64(offset))) * 2
+	
+	appleX := x + sway
+	appleY := y
+	
+	appleRadius := float32(6)
+	
+	// Apple body (red)
+	appleColor := color.RGBA{220, 20, 60, 255}
+	vector.DrawFilledCircle(screen, appleX, appleY, appleRadius, appleColor, false)
+	
+	// Apple shine (lighter red highlight)
+	highlightX := appleX - 2
+	highlightY := appleY - 2
+	vector.DrawFilledCircle(screen, highlightX, highlightY, appleRadius/2, color.RGBA{255, 100, 100, 255}, false)
+	
+	// Apple stem (brown)
+	stemX := appleX
+	stemY := appleY - appleRadius
+	vector.StrokeLine(screen, stemX, stemY, stemX, stemY-4, 1.5, color.RGBA{139, 69, 19, 255}, false)
+	
+	// Green leaf
+	leafX := stemX + 3
+	leafY := stemY - 2
+	leafColor := color.RGBA{34, 139, 34, 255}
+	
+	// Leaf shape (small oval)
+	vector.DrawFilledCircle(screen, leafX, leafY, 3, leafColor, false)
+	vector.DrawFilledCircle(screen, leafX+2, leafY+1, 2, leafColor, false)
+	
+	// Leaf vein (lighter green)
+	vector.StrokeLine(screen, leafX, leafY, leafX+3, leafY+1, 0.5, color.RGBA{100, 200, 100, 255}, false)
 }
 
 func (g *Game) drawGround(screen *ebiten.Image) {
