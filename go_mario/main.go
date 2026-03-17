@@ -189,8 +189,8 @@ func NewGame() *Game {
 		doorY:    screenHeight - groundHeight,
 		doorW:    40,
 		doorH:    50,
-		windowX:  540,
-		windowY:  screenHeight - groundHeight - 60,
+		windowX:  590,
+		windowY:  screenHeight - groundHeight - 50,
 		windowW:  30,
 		windowH:  40,
 		chimneyX: 590,
@@ -308,13 +308,29 @@ func (g *Game) Update() error {
 
 	// Handle inside house state
 	if g.state == InsideHouse {
-		// Exit house with ESC
+		// Exit house with ESC or inside door
 		if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
 			g.state = Playing
 			// Position player outside near door
 			g.player.x = 580
 			g.player.y = float64(screenHeight - groundHeight - 40)
 		}
+		
+		// Player movement inside house
+		if ebiten.IsKeyPressed(ebiten.KeyArrowLeft) || ebiten.IsKeyPressed(ebiten.KeyA) {
+			g.player.x -= moveSpeed
+			g.player.facing = -1
+			g.player.animFrame++
+		}
+		if ebiten.IsKeyPressed(ebiten.KeyArrowRight) || ebiten.IsKeyPressed(ebiten.KeyD) {
+			g.player.x += moveSpeed
+			g.player.facing = 1
+			g.player.animFrame++
+		}
+		
+		// Check if player is near inside door (for exiting)
+		g.checkInsideDoorExit()
+		
 		return nil
 	}
 
@@ -430,6 +446,31 @@ func (g *Game) checkHouseEntry() {
 			// Position player inside house
 			g.player.x = 400
 			g.player.y = 450
+		}
+	}
+}
+
+func (g *Game) checkInsideDoorExit() {
+	// Check if player is near the inside door (left side of room)
+	playerLeft := g.player.x
+	playerBottom := g.player.y + float64(g.player.height)
+
+	insideDoorX := float64(100)
+	insideDoorBottom := float64(500)
+
+	// Check if player is in front of inside door
+	horizontalDist := playerLeft - insideDoorX
+	if horizontalDist < 0 {
+		horizontalDist = -horizontalDist
+	}
+
+	if horizontalDist < 50 && playerBottom > insideDoorBottom-10 && playerBottom < insideDoorBottom+10 {
+		// Player is near inside door - check for exit key
+		if inpututil.IsKeyJustPressed(ebiten.KeyE) || inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
+			g.state = Playing
+			// Position player outside near door
+			g.player.x = 580
+			g.player.y = float64(screenHeight - groundHeight - 40)
 		}
 	}
 }
@@ -641,8 +682,8 @@ func (g *Game) updateAndDrawSmoke(screen *ebiten.Image) {
 }
 
 func (g *Game) drawInsideHouse(screen *ebiten.Image) {
-	// Interior walls (light cream)
-	screen.Fill(color.RGBA{250, 245, 230, 255})
+	// Interior walls (darker beige - bunny doesn't blend in)
+	screen.Fill(color.RGBA{220, 210, 180, 255})
 
 	// Floor (wooden planks - brown)
 	floorColor := color.RGBA{139, 90, 50, 255}
@@ -654,6 +695,9 @@ func (g *Game) drawInsideHouse(screen *ebiten.Image) {
 
 	// Ceiling (white)
 	vector.DrawFilledRect(screen, 0, 0, screenWidth, 20, color.RGBA{255, 255, 255, 255}, false)
+
+	// Draw inside door (on left wall)
+	g.drawInsideDoor(screen)
 
 	// Draw window with view outside
 	g.drawInsideWindow(screen)
@@ -667,11 +711,84 @@ func (g *Game) drawInsideHouse(screen *ebiten.Image) {
 	g.drawCactus(screen)
 	g.drawPortrait(screen)
 
+	// Draw carrot basket on floor
+	g.drawCarrotBasket(screen)
+
 	// Draw player (bunny) inside house
 	g.drawPlayer(screen)
 
-	// Draw exit hint
-	ebitenutil.DebugPrintAt(screen, "ESC - Exit house", 10, screenHeight-25)
+	// Draw exit hints
+	g.drawInsideDoorHint(screen)
+	ebitenutil.DebugPrintAt(screen, "E / ESC - Exit house", 10, screenHeight-25)
+}
+
+func (g *Game) drawInsideDoorHint(screen *ebiten.Image) {
+	playerLeft := g.player.x
+	playerBottom := g.player.y + float64(g.player.height)
+
+	insideDoorX := float64(130)
+	insideDoorBottom := float64(500)
+
+	horizontalDist := playerLeft - insideDoorX
+	if horizontalDist < 0 {
+		horizontalDist = -horizontalDist
+	}
+
+	if horizontalDist < 60 && playerBottom > insideDoorBottom-10 && playerBottom < insideDoorBottom+10 {
+		hintText := "Press E"
+		hintX := int(insideDoorX + 25) - len(hintText)*4
+		hintY := int(insideDoorBottom) - 90
+		ebitenutil.DebugPrintAt(screen, hintText, hintX, hintY)
+	}
+}
+
+func (g *Game) drawInsideDoor(screen *ebiten.Image) {
+	// Door frame (brown)
+	doorX, doorY := float32(80), float32(420)
+	doorW, doorH := float32(50), float32(80)
+
+	// Door (dark brown)
+	doorColor := color.RGBA{101, 67, 33, 255}
+	vector.DrawFilledRect(screen, doorX, doorY, doorW, doorH, doorColor, false)
+
+	// Door frame
+	vector.StrokeRect(screen, doorX-3, doorY-3, doorW+6, doorH+6, 3, color.RGBA{60, 40, 20, 255}, false)
+
+	// Doorknob (gold)
+	vector.DrawFilledCircle(screen, doorX+doorW-10, doorY+doorH/2, 4, color.RGBA{255, 215, 0, 255}, false)
+
+	// Door panels
+	vector.StrokeLine(screen, doorX+10, doorY+10, doorX+10, doorY+doorH-10, 2, color.RGBA{60, 40, 20, 255}, false)
+	vector.StrokeLine(screen, doorX+doorW-10, doorY+10, doorX+doorW-10, doorY+doorH-10, 2, color.RGBA{60, 40, 20, 255}, false)
+}
+
+func (g *Game) drawCarrotBasket(screen *ebiten.Image) {
+	// Basket on floor
+	basketX, basketY := float32(700), float32(480)
+
+	// Basket body (woven brown)
+	basketColor := color.RGBA{139, 90, 43, 255}
+	vector.DrawFilledRect(screen, basketX, basketY, 40, 25, basketColor, false)
+
+	// Basket weave pattern (darker lines)
+	for i := 0; i < 5; i++ {
+		vector.StrokeLine(screen, basketX+5, basketY+5+float32(i)*4, basketX+35, basketY+5+float32(i)*4, 1, color.RGBA{100, 60, 30, 255}, false)
+	}
+
+	// Carrots in basket (orange triangles)
+	carrotColor := color.RGBA{255, 140, 0, 255}
+	// Carrot 1
+	vector.DrawFilledCircle(screen, basketX+10, basketY+8, 5, carrotColor, false)
+	// Carrot 2
+	vector.DrawFilledCircle(screen, basketX+20, basketY+10, 5, carrotColor, false)
+	// Carrot 3
+	vector.DrawFilledCircle(screen, basketX+30, basketY+8, 5, carrotColor, false)
+
+	// Carrot greens (green tops)
+	greenColor := color.RGBA{50, 150, 50, 255}
+	vector.DrawFilledCircle(screen, basketX+10, basketY+4, 3, greenColor, false)
+	vector.DrawFilledCircle(screen, basketX+20, basketY+5, 3, greenColor, false)
+	vector.DrawFilledCircle(screen, basketX+30, basketY+4, 3, greenColor, false)
 }
 
 func (g *Game) drawInsideWindow(screen *ebiten.Image) {
