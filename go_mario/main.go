@@ -25,6 +25,7 @@ type GameState int
 const (
 	Menu GameState = iota
 	Playing
+	InsideHouse
 )
 
 type TimeOfDay int
@@ -57,6 +58,34 @@ type Lightning struct {
 type LightningBranch struct {
 	points []struct{ x, y float32 }
 	width  float32
+}
+
+type SmokeParticle struct {
+	x      float32
+	y      float32
+	vx     float32
+	vy     float32
+	size   float32
+	life   int
+	maxLife int
+}
+
+type House struct {
+	x         float32
+	y         float32
+	width     float32
+	height    float32
+	doorX     float32
+	doorY     float32
+	doorW     float32
+	doorH     float32
+	windowX   float32
+	windowY   float32
+	windowW   float32
+	windowH   float32
+	chimneyX  float32
+	chimneyY  float32
+	smoke     []SmokeParticle
 }
 
 type Cloud struct {
@@ -115,6 +144,7 @@ type Game struct {
 	raindrops  []Raindrop
 	lightning  Lightning
 	stormClouds []Cloud
+	house      House
 }
 
 func NewGame() *Game {
@@ -133,6 +163,39 @@ func NewGame() *Game {
 		{x: 400, y: 20, size: 90, speed: 0.5},
 		{x: 600, y: 40, size: 85, speed: 0.35},
 		{x: 750, y: 25, size: 75, speed: 0.4},
+	}
+
+	// Initialize smoke particles for house chimney
+	smoke := make([]SmokeParticle, 20)
+	for i := range smoke {
+		smoke[i] = SmokeParticle{
+			x:      0,
+			y:      0,
+			vx:     float32(i%5-2) * 0.3,
+			vy:     -float32(i%3+1) * 0.5,
+			size:   float32(i%5+3),
+			life:   i * 20,
+			maxLife: 100,
+		}
+	}
+
+	// Initialize house
+	house := House{
+		x:        520,
+		y:        screenHeight - groundHeight,
+		width:    120,
+		height:   100,
+		doorX:    560,
+		doorY:    screenHeight - groundHeight,
+		doorW:    40,
+		doorH:    50,
+		windowX:  540,
+		windowY:  screenHeight - groundHeight - 60,
+		windowW:  30,
+		windowH:  40,
+		chimneyX: 590,
+		chimneyY: screenHeight - groundHeight - 80,
+		smoke:    smoke,
 	}
 
 	// Initialize raindrops
@@ -193,6 +256,7 @@ func NewGame() *Game {
 		moonY:      80,
 		raindrops:  raindrops,
 		lightning:  Lightning{active: false, timer: 0, branches: []LightningBranch{}},
+		house:      house,
 	}
 }
 
@@ -238,6 +302,18 @@ func (g *Game) Update() error {
 		// Start game with Enter or Space
 		if inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeySpace) {
 			g.state = Playing
+		}
+		return nil
+	}
+
+	// Handle inside house state
+	if g.state == InsideHouse {
+		// Exit house with ESC
+		if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
+			g.state = Playing
+			// Position player outside near door
+			g.player.x = 580
+			g.player.y = float64(screenHeight - groundHeight - 40)
 		}
 		return nil
 	}
@@ -321,10 +397,44 @@ func (g *Game) Update() error {
 		g.player.x = float64(screenWidth) - float64(g.player.width)
 	}
 
+	// House entry detection
+	if g.state == Playing {
+		g.checkHouseEntry()
+	}
+
 	// Apple collection
 	g.checkAppleCollection()
 
 	return nil
+}
+
+func (g *Game) checkHouseEntry() {
+	// Check if player is near the door
+	playerCenterX := g.player.x + float64(g.player.width)/2
+	playerBottomY := g.player.y + float64(g.player.height)
+
+	doorCenterX := float64(g.house.doorX) + float64(g.house.doorW)/2
+	doorTopY := float64(g.house.doorY) - float64(g.house.doorH)
+
+	// Check if player is in front of door (within 30 pixels)
+	dx := playerCenterX - doorCenterX
+	if dx < 0 {
+		dx = -dx
+	}
+	dy := playerBottomY - doorTopY
+	if dy < 0 {
+		dy = -dy
+	}
+
+	if dx < 30 && dy < 10 {
+		// Player is near door - check for enter key
+		if inpututil.IsKeyJustPressed(ebiten.KeyE) || inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
+			g.state = InsideHouse
+			// Position player inside house
+			g.player.x = 400
+			g.player.y = 450
+		}
+	}
 }
 
 func (g *Game) updateLightning() {
@@ -399,6 +509,307 @@ func (g *Game) checkAppleCollection() {
 	}
 }
 
+func (g *Game) drawDaySky(screen *ebiten.Image) {
+	// Blue daytime sky
+	screen.Fill(color.RGBA{135, 206, 235, 255})
+}
+
+func (g *Game) drawStormySky(screen *ebiten.Image) {
+	// Dark stormy sky gradient (gray-blue)
+	screen.Fill(color.RGBA{50, 55, 70, 255})
+}
+
+func (g *Game) drawStormClouds(screen *ebiten.Image) {
+	// Draw dark storm clouds
+	for _, cloud := range g.stormClouds {
+		g.drawStormCloud(screen, cloud)
+	}
+}
+
+func (g *Game) drawHouse(screen *ebiten.Image) {
+	h := g.house
+
+	// Draw house walls (light beige)
+	wallColor := color.RGBA{245, 230, 200, 255}
+	vector.DrawFilledRect(screen, h.x, h.y-h.height, h.width, h.height, wallColor, false)
+
+	// Draw gabled roof (red-brown)
+	roofColor := color.RGBA{139, 69, 50, 255}
+	roofPeakY := h.y - h.height - 50
+	// Left roof slope
+	vector.StrokeLine(screen, h.x-10, h.y-h.height, h.x+h.width/2, roofPeakY, 15, roofColor, false)
+	// Right roof slope
+	vector.StrokeLine(screen, h.x+h.width+10, h.y-h.height, h.x+h.width/2, roofPeakY, 15, roofColor, false)
+	// Fill roof triangle
+	for i := 0; i < 50; i++ {
+		y := h.y - h.height - float32(i)
+		xOffset := float32(i) * (h.width/2 + 10) / 50
+		vector.StrokeLine(screen, h.x-xOffset+10, y, h.x+h.width+xOffset-10, y, 1, roofColor, false)
+	}
+
+	// Draw chimney (dark gray)
+	chimneyColor := color.RGBA{80, 80, 80, 255}
+	vector.DrawFilledRect(screen, h.chimneyX, h.chimneyY, 20, 40, chimneyColor, false)
+	// Chimney top
+	vector.DrawFilledRect(screen, h.chimneyX-5, h.chimneyY, 30, 10, chimneyColor, false)
+
+	// Draw smoke particles
+	g.updateAndDrawSmoke(screen)
+
+	// Draw door (dark brown)
+	doorColor := color.RGBA{101, 67, 33, 255}
+	vector.DrawFilledRect(screen, h.doorX, h.doorY-h.doorH, h.doorW, h.doorH, doorColor, false)
+	// Door frame
+	vector.StrokeRect(screen, h.doorX-2, h.doorY-h.doorH-2, h.doorW+4, h.doorH+4, 2, color.RGBA{60, 40, 20, 255}, false)
+	// Doorknob (gold)
+	vector.DrawFilledCircle(screen, h.doorX+h.doorW-8, h.doorY-h.doorH/2, 3, color.RGBA{255, 215, 0, 255}, false)
+
+	// Draw window
+	g.drawHouseWindow(screen, h.windowX, h.windowY, h.windowW, h.windowH)
+
+	// Draw house foundation (gray stone)
+	foundationColor := color.RGBA{120, 120, 120, 255}
+	vector.DrawFilledRect(screen, h.x-5, h.y, h.width+10, 10, foundationColor, false)
+}
+
+func (g *Game) drawHouseWindow(screen *ebiten.Image, x, y, w, h float32) {
+	// Window frame (white)
+	frameColor := color.RGBA{255, 255, 255, 255}
+	vector.DrawFilledRect(screen, x, y, w, h, frameColor, false)
+
+	// Window glass (light blue)
+	glassColor := color.RGBA{200, 230, 255, 200}
+	vector.DrawFilledRect(screen, x+3, y+3, w-6, h-6, glassColor, false)
+
+	// Window cross (brown)
+	vector.StrokeLine(screen, x+w/2, y+3, x+w/2, y+h-3, 2, color.RGBA{139, 69, 19, 255}, false)
+	vector.StrokeLine(screen, x+3, y+h/2, x+w-3, y+h/2, 2, color.RGBA{139, 69, 19, 255}, false)
+
+	// Curtains (red with folds)
+	curtainColor := color.RGBA{180, 50, 50, 255}
+	// Left curtain
+	vector.DrawFilledRect(screen, x+2, y+2, w/2-5, h-4, curtainColor, false)
+	// Right curtain
+	vector.DrawFilledRect(screen, x+w/2+3, y+2, w/2-5, h-4, curtainColor, false)
+	// Curtain folds (darker lines)
+	for i := 0; i < 4; i++ {
+		foldY := y + 5 + float32(i)*8
+		vector.StrokeLine(screen, x+5, foldY, x+w/2-8, foldY+3, 1, color.RGBA{150, 30, 30, 255}, false)
+		vector.StrokeLine(screen, x+w/2+8, foldY, x+w-5, foldY+3, 1, color.RGBA{150, 30, 30, 255}, false)
+	}
+}
+
+func (g *Game) updateAndDrawSmoke(screen *ebiten.Image) {
+	h := g.house
+	for i := range g.house.smoke {
+		particle := &g.house.smoke[i]
+
+		// Update particle
+		particle.x = h.chimneyX + 10 + particle.vx*float32(g.frameCount%60)
+		particle.y = h.chimneyY + particle.vy*float32(g.frameCount%60) - float32(particle.life)/3
+		particle.life++
+
+		if particle.life >= particle.maxLife {
+			particle.life = 0
+			particle.y = h.chimneyY
+		}
+
+		// Draw smoke (gray circles with decreasing alpha)
+		alpha := uint8(150 - particle.life*150/particle.maxLife)
+		smokeColor := color.RGBA{150, 150, 150, alpha}
+		vector.DrawFilledCircle(screen, particle.x, particle.y, particle.size, smokeColor, false)
+	}
+}
+
+func (g *Game) drawInsideHouse(screen *ebiten.Image) {
+	// Interior walls (light cream)
+	screen.Fill(color.RGBA{250, 245, 230, 255})
+
+	// Floor (wooden planks - brown)
+	floorColor := color.RGBA{139, 90, 50, 255}
+	vector.DrawFilledRect(screen, 0, 500, screenWidth, screenHeight-500, floorColor, false)
+	// Floor plank lines
+	for x := 0; x < screenWidth; x += 40 {
+		vector.StrokeLine(screen, float32(x), 500, float32(x), screenHeight, 2, color.RGBA{100, 60, 30, 255}, false)
+	}
+
+	// Ceiling (white)
+	vector.DrawFilledRect(screen, 0, 0, screenWidth, 20, color.RGBA{255, 255, 255, 255}, false)
+
+	// Draw window with view outside
+	g.drawInsideWindow(screen)
+
+	// Draw furniture
+	g.drawTableAndChair(screen)
+	g.drawBed(screen)
+
+	// Draw decorations
+	g.drawChandelier(screen)
+	g.drawCactus(screen)
+	g.drawPortrait(screen)
+
+	// Draw player (bunny) inside house
+	g.drawPlayer(screen)
+
+	// Draw exit hint
+	ebitenutil.DebugPrintAt(screen, "ESC - Exit house", 10, screenHeight-25)
+}
+
+func (g *Game) drawInsideWindow(screen *ebiten.Image) {
+	// Window frame (white)
+	windowX, windowY, windowW, windowH := float32(100), float32(150), float32(150), float32(120)
+	frameColor := color.RGBA{255, 255, 255, 255}
+	vector.DrawFilledRect(screen, windowX, windowY, windowW, windowH, frameColor, false)
+
+	// Window view (outdoor scene)
+	// Sky (blue gradient)
+	vector.DrawFilledRect(screen, windowX+5, windowY+5, windowW-10, windowH/2-5, color.RGBA{135, 206, 235, 255}, false)
+
+	// Hills (green)
+	hillColor := color.RGBA{50, 150, 50, 255}
+	vector.DrawFilledCircle(screen, windowX+30, windowY+windowH/2, 40, hillColor, false)
+	vector.DrawFilledCircle(screen, windowX+80, windowY+windowH/2, 50, hillColor, false)
+	vector.DrawFilledCircle(screen, windowX+130, windowY+windowH/2, 35, hillColor, false)
+
+	// River (blue)
+	vector.DrawFilledRect(screen, windowX+5, windowY+windowH/2+20, windowW-10, 30, color.RGBA{70, 130, 180, 255}, false)
+
+	// Apple trees outside (small)
+	g.drawSmallTree(screen, windowX+25, windowY+windowH/2+10, 25)
+	g.drawSmallTree(screen, windowX+110, windowY+windowH/2+5, 30)
+
+	// Window glass
+	glassColor := color.RGBA{200, 230, 255, 150}
+	vector.DrawFilledRect(screen, windowX+5, windowY+5, windowW-10, windowH-10, glassColor, false)
+
+	// Window cross (brown)
+	vector.StrokeLine(screen, windowX+windowW/2, windowY+5, windowX+windowW/2, windowY+windowH-5, 3, color.RGBA{139, 69, 19, 255}, false)
+	vector.StrokeLine(screen, windowX+5, windowY+windowH/2, windowX+windowW-5, windowY+windowH/2, 3, color.RGBA{139, 69, 19, 255}, false)
+
+	// Curtains (red with folds)
+	curtainColor := color.RGBA{180, 50, 50, 255}
+	vector.DrawFilledRect(screen, windowX+3, windowY+3, windowW/2-8, windowH-6, curtainColor, false)
+	vector.DrawFilledRect(screen, windowX+windowW/2+5, windowY+3, windowW/2-8, windowH-6, curtainColor, false)
+
+	// Window sill (wood)
+	vector.DrawFilledRect(screen, windowX-5, windowY+windowH-5, windowW+10, 10, color.RGBA{139, 69, 19, 255}, false)
+}
+
+func (g *Game) drawSmallTree(screen *ebiten.Image, x, y, size float32) {
+	// Trunk
+	vector.DrawFilledRect(screen, x-3, y, 6, size/2, color.RGBA{101, 67, 33, 255}, false)
+	// Foliage (green circle)
+	vector.DrawFilledCircle(screen, x, y, size/2, color.RGBA{34, 139, 34, 255}, false)
+	// Apple (red dot)
+	vector.DrawFilledCircle(screen, x+5, y+5, 3, color.RGBA{220, 20, 60, 255}, false)
+}
+
+func (g *Game) drawChandelier(screen *ebiten.Image) {
+	// Chain from ceiling
+	vector.StrokeLine(screen, 400, 20, 400, 60, 2, color.RGBA{100, 100, 100, 255}, false)
+
+	// Main body (gold)
+	vector.DrawFilledCircle(screen, 400, 70, 15, color.RGBA{255, 215, 0, 255}, false)
+
+	// Hanging crystals (small circles)
+	for i := 0; i < 6; i++ {
+		angle := float32(i) * 3.14159 / 3
+		crystalX := 400 + float32(math.Sin(float64(angle)))*20
+		crystalY := 75 + float32(math.Cos(float64(angle)))*10
+		vector.DrawFilledCircle(screen, crystalX, crystalY, 4, color.RGBA{255, 255, 255, 200}, false)
+	}
+
+	// Glow effect
+	vector.DrawFilledCircle(screen, 400, 70, 25, color.RGBA{255, 255, 200, 50}, false)
+}
+
+func (g *Game) drawCactus(screen *ebiten.Image) {
+	// Pot (brown)
+	potX, potY := float32(175), float32(265)
+	vector.DrawFilledRect(screen, potX, potY, 30, 20, color.RGBA{139, 69, 19, 255}, false)
+
+	// Cactus body (green)
+	vector.DrawFilledCircle(screen, potX+15, potY-10, 12, color.RGBA{34, 139, 34, 255}, false)
+	vector.DrawFilledCircle(screen, potX+15, potY-25, 8, color.RGBA{34, 139, 34, 255}, false)
+	// Side arm
+	vector.DrawFilledCircle(screen, potX+25, potY-15, 6, color.RGBA{34, 139, 34, 255}, false)
+
+	// Spikes (tiny white dots)
+	for i := 0; i < 5; i++ {
+		vector.DrawFilledCircle(screen, potX+10+float32(i)*3, potY-20, 1, color.RGBA{255, 255, 255, 255}, false)
+	}
+}
+
+func (g *Game) drawTableAndChair(screen *ebiten.Image) {
+	// Table (wooden)
+	tableX, tableY := float32(500), float32(400)
+	// Table top
+	vector.DrawFilledRect(screen, tableX, tableY, 80, 10, color.RGBA{139, 69, 19, 255}, false)
+	// Table legs
+	vector.DrawFilledRect(screen, tableX+10, tableY+10, 8, 60, color.RGBA{101, 67, 33, 255}, false)
+	vector.DrawFilledRect(screen, tableX+62, tableY+10, 8, 60, color.RGBA{101, 67, 33, 255}, false)
+
+	// Chair (wooden)
+	chairX, chairY := float32(600), float32(420)
+	// Seat
+	vector.DrawFilledRect(screen, chairX, chairY, 35, 8, color.RGBA{139, 69, 19, 255}, false)
+	// Legs
+	vector.DrawFilledRect(screen, chairX+5, chairY+8, 6, 50, color.RGBA{101, 67, 33, 255}, false)
+	vector.DrawFilledRect(screen, chairX+24, chairY+8, 6, 50, color.RGBA{101, 67, 33, 255}, false)
+	// Backrest
+	vector.DrawFilledRect(screen, chairX, chairY-40, 8, 48, color.RGBA{101, 67, 33, 255}, false)
+	vector.DrawFilledRect(screen, chairX+27, chairY-40, 8, 48, color.RGBA{101, 67, 33, 255}, false)
+	vector.DrawFilledRect(screen, chairX, chairY-35, 35, 8, color.RGBA{139, 69, 19, 255}, false)
+}
+
+func (g *Game) drawBed(screen *ebiten.Image) {
+	bedX, bedY := float32(250), float32(420)
+
+	// Bed frame (brown wood)
+	vector.DrawFilledRect(screen, bedX, bedY+40, 120, 15, color.RGBA{101, 67, 33, 255}, false)
+	// Legs
+	vector.DrawFilledRect(screen, bedX+10, bedY+55, 10, 15, color.RGBA{101, 67, 33, 255}, false)
+	vector.DrawFilledRect(screen, bedX+100, bedY+55, 10, 15, color.RGBA{101, 67, 33, 255}, false)
+
+	// Mattress (white)
+	vector.DrawFilledRect(screen, bedX, bedY+25, 120, 20, color.RGBA{255, 255, 255, 255}, false)
+
+	// Blanket (blue)
+	vector.DrawFilledRect(screen, bedX+20, bedY+25, 80, 20, color.RGBA{70, 130, 180, 255}, false)
+
+	// Pillow (white)
+	vector.DrawFilledRect(screen, bedX+5, bedY+25, 30, 15, color.RGBA{255, 255, 255, 255}, false)
+}
+
+func (g *Game) drawPortrait(screen *ebiten.Image) {
+	// Frame (gold, ornate)
+	frameX, frameY := float32(650), float32(200)
+	frameW, frameH := float32(80), float32(100)
+
+	// Outer frame
+	vector.DrawFilledRect(screen, frameX, frameY, frameW, frameH, color.RGBA{255, 215, 0, 255}, false)
+	// Inner frame (darker gold)
+	vector.DrawFilledRect(screen, frameX+5, frameY+5, frameW-10, frameH-10, color.RGBA{200, 170, 0, 255}, false)
+
+	// Portrait background (dark green)
+	vector.DrawFilledRect(screen, frameX+8, frameY+8, frameW-16, frameH-16, color.RGBA{50, 80, 50, 255}, false)
+
+	// Bunny silhouette (gray)
+	// Head
+	vector.DrawFilledCircle(screen, frameX+40, frameY+35, 15, color.RGBA{150, 150, 150, 255}, false)
+	// Ears
+	vector.DrawFilledRect(screen, frameX+35, frameY+15, 4, 20, color.RGBA{150, 150, 150, 255}, false)
+	vector.DrawFilledRect(screen, frameX+41, frameY+15, 4, 20, color.RGBA{150, 150, 150, 255}, false)
+	// Body
+	vector.DrawFilledRect(screen, frameX+30, frameY+50, 20, 30, color.RGBA{150, 150, 150, 255}, false)
+
+	// Frame decoration (small circles at corners)
+	vector.DrawFilledCircle(screen, frameX+5, frameY+5, 3, color.RGBA{255, 215, 0, 255}, false)
+	vector.DrawFilledCircle(screen, frameX+frameW-5, frameY+5, 3, color.RGBA{255, 215, 0, 255}, false)
+	vector.DrawFilledCircle(screen, frameX+5, frameY+frameH-5, 3, color.RGBA{255, 215, 0, 255}, false)
+	vector.DrawFilledCircle(screen, frameX+frameW-5, frameY+frameH-5, 3, color.RGBA{255, 215, 0, 255}, false)
+}
+
 func (g *Game) drawMenu(screen *ebiten.Image) {
 	// Draw dark background
 	screen.Fill(color.RGBA{20, 20, 40, 255})
@@ -470,27 +881,12 @@ func (g *Game) drawMenu(screen *ebiten.Image) {
 		"Controls:",
 		"Arrow Keys / WASD - Move",
 		"Space / W / Up - Jump",
+		"E / Enter - Enter house",
+		"ESC - Exit house",
 		"Collect apples from trees!",
 	}
 	for i, line := range controls {
 		ebitenutil.DebugPrintAt(screen, line, screenWidth/2-100, 490+i*22)
-	}
-}
-
-func (g *Game) drawDaySky(screen *ebiten.Image) {
-	// Blue daytime sky
-	screen.Fill(color.RGBA{135, 206, 235, 255})
-}
-
-func (g *Game) drawStormySky(screen *ebiten.Image) {
-	// Dark stormy sky gradient (gray-blue)
-	screen.Fill(color.RGBA{50, 55, 70, 255})
-}
-
-func (g *Game) drawStormClouds(screen *ebiten.Image) {
-	// Draw dark storm clouds
-	for _, cloud := range g.stormClouds {
-		g.drawStormCloud(screen, cloud)
 	}
 }
 
@@ -616,6 +1012,11 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		return
 	}
 
+	if g.state == InsideHouse {
+		g.drawInsideHouse(screen)
+		return
+	}
+
 	// Draw sky based on time of day and weather
 	if g.weather == Stormy {
 		g.drawStormySky(screen)
@@ -639,6 +1040,9 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	if g.weather == Stormy {
 		g.drawStormClouds(screen)
 	}
+
+	// Draw house
+	g.drawHouse(screen)
 
 	// Draw trees
 	g.drawTrees(screen)
