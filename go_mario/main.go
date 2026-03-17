@@ -7,6 +7,7 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
+	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"github.com/hajimehoshi/ebiten/v2/vector"
 )
 
@@ -19,11 +20,32 @@ const (
 	moveSpeed    = 4
 )
 
+type GameState int
+
+const (
+	Menu GameState = iota
+	Playing
+)
+
+type TimeOfDay int
+
+const (
+	Day TimeOfDay = iota
+	Night
+)
+
 type Cloud struct {
 	x     float32
 	y     float32
 	size  float32
 	speed float32
+}
+
+type Star struct {
+	x      float32
+	y      float32
+	size   float32
+	twinkle float32
 }
 
 type Apple struct {
@@ -59,6 +81,11 @@ type Game struct {
 	clouds     []Cloud
 	trees      []Tree
 	player     Player
+	state      GameState
+	timeOfDay  TimeOfDay
+	stars      []Star
+	moonX      float32
+	moonY      float32
 }
 
 func NewGame() *Game {
@@ -75,6 +102,17 @@ func NewGame() *Game {
 		createTree(150, screenHeight-groundHeight, 120),
 		createTree(400, screenHeight-groundHeight, 140),
 		createTree(650, screenHeight-groundHeight, 130),
+	}
+
+	// Initialize stars for night sky
+	stars := make([]Star, 100)
+	for i := range stars {
+		stars[i] = Star{
+			x:       float32(i%20) * 40 + float32(i%7)*13,
+			y:       float32(i/20) * 25 + float32(i%5)*7,
+			size:    float32(i%3+1),
+			twinkle: float32(i) * 0.1,
+		}
 	}
 
 	// Initialize player (bunny)
@@ -97,6 +135,11 @@ func NewGame() *Game {
 		clouds:     clouds,
 		trees:      trees,
 		player:     player,
+		state:      Menu,
+		timeOfDay:  Day,
+		stars:      stars,
+		moonX:      100,
+		moonY:      80,
 	}
 }
 
@@ -123,6 +166,22 @@ func createTree(x, y float32, height float32) Tree {
 }
 
 func (g *Game) Update() error {
+	// Handle menu state
+	if g.state == Menu {
+		// Navigate time of day with Up/Down arrows
+		if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) {
+			g.timeOfDay = Day
+		}
+		if inpututil.IsKeyJustPressed(ebiten.KeyArrowDown) {
+			g.timeOfDay = Night
+		}
+		// Start game with Enter or Space
+		if inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeySpace) {
+			g.state = Playing
+		}
+		return nil
+	}
+
 	g.frameCount++
 
 	// Update cloud positions
@@ -217,15 +276,138 @@ func (g *Game) checkAppleCollection() {
 	}
 }
 
-func (g *Game) Draw(screen *ebiten.Image) {
-	// Draw sky (blue background)
+func (g *Game) drawMenu(screen *ebiten.Image) {
+	// Draw dark background
+	screen.Fill(color.RGBA{20, 20, 40, 255})
+
+	// Title
+	title := "GO MARIO"
+	titleX := screenWidth/2 - len(title)*12
+	ebitenutil.DebugPrintAt(screen, title, titleX, 100)
+
+	// Subtitle
+	subtitle := "A 2D Platformer Game"
+	subX := screenWidth/2 - len(subtitle)*6
+	ebitenutil.DebugPrintAt(screen, subtitle, subX, 140)
+
+	// Time of day selection header
+	header := "Select Time of Day"
+	headerX := screenWidth/2 - len(header)*8
+	ebitenutil.DebugPrintAt(screen, header, headerX, 220)
+
+	// Day option
+	dayText := "  [↑] DAY   - Sunny day with blue sky and clouds"
+	dayX := screenWidth/2 - len(dayText)*6
+	if g.timeOfDay == Day {
+		dayText = ">> [↑] DAY   - Sunny day with blue sky and clouds <<"
+		dayX = screenWidth/2 - len(dayText)*6
+	}
+	ebitenutil.DebugPrintAt(screen, dayText, dayX, 280)
+
+	// Night option
+	nightText := "  [↓] NIGHT - Starry sky with Milky Way and moon"
+	nightX := screenWidth/2 - len(nightText)*6
+	if g.timeOfDay == Night {
+		nightText = ">> [↓] NIGHT - Starry sky with Milky Way and moon <<"
+		nightX = screenWidth/2 - len(nightText)*6
+	}
+	ebitenutil.DebugPrintAt(screen, nightText, nightX, 320)
+
+	// Start prompt
+	startText := "Press ENTER or SPACE to Start"
+	startX := screenWidth/2 - len(startText)*8
+	ebitenutil.DebugPrintAt(screen, startText, startX, 420)
+
+	// Controls info
+	controls := []string{
+		"",
+		"Controls:",
+		"Arrow Keys / WASD - Move",
+		"Space / W / Up - Jump",
+		"Collect apples from trees!",
+	}
+	for i, line := range controls {
+		ebitenutil.DebugPrintAt(screen, line, screenWidth/2-100, 470+i*22)
+	}
+}
+
+func (g *Game) drawDaySky(screen *ebiten.Image) {
+	// Blue daytime sky
 	screen.Fill(color.RGBA{135, 206, 235, 255})
+}
 
-	// Draw sun
-	g.drawSun(screen)
+func (g *Game) drawNightSky(screen *ebiten.Image) {
+	// Dark night sky gradient
+	screen.Fill(color.RGBA{10, 10, 30, 255})
 
-	// Draw clouds
-	g.drawClouds(screen)
+	// Draw stars
+	for _, star := range g.stars {
+		// Twinkle effect
+		twinkle := float32(math.Sin(float64(g.frameCount)*0.1 + float64(star.twinkle))) * 50
+		alpha := uint8(150 + twinkle)
+
+		starColor := color.RGBA{255, 255, 255, alpha}
+		vector.DrawFilledCircle(screen, star.x, star.y, star.size, starColor, false)
+	}
+
+	// Draw Milky Way (diagonal band of stars)
+	for i := 0; i < 200; i++ {
+		mx := int(float32(i*4+int(math.Sin(float64(i)*0.1)*50))) % screenWidth
+		my := float32(i/3) + float32(math.Sin(float64(i)*0.05)*30)
+		mAlpha := uint8(50 + math.Sin(float64(g.frameCount)*0.05+float64(i))*20)
+		vector.DrawFilledCircle(screen, float32(mx), my, 1, color.RGBA{200, 200, 255, mAlpha}, false)
+	}
+
+	// Draw Moon
+	g.drawMoon(screen)
+}
+
+func (g *Game) drawMoon(screen *ebiten.Image) {
+	moonX := g.moonX
+	moonY := g.moonY
+	moonRadius := float32(35)
+
+	// Moon glow (soft white)
+	vector.DrawFilledCircle(screen, moonX, moonY, moonRadius+8, color.RGBA{255, 255, 240, 80}, false)
+
+	// Main moon body (bright white)
+	vector.DrawFilledCircle(screen, moonX, moonY, moonRadius, color.RGBA{255, 255, 240, 255}, false)
+
+	// Moon craters (gray circles)
+	craterColor := color.RGBA{220, 220, 220, 255}
+	vector.DrawFilledCircle(screen, moonX-10, moonY-8, 6, craterColor, false)
+	vector.DrawFilledCircle(screen, moonX+15, moonY-5, 8, craterColor, false)
+	vector.DrawFilledCircle(screen, moonX-5, moonY+12, 5, craterColor, false)
+	vector.DrawFilledCircle(screen, moonX+8, moonY+10, 7, craterColor, false)
+	vector.DrawFilledCircle(screen, moonX-12, moonY+5, 4, craterColor, false)
+
+	// Moon shadow (slight gray on one side for 3D effect)
+	vector.DrawFilledCircle(screen, moonX+5, moonY-3, moonRadius-5, color.RGBA{240, 240, 240, 150}, false)
+}
+
+func (g *Game) Draw(screen *ebiten.Image) {
+	// Draw based on game state
+	if g.state == Menu {
+		g.drawMenu(screen)
+		return
+	}
+
+	// Draw sky based on time of day
+	if g.timeOfDay == Day {
+		g.drawDaySky(screen)
+	} else {
+		g.drawNightSky(screen)
+	}
+
+	// Draw sun (day only)
+	if g.timeOfDay == Day {
+		g.drawSun(screen)
+	}
+
+	// Draw clouds (day only)
+	if g.timeOfDay == Day {
+		g.drawClouds(screen)
+	}
 
 	// Draw trees
 	g.drawTrees(screen)
@@ -521,6 +703,13 @@ func (g *Game) drawUI(screen *ebiten.Image) {
 	// Score display
 	scoreText := "Apples: " + string(rune('0'+g.player.score))
 	ebitenutil.DebugPrintAt(screen, scoreText, 10, 10)
+
+	// Time of day indicator
+	timeText := "Time: Day"
+	if g.timeOfDay == Night {
+		timeText = "Time: Night"
+	}
+	ebitenutil.DebugPrintAt(screen, timeText, 10, 25)
 
 	// Controls hint
 	controlsText := "Arrow Keys/WASD: Move | Space/W/Up: Jump"
