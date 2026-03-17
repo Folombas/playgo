@@ -6,6 +6,7 @@ import (
 	"math"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"github.com/hajimehoshi/ebiten/v2/vector"
 )
 
@@ -13,6 +14,9 @@ const (
 	screenWidth  = 800
 	screenHeight = 600
 	groundHeight = 100
+	gravity      = 0.5
+	jumpForce    = -12
+	moveSpeed    = 4
 )
 
 type Cloud struct {
@@ -23,9 +27,10 @@ type Cloud struct {
 }
 
 type Apple struct {
-	x      float32
-	y      float32
-	offset float32 // для анимации покачивания
+	x         float32
+	y         float32
+	offset    float32 // для анимации покачивания
+	collected bool
 }
 
 type Tree struct {
@@ -35,12 +40,25 @@ type Tree struct {
 	apples []Apple
 }
 
+type Player struct {
+	x         float64
+	y         float64
+	vy        float64 // vertical velocity
+	width     float32
+	height    float32
+	onGround  bool
+	score     int
+	facing    int // -1 = left, 1 = right
+	animFrame int
+}
+
 type Game struct {
 	playerX    float64
 	playerY    float64
 	frameCount int
 	clouds     []Cloud
 	trees      []Tree
+	player     Player
 }
 
 func NewGame() *Game {
@@ -51,20 +69,34 @@ func NewGame() *Game {
 		{x: 550, y: 60, size: 70, speed: 0.2},
 		{x: 700, y: 100, size: 45, speed: 0.4},
 	}
-	
+
 	// Initialize apple trees
 	trees := []Tree{
 		createTree(150, screenHeight-groundHeight, 120),
 		createTree(400, screenHeight-groundHeight, 140),
 		createTree(650, screenHeight-groundHeight, 130),
 	}
-	
+
+	// Initialize player (bunny)
+	player := Player{
+		x:         50,
+		y:         float64(screenHeight - groundHeight - 40),
+		vy:        0,
+		width:     30,
+		height:    40,
+		onGround:  true,
+		score:     0,
+		facing:    1,
+		animFrame: 0,
+	}
+
 	return &Game{
 		playerX:    100,
 		playerY:    screenHeight - groundHeight - 50,
 		frameCount: 0,
 		clouds:     clouds,
 		trees:      trees,
+		player:     player,
 	}
 }
 
@@ -92,25 +124,97 @@ func createTree(x, y float32, height float32) Tree {
 
 func (g *Game) Update() error {
 	g.frameCount++
-	
+
 	// Update cloud positions
 	for i := range g.clouds {
 		g.clouds[i].x += g.clouds[i].speed
-		
+
 		// Wrap around when cloud goes off screen
 		if g.clouds[i].x - g.clouds[i].size > screenWidth {
 			g.clouds[i].x = -g.clouds[i].size
 		}
 	}
-	
+
 	// Update apple sway animation
 	for i := range g.trees {
 		for j := range g.trees[i].apples {
 			g.trees[i].apples[j].offset = float32(g.frameCount)*0.02 + float32(j)*0.5
 		}
 	}
-	
+
+	// Player movement
+	if ebiten.IsKeyPressed(ebiten.KeyArrowLeft) || ebiten.IsKeyPressed(ebiten.KeyA) {
+		g.player.x -= moveSpeed
+		g.player.facing = -1
+		g.player.animFrame++
+	}
+	if ebiten.IsKeyPressed(ebiten.KeyArrowRight) || ebiten.IsKeyPressed(ebiten.KeyD) {
+		g.player.x += moveSpeed
+		g.player.facing = 1
+		g.player.animFrame++
+	}
+
+	// Jumping
+	if (ebiten.IsKeyPressed(ebiten.KeyArrowUp) || ebiten.IsKeyPressed(ebiten.KeyW) || ebiten.IsKeyPressed(ebiten.KeySpace)) && g.player.onGround {
+		g.player.vy = jumpForce
+		g.player.onGround = false
+	}
+
+	// Apply gravity
+	g.player.vy += gravity
+	g.player.y += g.player.vy
+
+	// Ground collision
+	groundY := float64(screenHeight - groundHeight - int(g.player.height))
+	if g.player.y >= groundY {
+		g.player.y = groundY
+		g.player.vy = 0
+		g.player.onGround = true
+	}
+
+	// Screen boundaries
+	if g.player.x < 0 {
+		g.player.x = 0
+	}
+	if g.player.x > float64(screenWidth)-float64(g.player.width) {
+		g.player.x = float64(screenWidth) - float64(g.player.width)
+	}
+
+	// Apple collection
+	g.checkAppleCollection()
+
 	return nil
+}
+
+func (g *Game) checkAppleCollection() {
+	playerRect := struct {
+		x, y, w, h float32
+	}{
+		x: float32(g.player.x),
+		y: float32(g.player.y),
+		w: g.player.width,
+		h: g.player.height,
+	}
+
+	for i := range g.trees {
+		for j := range g.trees[i].apples {
+			if g.trees[i].apples[j].collected {
+				continue
+			}
+
+			apple := &g.trees[i].apples[j]
+			// Simple circle-rect collision
+			appleCX := apple.x
+			appleCY := apple.y
+
+			// Check if apple is within player bounds
+			if appleCX > playerRect.x && appleCX < playerRect.x+playerRect.w &&
+				appleCY > playerRect.y && appleCY < playerRect.y+playerRect.h {
+				apple.collected = true
+				g.player.score++
+			}
+		}
+	}
 }
 
 func (g *Game) Draw(screen *ebiten.Image) {
@@ -126,8 +230,14 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	// Draw trees
 	g.drawTrees(screen)
 
+	// Draw player (bunny)
+	g.drawPlayer(screen)
+
 	// Draw ground
 	g.drawGround(screen)
+
+	// Draw UI (score)
+	g.drawUI(screen)
 }
 
 func (g *Game) drawSun(screen *ebiten.Image) {
@@ -230,7 +340,7 @@ func (g *Game) drawTree(screen *ebiten.Image, tree Tree) {
 	
 	// Draw apples
 	for _, apple := range tree.apples {
-		g.drawApple(screen, apple.x, apple.y, apple.offset)
+		g.drawApple(screen, apple.x, apple.y, apple.offset, apple.collected)
 	}
 }
 
@@ -271,7 +381,11 @@ func (g *Game) drawTreeCanopy(screen *ebiten.Image, x, y, height float32) {
 	vector.DrawFilledCircle(screen, x+10, canopyY-20, 12, highlightColor, false)
 }
 
-func (g *Game) drawApple(screen *ebiten.Image, x, y, offset float32) {
+func (g *Game) drawApple(screen *ebiten.Image, x, y, offset float32, collected bool) {
+	if collected {
+		return // Don't draw collected apples
+	}
+	
 	// Animate apple sway (gentle swinging)
 	sway := float32(math.Sin(float64(offset))) * 2
 	
@@ -334,6 +448,83 @@ func (g *Game) drawGround(screen *ebiten.Image) {
 	for x := 5; x < screenWidth; x += 40 {
 		vector.DrawFilledRect(screen, float32(x), groundY+5, 20, 8, lightGrassColor, false)
 	}
+}
+
+func (g *Game) drawPlayer(screen *ebiten.Image) {
+	x := float32(g.player.x)
+	y := float32(g.player.y)
+	w := g.player.width
+	h := g.player.height
+
+	// Bunny body (light gray/white)
+	bodyColor := color.RGBA{240, 240, 240, 255}
+	vector.DrawFilledRect(screen, x+5, y+15, w-10, h-15, bodyColor, false)
+
+	// Bunny head (circle)
+	headY := y + 10
+	headX := x + w/2
+	vector.DrawFilledCircle(screen, headX, headY, 12, bodyColor, false)
+
+	// Bunny ears (long, pointing up)
+	earColor := color.RGBA{240, 240, 240, 255}
+	earInnerColor := color.RGBA{255, 180, 180, 255} // pink inner ear
+
+	// Left ear
+	leftEarX := headX - 4
+	leftEarY := headY - 8
+	vector.DrawFilledRect(screen, leftEarX-3, leftEarY-15, 6, 18, earColor, false)
+	vector.DrawFilledRect(screen, leftEarX-1, leftEarY-12, 2, 10, earInnerColor, false)
+
+	// Right ear
+	rightEarX := headX + 4
+	rightEarY := headY - 8
+	vector.DrawFilledRect(screen, rightEarX-3, rightEarY-15, 6, 18, earColor, false)
+	vector.DrawFilledRect(screen, rightEarX-1, rightEarY-12, 2, 10, earInnerColor, false)
+
+	// Eyes (black with white highlight)
+	eyeOffset := g.player.facing * 3
+	leftEyeX := headX - 4 + float32(eyeOffset)
+	rightEyeX := headX + 4 + float32(eyeOffset)
+	eyeY := headY + 2
+
+	// Eye whites
+	vector.DrawFilledCircle(screen, leftEyeX, eyeY, 4, color.RGBA{255, 255, 255, 255}, false)
+	vector.DrawFilledCircle(screen, rightEyeX, eyeY, 4, color.RGBA{255, 255, 255, 255}, false)
+
+	// Pupils (black)
+	vector.DrawFilledCircle(screen, leftEyeX+float32(eyeOffset), eyeY, 2, color.RGBA{0, 0, 0, 255}, false)
+	vector.DrawFilledCircle(screen, rightEyeX+float32(eyeOffset), eyeY, 2, color.RGBA{0, 0, 0, 255}, false)
+
+	// Nose (pink triangle)
+	noseX := headX + float32(g.player.facing*2)
+	noseY := headY + 8
+	vector.DrawFilledCircle(screen, noseX, noseY, 2, color.RGBA{255, 180, 180, 255}, false)
+
+	// Legs (animated based on movement)
+	legOffset := float32(math.Sin(float64(g.player.animFrame)*0.5)) * 5
+	if !g.player.onGround {
+		legOffset = 3 // jumping pose
+	}
+
+	// Back leg
+	vector.DrawFilledCircle(screen, x+10-legOffset, y+h-5, 5, bodyColor, false)
+	// Front leg
+	vector.DrawFilledCircle(screen, x+w-10+legOffset, y+h-5, 5, bodyColor, false)
+
+	// Tail (fluffy white ball)
+	tailX := x + w - 8
+	tailY := y + h/2 + 5
+	vector.DrawFilledCircle(screen, tailX, tailY, 5, color.RGBA{255, 255, 255, 255}, false)
+}
+
+func (g *Game) drawUI(screen *ebiten.Image) {
+	// Score display
+	scoreText := "Apples: " + string(rune('0'+g.player.score))
+	ebitenutil.DebugPrintAt(screen, scoreText, 10, 10)
+
+	// Controls hint
+	controlsText := "Arrow Keys/WASD: Move | Space/W/Up: Jump"
+	ebitenutil.DebugPrintAt(screen, controlsText, 10, screenHeight-25)
 }
 
 func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
