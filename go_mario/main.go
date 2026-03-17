@@ -15,22 +15,50 @@ const (
 	groundHeight = 100
 )
 
+type Cloud struct {
+	x     float32
+	y     float32
+	size  float32
+	speed float32
+}
+
 type Game struct {
-	playerX   float64
-	playerY   float64
+	playerX    float64
+	playerY    float64
 	frameCount int
+	clouds     []Cloud
 }
 
 func NewGame() *Game {
+	// Initialize clouds with random positions and speeds
+	clouds := []Cloud{
+		{x: 100, y: 80, size: 60, speed: 0.3},
+		{x: 300, y: 120, size: 50, speed: 0.5},
+		{x: 550, y: 60, size: 70, speed: 0.2},
+		{x: 700, y: 100, size: 45, speed: 0.4},
+	}
+	
 	return &Game{
-		playerX:   100,
-		playerY:   screenHeight - groundHeight - 50,
+		playerX:    100,
+		playerY:    screenHeight - groundHeight - 50,
 		frameCount: 0,
+		clouds:     clouds,
 	}
 }
 
 func (g *Game) Update() error {
 	g.frameCount++
+	
+	// Update cloud positions
+	for i := range g.clouds {
+		g.clouds[i].x += g.clouds[i].speed
+		
+		// Wrap around when cloud goes off screen
+		if g.clouds[i].x - g.clouds[i].size > screenWidth {
+			g.clouds[i].x = -g.clouds[i].size
+		}
+	}
+	
 	return nil
 }
 
@@ -53,9 +81,6 @@ func (g *Game) drawSun(screen *ebiten.Image) {
 	sunX := float32(screenWidth - 80)
 	sunY := float32(80)
 	sunRadius := float32(40)
-
-	// Outer glow (lighter yellow)
-	vector.DrawFilledCircle(screen, sunX, sunY, sunRadius+10, color.RGBA{255, 255, 200, 100}, false)
 
 	// Main sun body (bright yellow)
 	vector.DrawFilledCircle(screen, sunX, sunY, sunRadius, color.RGBA{255, 255, 0, 255}, false)
@@ -107,17 +132,13 @@ func (g *Game) drawSun(screen *ebiten.Image) {
 }
 
 func (g *Game) drawClouds(screen *ebiten.Image) {
-	// Cloud 1 (left)
-	g.drawCloud(screen, 100, 80, 60)
-	// Cloud 2 (center-left)
-	g.drawCloud(screen, 300, 120, 50)
-	// Cloud 3 (center-right)
-	g.drawCloud(screen, 550, 60, 70)
-	// Cloud 4 (right)
-	g.drawCloud(screen, 700, 100, 45)
+	// Draw all clouds from the clouds array
+	for _, cloud := range g.clouds {
+		g.drawCloud(screen, cloud.x, cloud.y, cloud.size)
+	}
 }
 
-func (g *Game) drawCloud(screen *ebiten.Image, x, y, size int) {
+func (g *Game) drawCloud(screen *ebiten.Image, x, y, size float32) {
 	xFloat := float32(x)
 	yFloat := float32(y)
 	sizeFloat := float32(size)
