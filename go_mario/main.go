@@ -69,13 +69,17 @@ func NewGame() *Game {
 }
 
 func createTree(x, y float32, height float32) Tree {
-	// Create apples at random positions in the tree canopy
+	// Calculate trunk height and canopy position
+	trunkHeight := height * 0.6
+	canopyY := y - trunkHeight - 10
+	
+	// Create apples at positions within the tree canopy
 	apples := []Apple{
-		{x: x - 25, y: y - height + 20, offset: 0},
-		{x: x + 30, y: y - height + 15, offset: 0.5},
-		{x: x, y: y - height + 35, offset: 1.0},
-		{x: x - 15, y: y - height + 45, offset: 1.5},
-		{x: x + 20, y: y - height + 40, offset: 2.0},
+		{x: x - 25, y: canopyY + 20, offset: 0},
+		{x: x + 30, y: canopyY + 15, offset: 0.5},
+		{x: x, y: canopyY + 35, offset: 1.0},
+		{x: x - 15, y: canopyY + 45, offset: 1.5},
+		{x: x + 20, y: canopyY + 40, offset: 2.0},
 	}
 	
 	return Tree{
@@ -233,32 +237,34 @@ func (g *Game) drawTree(screen *ebiten.Image, tree Tree) {
 func (g *Game) drawTreeTrunk(screen *ebiten.Image, x, y, height float32) {
 	trunkWidth := float32(20)
 	trunkHeight := height * 0.6
-	
-	// Main trunk (brown)
+
+	// Main trunk (brown) - extends from ground up
 	trunkColor := color.RGBA{101, 67, 33, 255}
-	vector.DrawFilledRect(screen, x-trunkWidth/2, y-height+trunkHeight, trunkWidth, trunkHeight, trunkColor, false)
-	
+	vector.DrawFilledRect(screen, x-trunkWidth/2, y-trunkHeight, trunkWidth, trunkHeight, trunkColor, false)
+
 	// Bark texture (darker lines)
 	barkColor := color.RGBA{60, 40, 20, 255}
 	for i := 0; i < 3; i++ {
-		lineY := y - height + trunkHeight + float32(i)*8
+		lineY := y - trunkHeight + float32(i)*8 + 5
 		vector.StrokeLine(screen, x-trunkWidth/2+3, lineY, x+trunkWidth/2-3, lineY+2, 2, barkColor, false)
 	}
 }
 
 func (g *Game) drawTreeCanopy(screen *ebiten.Image, x, y, height float32) {
-	canopyY := y - height
+	// Position canopy at top of trunk (not floating)
+	trunkHeight := height * 0.6
+	canopyY := y - trunkHeight - 10 // Sit on top of trunk with slight overlap
 	canopyRadius := float32(50)
-	
+
 	// Main foliage (dark green)
 	foliageColor := color.RGBA{34, 139, 34, 255}
 	vector.DrawFilledCircle(screen, x, canopyY, canopyRadius, foliageColor, false)
-	
+
 	// Add depth with overlapping circles
 	vector.DrawFilledCircle(screen, x-25, canopyY+10, canopyRadius-15, foliageColor, false)
 	vector.DrawFilledCircle(screen, x+25, canopyY+10, canopyRadius-15, foliageColor, false)
 	vector.DrawFilledCircle(screen, x, canopyY-15, canopyRadius-20, foliageColor, false)
-	
+
 	// Lighter green highlights for volume
 	highlightColor := color.RGBA{100, 180, 100, 255}
 	vector.DrawFilledCircle(screen, x-15, canopyY-10, 15, highlightColor, false)
