@@ -34,6 +34,31 @@ const (
 	Night
 )
 
+type Weather int
+
+const (
+	Clear Weather = iota
+	Stormy
+)
+
+type Raindrop struct {
+	x      float32
+	y      float32
+	speed  float32
+	length float32
+}
+
+type Lightning struct {
+	active    bool
+	timer     int
+	branches  []LightningBranch
+}
+
+type LightningBranch struct {
+	points []struct{ x, y float32 }
+	width  float32
+}
+
 type Cloud struct {
 	x     float32
 	y     float32
@@ -83,9 +108,13 @@ type Game struct {
 	player     Player
 	state      GameState
 	timeOfDay  TimeOfDay
+	weather    Weather
 	stars      []Star
 	moonX      float32
 	moonY      float32
+	raindrops  []Raindrop
+	lightning  Lightning
+	stormClouds []Cloud
 }
 
 func NewGame() *Game {
@@ -95,6 +124,26 @@ func NewGame() *Game {
 		{x: 300, y: 120, size: 50, speed: 0.5},
 		{x: 550, y: 60, size: 70, speed: 0.2},
 		{x: 700, y: 100, size: 45, speed: 0.4},
+	}
+
+	// Initialize storm clouds (dark, for stormy weather)
+	stormClouds := []Cloud{
+		{x: 50, y: 30, size: 80, speed: 0.4},
+		{x: 200, y: 50, size: 100, speed: 0.3},
+		{x: 400, y: 20, size: 90, speed: 0.5},
+		{x: 600, y: 40, size: 85, speed: 0.35},
+		{x: 750, y: 25, size: 75, speed: 0.4},
+	}
+
+	// Initialize raindrops
+	raindrops := make([]Raindrop, 300)
+	for i := range raindrops {
+		raindrops[i] = Raindrop{
+			x:      float32(i%30) * 27,
+			y:      float32(i%20) * 30,
+			speed:  float32(i%5+10) + float32(i%3)*2,
+			length: float32(i%10+10),
+		}
 	}
 
 	// Initialize apple trees
@@ -133,13 +182,17 @@ func NewGame() *Game {
 		playerY:    screenHeight - groundHeight - 50,
 		frameCount: 0,
 		clouds:     clouds,
+		stormClouds: stormClouds,
 		trees:      trees,
 		player:     player,
 		state:      Menu,
 		timeOfDay:  Day,
+		weather:    Clear,
 		stars:      stars,
 		moonX:      100,
 		moonY:      80,
+		raindrops:  raindrops,
+		lightning:  Lightning{active: false, timer: 0, branches: []LightningBranch{}},
 	}
 }
 
@@ -175,6 +228,13 @@ func (g *Game) Update() error {
 		if inpututil.IsKeyJustPressed(ebiten.KeyArrowDown) {
 			g.timeOfDay = Night
 		}
+		// Navigate weather with Left/Right arrows
+		if inpututil.IsKeyJustPressed(ebiten.KeyArrowLeft) {
+			g.weather = Clear
+		}
+		if inpututil.IsKeyJustPressed(ebiten.KeyArrowRight) {
+			g.weather = Stormy
+		}
 		// Start game with Enter or Space
 		if inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeySpace) {
 			g.state = Playing
@@ -192,6 +252,28 @@ func (g *Game) Update() error {
 		if g.clouds[i].x - g.clouds[i].size > screenWidth {
 			g.clouds[i].x = -g.clouds[i].size
 		}
+	}
+
+	// Update storm clouds
+	for i := range g.stormClouds {
+		g.stormClouds[i].x += g.stormClouds[i].speed
+		if g.stormClouds[i].x - g.stormClouds[i].size > screenWidth {
+			g.stormClouds[i].x = -g.stormClouds[i].size
+		}
+	}
+
+	// Update raindrops
+	for i := range g.raindrops {
+		g.raindrops[i].y += g.raindrops[i].speed
+		if g.raindrops[i].y > screenHeight {
+			g.raindrops[i].y = -g.raindrops[i].length
+			g.raindrops[i].x = float32(g.frameCount%30 + i%10) * 27
+		}
+	}
+
+	// Update lightning
+	if g.weather == Stormy {
+		g.updateLightning()
 	}
 
 	// Update apple sway animation
@@ -245,6 +327,47 @@ func (g *Game) Update() error {
 	return nil
 }
 
+func (g *Game) updateLightning() {
+	if g.lightning.active {
+		g.lightning.timer--
+		if g.lightning.timer <= 0 {
+			g.lightning.active = false
+			g.lightning.branches = []LightningBranch{}
+		}
+	} else {
+		// Random lightning strike (about every 3-8 seconds)
+		if g.frameCount%180 == 0 && math.Sin(float64(g.frameCount)*0.01) > 0.3 {
+			g.lightning.active = true
+			g.lightning.timer = 10 // frames
+			g.generateLightning()
+		}
+	}
+}
+
+func (g *Game) generateLightning() {
+	// Create lightning bolt from sky
+	startX := float32(math.Sin(float64(g.frameCount)*0.1)*screenWidth/2 + screenWidth/2)
+	startY := float32(0)
+	
+	var points []struct{ x, y float32 }
+	points = append(points, struct{ x, y float32 }{startX, startY})
+	
+	currentX := startX
+	currentY := startY
+	
+	for currentY < screenHeight {
+		currentY += float32(math.Sin(float64(g.frameCount)*0.2)*20 + 30)
+		// Zigzag pattern
+		offset := float32(math.Sin(float64(currentY)*0.1) * 40)
+		currentX += offset
+		points = append(points, struct{ x, y float32 }{currentX, currentY})
+	}
+	
+	g.lightning.branches = []LightningBranch{
+		{points: points, width: 3},
+	}
+}
+
 func (g *Game) checkAppleCollection() {
 	playerRect := struct {
 		x, y, w, h float32
@@ -283,17 +406,17 @@ func (g *Game) drawMenu(screen *ebiten.Image) {
 	// Title
 	title := "GO MARIO"
 	titleX := screenWidth/2 - len(title)*12
-	ebitenutil.DebugPrintAt(screen, title, titleX, 100)
+	ebitenutil.DebugPrintAt(screen, title, titleX, 80)
 
 	// Subtitle
 	subtitle := "A 2D Platformer Game"
 	subX := screenWidth/2 - len(subtitle)*6
-	ebitenutil.DebugPrintAt(screen, subtitle, subX, 140)
+	ebitenutil.DebugPrintAt(screen, subtitle, subX, 115)
 
 	// Time of day selection header
 	header := "Select Time of Day"
 	headerX := screenWidth/2 - len(header)*8
-	ebitenutil.DebugPrintAt(screen, header, headerX, 220)
+	ebitenutil.DebugPrintAt(screen, header, headerX, 170)
 
 	// Day option
 	dayText := "  [↑] DAY   - Sunny day with blue sky and clouds"
@@ -302,7 +425,7 @@ func (g *Game) drawMenu(screen *ebiten.Image) {
 		dayText = ">> [↑] DAY   - Sunny day with blue sky and clouds <<"
 		dayX = screenWidth/2 - len(dayText)*6
 	}
-	ebitenutil.DebugPrintAt(screen, dayText, dayX, 280)
+	ebitenutil.DebugPrintAt(screen, dayText, dayX, 210)
 
 	// Night option
 	nightText := "  [↓] NIGHT - Starry sky with Milky Way and moon"
@@ -311,12 +434,35 @@ func (g *Game) drawMenu(screen *ebiten.Image) {
 		nightText = ">> [↓] NIGHT - Starry sky with Milky Way and moon <<"
 		nightX = screenWidth/2 - len(nightText)*6
 	}
-	ebitenutil.DebugPrintAt(screen, nightText, nightX, 320)
+	ebitenutil.DebugPrintAt(screen, nightText, nightX, 245)
+
+	// Weather selection header
+	weatherHeader := "Select Weather"
+	weatherHeaderX := screenWidth/2 - len(weatherHeader)*8
+	ebitenutil.DebugPrintAt(screen, weatherHeader, weatherHeaderX, 295)
+
+	// Clear weather option
+	clearText := "  [←] CLEAR  - Clear sunny weather"
+	clearX := screenWidth/2 - len(clearText)*6
+	if g.weather == Clear {
+		clearText = ">> [←] CLEAR  - Clear sunny weather <<"
+		clearX = screenWidth/2 - len(clearText)*6
+	}
+	ebitenutil.DebugPrintAt(screen, clearText, clearX, 335)
+
+	// Stormy weather option
+	stormyText := "  [→] STORMY - Rain, thunder, and lightning"
+	stormyX := screenWidth/2 - len(stormyText)*6
+	if g.weather == Stormy {
+		stormyText = ">> [→] STORMY - Rain, thunder, and lightning <<"
+		stormyX = screenWidth/2 - len(stormyText)*6
+	}
+	ebitenutil.DebugPrintAt(screen, stormyText, stormyX, 370)
 
 	// Start prompt
 	startText := "Press ENTER or SPACE to Start"
 	startX := screenWidth/2 - len(startText)*8
-	ebitenutil.DebugPrintAt(screen, startText, startX, 420)
+	ebitenutil.DebugPrintAt(screen, startText, startX, 440)
 
 	// Controls info
 	controls := []string{
@@ -327,13 +473,91 @@ func (g *Game) drawMenu(screen *ebiten.Image) {
 		"Collect apples from trees!",
 	}
 	for i, line := range controls {
-		ebitenutil.DebugPrintAt(screen, line, screenWidth/2-100, 470+i*22)
+		ebitenutil.DebugPrintAt(screen, line, screenWidth/2-100, 490+i*22)
 	}
 }
 
 func (g *Game) drawDaySky(screen *ebiten.Image) {
 	// Blue daytime sky
 	screen.Fill(color.RGBA{135, 206, 235, 255})
+}
+
+func (g *Game) drawStormySky(screen *ebiten.Image) {
+	// Dark stormy sky gradient (gray-blue)
+	screen.Fill(color.RGBA{50, 55, 70, 255})
+}
+
+func (g *Game) drawStormClouds(screen *ebiten.Image) {
+	// Draw dark storm clouds
+	for _, cloud := range g.stormClouds {
+		g.drawStormCloud(screen, cloud)
+	}
+}
+
+func (g *Game) drawStormCloud(screen *ebiten.Image, cloud Cloud) {
+	xFloat := cloud.x
+	yFloat := cloud.y
+	sizeFloat := cloud.size
+
+	// Storm cloud color (dark gray)
+	cloudColor := color.RGBA{60, 60, 70, 255}
+
+	// Main cloud body (multiple overlapping circles for fluffy look)
+	vector.DrawFilledCircle(screen, xFloat-sizeFloat/3, yFloat+sizeFloat/6, sizeFloat/3, cloudColor, false)
+	vector.DrawFilledCircle(screen, xFloat, yFloat+sizeFloat/4, sizeFloat/2.5, cloudColor, false)
+	vector.DrawFilledCircle(screen, xFloat+sizeFloat/2, yFloat+sizeFloat/6, sizeFloat/3.5, cloudColor, false)
+	vector.DrawFilledCircle(screen, xFloat-sizeFloat/6, yFloat-sizeFloat/6, sizeFloat/3, cloudColor, false)
+	vector.DrawFilledCircle(screen, xFloat, yFloat-sizeFloat/8, sizeFloat/2, cloudColor, false)
+	vector.DrawFilledCircle(screen, xFloat+sizeFloat/3, yFloat-sizeFloat/6, sizeFloat/3.5, cloudColor, false)
+
+	// Lighter gray highlights for depth
+	highlightColor := color.RGBA{80, 80, 90, 255}
+	vector.DrawFilledCircle(screen, xFloat-10, yFloat-5, sizeFloat/4, highlightColor, false)
+}
+
+func (g *Game) drawRain(screen *ebiten.Image) {
+	// Draw raindrops
+	rainColor := color.RGBA{150, 170, 200, 150}
+	for _, drop := range g.raindrops {
+		vector.StrokeLine(screen,
+			drop.x, drop.y,
+			drop.x, drop.y+drop.length,
+			1, rainColor, false)
+	}
+}
+
+func (g *Game) drawLightning(screen *ebiten.Image) {
+	if !g.lightning.active {
+		return
+	}
+
+	// Flash effect - brighten entire screen
+	flashAlpha := uint8(100 + g.lightning.timer*10)
+	if flashAlpha > 255 {
+		flashAlpha = 255
+	}
+	screen.Fill(color.RGBA{255, 255, 255, flashAlpha})
+
+	// Draw lightning bolt
+	for _, branch := range g.lightning.branches {
+		if len(branch.points) < 2 {
+			continue
+		}
+
+		// Outer glow (bright white)
+		for i := 0; i < len(branch.points)-1; i++ {
+			p1 := branch.points[i]
+			p2 := branch.points[i+1]
+			vector.StrokeLine(screen, p1.x, p1.y, p2.x, p2.y, branch.width+4, color.RGBA{255, 255, 255, 150}, false)
+		}
+
+		// Inner bright core (yellow-white)
+		for i := 0; i < len(branch.points)-1; i++ {
+			p1 := branch.points[i]
+			p2 := branch.points[i+1]
+			vector.StrokeLine(screen, p1.x, p1.y, p2.x, p2.y, branch.width, color.RGBA{255, 255, 200, 255}, false)
+		}
+	}
 }
 
 func (g *Game) drawNightSky(screen *ebiten.Image) {
@@ -392,21 +616,28 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		return
 	}
 
-	// Draw sky based on time of day
-	if g.timeOfDay == Day {
+	// Draw sky based on time of day and weather
+	if g.weather == Stormy {
+		g.drawStormySky(screen)
+	} else if g.timeOfDay == Day {
 		g.drawDaySky(screen)
 	} else {
 		g.drawNightSky(screen)
 	}
 
-	// Draw sun (day only)
-	if g.timeOfDay == Day {
+	// Draw sun (day only, clear weather)
+	if g.timeOfDay == Day && g.weather == Clear {
 		g.drawSun(screen)
 	}
 
-	// Draw clouds (day only)
-	if g.timeOfDay == Day {
+	// Draw clouds (day only, clear weather)
+	if g.timeOfDay == Day && g.weather == Clear {
 		g.drawClouds(screen)
+	}
+
+	// Draw storm clouds (stormy weather)
+	if g.weather == Stormy {
+		g.drawStormClouds(screen)
 	}
 
 	// Draw trees
@@ -417,6 +648,12 @@ func (g *Game) Draw(screen *ebiten.Image) {
 
 	// Draw ground
 	g.drawGround(screen)
+
+	// Draw rain (stormy weather)
+	if g.weather == Stormy {
+		g.drawRain(screen)
+		g.drawLightning(screen)
+	}
 
 	// Draw UI (score)
 	g.drawUI(screen)
@@ -710,6 +947,13 @@ func (g *Game) drawUI(screen *ebiten.Image) {
 		timeText = "Time: Night"
 	}
 	ebitenutil.DebugPrintAt(screen, timeText, 10, 25)
+
+	// Weather indicator
+	weatherText := "Weather: Clear"
+	if g.weather == Stormy {
+		weatherText = "Weather: Stormy"
+	}
+	ebitenutil.DebugPrintAt(screen, weatherText, 10, 40)
 
 	// Controls hint
 	controlsText := "Arrow Keys/WASD: Move | Space/W/Up: Jump"
