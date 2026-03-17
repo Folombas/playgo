@@ -533,19 +533,23 @@ func (g *Game) drawHouse(screen *ebiten.Image) {
 	wallColor := color.RGBA{245, 230, 200, 255}
 	vector.DrawFilledRect(screen, h.x, h.y-h.height, h.width, h.height, wallColor, false)
 
-	// Draw gabled roof (red-brown)
+	// Draw gabled roof (red-brown) - peak at top
 	roofColor := color.RGBA{139, 69, 50, 255}
 	roofPeakY := h.y - h.height - 50
-	// Left roof slope
-	vector.StrokeLine(screen, h.x-10, h.y-h.height, h.x+h.width/2, roofPeakY, 15, roofColor, false)
-	// Right roof slope
-	vector.StrokeLine(screen, h.x+h.width+10, h.y-h.height, h.x+h.width/2, roofPeakY, 15, roofColor, false)
-	// Fill roof triangle
-	for i := 0; i < 50; i++ {
-		y := h.y - h.height - float32(i)
-		xOffset := float32(i) * (h.width/2 + 10) / 50
-		vector.StrokeLine(screen, h.x-xOffset+10, y, h.x+h.width+xOffset-10, y, 1, roofColor, false)
+	
+	// Fill roof triangle first (draw from peak down to base)
+	for i := 0; i <= 50; i++ {
+		y := roofPeakY + float32(i)
+		progress := float32(i) / 50.0
+		xLeft := h.x + (h.width/2) - (h.width/2+10)*(1-progress)
+		xRight := h.x + (h.width/2) + (h.width/2+10)*(1-progress)
+		vector.StrokeLine(screen, xLeft, y, xRight, y, 1, roofColor, false)
 	}
+	
+	// Left roof slope (outline)
+	vector.StrokeLine(screen, h.x-10, h.y-h.height, h.x+h.width/2, roofPeakY, 15, roofColor, false)
+	// Right roof slope (outline)
+	vector.StrokeLine(screen, h.x+h.width+10, h.y-h.height, h.x+h.width/2, roofPeakY, 15, roofColor, false)
 
 	// Draw chimney (dark gray)
 	chimneyColor := color.RGBA{80, 80, 80, 255}
