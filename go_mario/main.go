@@ -3,6 +3,7 @@ package main
 import (
 	"image/color"
 	"log"
+	"math"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/vector"
@@ -15,18 +16,21 @@ const (
 )
 
 type Game struct {
-	playerX float64
-	playerY float64
+	playerX   float64
+	playerY   float64
+	frameCount int
 }
 
 func NewGame() *Game {
 	return &Game{
-		playerX: 100,
-		playerY: screenHeight - groundHeight - 50,
+		playerX:   100,
+		playerY:   screenHeight - groundHeight - 50,
+		frameCount: 0,
 	}
 }
 
 func (g *Game) Update() error {
+	g.frameCount++
 	return nil
 }
 
@@ -59,16 +63,46 @@ func (g *Game) drawSun(screen *ebiten.Image) {
 	// Inner bright core
 	vector.DrawFilledCircle(screen, sunX, sunY, sunRadius-10, color.RGBA{255, 255, 150, 255}, false)
 
-	// Sun rays (8 rays around the sun)
-	rayLength := float32(15)
-	rayWidth := float32(3)
-	for i := 0; i < 8; i++ {
-		angle := float32(i) * 3.14159 / 4
-		rayStartX := sunX + (sunRadius+5)*angle
-		rayStartY := sunY + (sunRadius+5)*angle
-		rayEndX := sunX + (sunRadius+rayLength)*angle
-		rayEndY := sunY + (sunRadius+rayLength)*angle
-		vector.StrokeLine(screen, rayStartX, rayStartY, rayEndX, rayEndY, rayWidth, color.RGBA{255, 255, 100, 200}, false)
+	// Animated sun rays (16 rays with pulsing effect)
+	// Rays rotate slowly and pulse in/out
+	rayBaseLength := float32(20)
+	pulseSpeed := 0.05
+	
+	for i := 0; i < 16; i++ {
+		// Base angle for this ray
+		baseAngle := float32(i) * 2 * math.Pi / 16
+		
+		// Add slow rotation
+		rotationOffset := float32(g.frameCount) * 0.01
+		angle := baseAngle + rotationOffset
+		
+		// Each ray pulses with a phase offset for wave effect
+		rayPhase := float32(math.Sin(float64(g.frameCount)*pulseSpeed + float64(i)*0.4))
+		rayLength := rayBaseLength + rayPhase*10
+		
+		// Ray width pulses too
+		rayWidth := float32(2 + rayPhase*1.5)
+		
+		// Calculate ray start and end positions
+		rayStartX := sunX + (sunRadius+3)*float32(math.Cos(float64(angle)))
+		rayStartY := sunY + (sunRadius+3)*float32(math.Sin(float64(angle)))
+		rayEndX := sunX + (sunRadius+rayLength)*float32(math.Cos(float64(angle)))
+		rayEndY := sunY + (sunRadius+rayLength)*float32(math.Sin(float64(angle)))
+		
+		// Ray color with pulsing alpha
+		alpha := uint8(150 + rayPhase*50)
+		rayColor := color.RGBA{255, 255, 100, alpha}
+		
+		vector.StrokeLine(screen, float32(rayStartX), float32(rayStartY), float32(rayEndX), float32(rayEndY), rayWidth, rayColor, false)
+	}
+	
+	// Inner rotating glow ring
+	ringPhase := float32(g.frameCount) * 0.02
+	for i := 0; i < 3; i++ {
+		ringAngle := ringPhase + float32(i)*2*math.Pi/3
+		ringX := sunX + (sunRadius-5)*float32(math.Cos(float64(ringAngle)))
+		ringY := sunY + (sunRadius-5)*float32(math.Sin(float64(ringAngle)))
+		vector.DrawFilledCircle(screen, float32(ringX), float32(ringY), 3, color.RGBA{255, 255, 200, 200}, false)
 	}
 }
 
