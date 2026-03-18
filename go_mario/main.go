@@ -363,6 +363,25 @@ type Achievement struct {
 	unlockDate  int
 }
 
+// ShopItem - товар в магазине
+type ShopItem struct {
+	id          int
+	name        string
+	description string
+	price       int
+	priceGem    int // цена в кристаллах
+	category    int // 0 = семена, 1 = инструменты, 2 = улучшения
+	purchased   bool
+	maxPurchases int
+}
+
+// Shop - магазин
+type Shop struct {
+	items      []ShopItem
+	selected   int
+	open       bool
+}
+
 type Cloud struct {
 	x     float32
 	y     float32
@@ -502,6 +521,7 @@ type Game struct {
 	achievements []Achievement
 	season       Season
 	shopOpen     bool
+	shop         Shop
 }
 
 func NewGame() *Game {
@@ -656,6 +676,20 @@ func NewGame() *Game {
 		{id: 5, name: "Исследователь", description: "Посетить все уровни", unlocked: false},
 	}
 
+	// Initialize shop
+	shop := Shop{
+		items: []ShopItem{
+			{id: 1, name: "Семена морковки", description: "5 семян", price: 10, priceGem: 0, category: 0, maxPurchases: 999},
+			{id: 2, name: "Семена репы", description: "3 семени", price: 25, priceGem: 0, category: 0, maxPurchases: 999},
+			{id: 3, name: "Удобрение", description: "Ускоряет рост", price: 50, priceGem: 5, category: 0, maxPurchases: 20},
+			{id: 4, name: "Лейка XL", description: "Больше воды", price: 100, priceGem: 10, category: 1, maxPurchases: 1},
+			{id: 5, name: "Сердце", description: "+1 жизнь", price: 200, priceGem: 20, category: 2, maxPurchases: 5},
+			{id: 6, name: "Кристалл", description: "5 кристаллов", price: 50, priceGem: 0, category: 2, maxPurchases: 999},
+		},
+		selected: 0,
+		open:     false,
+	}
+
 	// Initialize quests
 	quests := []Quest{
 		{
@@ -804,6 +838,7 @@ func NewGame() *Game {
 		achievements: achievements,
 		season:     Spring,
 		shopOpen:   false,
+		shop:       shop,
 	}
 }
 
@@ -1084,6 +1119,9 @@ func (g *Game) Update() error {
 
 	// Update season
 	g.updateSeason()
+
+	// Update shop
+	g.updateShop()
 
 	return nil
 }
@@ -1850,6 +1888,162 @@ func (g *Game) updateSeason() {
 	if g.frameCount%1800 == 0 {
 		g.season = Season((int(g.season) + 1) % 4)
 	}
+}
+
+// updateShop - обработка магазина
+func (g *Game) updateShop() {
+	// Open/close shop with S key
+	if inpututil.IsKeyJustPressed(ebiten.KeyS) && g.state == Playing {
+		g.shop.open = !g.shop.open
+	}
+
+	if !g.shop.open {
+		return
+	}
+
+	// Navigate shop items
+	if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) || inpututil.IsKeyJustPressed(ebiten.KeyW) {
+		g.shop.selected--
+		if g.shop.selected < 0 {
+			g.shop.selected = len(g.shop.items) - 1
+		}
+	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyArrowDown) || inpututil.IsKeyJustPressed(ebiten.KeyD) {
+		g.shop.selected++
+		if g.shop.selected >= len(g.shop.items) {
+			g.shop.selected = 0
+		}
+	}
+
+	// Purchase item with Enter
+	if inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
+		g.buyItem()
+	}
+
+	// Close shop with ESC
+	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
+		g.shop.open = false
+	}
+}
+
+// buyItem - покупка предмета
+func (g *Game) buyItem() {
+	if g.shop.selected < 0 || g.shop.selected >= len(g.shop.items) {
+		return
+	}
+
+	item := &g.shop.items[g.shop.selected]
+
+	// Check if can purchase
+	if item.purchased && item.maxPurchases == 1 {
+		return // Already purchased unlimited item
+	}
+
+	// Check currency
+	canAfford := false
+	if item.priceGem > 0 && g.gems >= item.priceGem {
+		canAfford = true
+	} else if item.price > 0 && g.coins >= item.price {
+		canAfford = true
+	}
+
+	if !canAfford {
+		return
+	}
+
+	// Purchase
+	if item.priceGem > 0 {
+		g.gems -= item.priceGem
+	} else {
+		g.coins -= item.price
+	}
+
+	// Apply item effect
+	switch item.id {
+	case 1: // Seeds
+		g.inventory.seeds += 5
+	case 2: // Turnip seeds
+		g.inventory.seeds += 3
+	case 3: // Fertilizer
+		// Speed up all growing carrots
+		for i := range g.carrotPlots {
+			if g.carrotPlots[i].hasCarrot && g.carrotPlots[i].stage != Ready {
+				g.carrotPlots[i].growthTimer += 100
+			}
+		}
+	case 4: // Watering Can XL
+		// Already have it
+	case 5: // Heart
+		g.lives++
+	case 6: // Crystal
+		g.gems += 5
+	}
+
+	item.purchased = true
+	if item.maxPurchases > 1 {
+		item.purchased = false // Allow repurchase
+	}
+
+	g.spawnCollectParticles(screenWidth/2, screenHeight/2)
+	g.audio.PlayCollect()
+}
+
+// drawShop - отрисовка магазина
+func (g *Game) drawShop(screen *ebiten.Image) {
+	if !g.shop.open {
+		return
+	}
+
+	// Background
+	vector.DrawFilledRect(screen, 200, 100, 400, 400, color.RGBA{0, 0, 0, 220}, false)
+	vector.DrawFilledRect(screen, 200, 100, 400, 30, color.RGBA{139, 69, 19, 255}, false)
+
+	// Title
+	ebitenutil.DebugPrintAt(screen, "=== SHOP ===", 280, 108)
+
+	// Player currency
+	ebitenutil.DebugPrintAt(screen, fmt.Sprintf("Coins: %d | Gems: %d", g.coins, g.gems), 220, 140)
+
+	// Items
+	for i, item := range g.shop.items {
+		y := 170 + i*50
+		highlight := false
+		if i == g.shop.selected {
+			highlight = true
+			vector.DrawFilledRect(screen, 210, float32(y-5), 380, 45, color.RGBA{255, 255, 0, 50}, false)
+		}
+
+		// Item name
+		nameColor := "white"
+		if highlight {
+			nameColor = "yellow"
+		}
+		_ = nameColor
+		ebitenutil.DebugPrintAt(screen, item.name, 220, y)
+
+		// Description
+		ebitenutil.DebugPrintAt(screen, item.description, 220, y+15)
+
+		// Price
+		priceText := ""
+		if item.priceGem > 0 {
+			priceText = fmt.Sprintf("%d gems", item.priceGem)
+		} else {
+			priceText = fmt.Sprintf("%d coins", item.price)
+		}
+		ebitenutil.DebugPrintAt(screen, priceText, 450, y)
+
+		// Stock
+		if item.maxPurchases == 1 && item.purchased {
+			ebitenutil.DebugPrintAt(screen, "SOLD", 550, y)
+		}
+	}
+
+	// Controls
+	ebitenutil.DebugPrintAt(screen, "UP/DOWN: Navigate | ENTER: Buy | ESC: Close", 220, 520)
+
+	// Hint
+	ebitenutil.DebugPrintAt(screen, "Press S to open/close shop", 10, screenHeight-40)
 }
 
 // spawnBossAttackParticles - частицы атаки босса
@@ -2922,6 +3116,9 @@ func (g *Game) Draw(screen *ebiten.Image) {
 
 	// Draw particles
 	g.drawParticles(screen)
+
+	// Draw shop
+	g.drawShop(screen)
 }
 
 func (g *Game) drawSun(screen *ebiten.Image) {
