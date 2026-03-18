@@ -6,7 +6,6 @@ import (
 	"math"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/audio"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"github.com/hajimehoshi/ebiten/v2/vector"
@@ -129,141 +128,27 @@ type Player struct {
 	animFrame int
 }
 
-// AudioSystem manages sound effects and music
+// AudioSystem - заглушка для системы звуков (отключена в среде без аудио)
 type AudioSystem struct {
-	jumpSound    *audio.Player
-	collectSound *audio.Player
-	enterSound   *audio.Player
-	thunderSound *audio.Player
+	enabled bool
 }
 
-// NewAudioSystem creates and initializes the audio system
+// NewAudioSystem создаёт заглушку аудио системы
 func NewAudioSystem() *AudioSystem {
-	audioContext := audio.NewContext(44100)
-	
-	as := &AudioSystem{}
-	
-	// Generate simple sound effects programmatically
-	as.jumpSound = as.generateJumpSound(audioContext)
-	as.collectSound = as.generateCollectSound(audioContext)
-	as.enterSound = as.generateEnterSound(audioContext)
-	as.thunderSound = as.generateThunderSound(audioContext)
-	
-	return as
+	return &AudioSystem{enabled: false}
 }
 
-// generateJumpSound creates a jump sound effect
-func (as *AudioSystem) generateJumpSound(ctx *audio.Context) *audio.Player {
-	// Create a simple beep sound - rising frequency
-	sampleRate := 44100
-	duration := sampleRate / 10 // 0.1 seconds
-	data := make([]byte, duration*2)
-	
-	for i := 0; i < duration; i++ {
-		// Rising frequency sweep
-		t := float64(i) / float64(sampleRate)
-		freq := 300.0 + t*800.0
-		value := int16(math.Sin(2*math.Pi*freq*t) * (1.0 - float64(i)/float64(duration)) * 32767 / 2)
-		data[i*2] = byte(value)
-		data[i*2+1] = byte(value >> 8)
-	}
-	
-	player := ctx.NewPlayerFromBytes(data)
-	return player
-}
+// PlayJump - заглушка
+func (as *AudioSystem) PlayJump() {}
 
-// generateCollectSound creates a coin collection sound effect
-func (as *AudioSystem) generateCollectSound(ctx *audio.Context) *audio.Player {
-	sampleRate := 44100
-	duration := sampleRate / 8 // 0.125 seconds
-	data := make([]byte, duration*2)
-	
-	for i := 0; i < duration; i++ {
-		// High pitched "ding" sound
-		t := float64(i) / float64(sampleRate)
-		freq := 880.0 + math.Sin(t*50)*50 // Slight vibrato
-		value := int16(math.Sin(2*math.Pi*freq*t) * (1.0 - float64(i)/float64(duration)) * 32767 / 3)
-		data[i*2] = byte(value)
-		data[i*2+1] = byte(value >> 8)
-	}
-	
-	player := ctx.NewPlayerFromBytes(data)
-	return player
-}
+// PlayCollect - заглушка
+func (as *AudioSystem) PlayCollect() {}
 
-// generateEnterSound creates a door entry sound effect
-func (as *AudioSystem) generateEnterSound(ctx *audio.Context) *audio.Player {
-	sampleRate := 44100
-	duration := sampleRate / 5 // 0.2 seconds
-	data := make([]byte, duration*2)
-	
-	for i := 0; i < duration; i++ {
-		// Low to mid frequency sweep (whoosh)
-		t := float64(i) / float64(sampleRate)
-		freq := 200.0 + t*400.0
-		value := int16(math.Sin(2*math.Pi*freq*t) * (1.0 - float64(i)/float64(duration)) * 32767 / 4)
-		data[i*2] = byte(value)
-		data[i*2+1] = byte(value >> 8)
-	}
-	
-	player := ctx.NewPlayerFromBytes(data)
-	return player
-}
+// PlayEnter - заглушка
+func (as *AudioSystem) PlayEnter() {}
 
-// generateThunderSound creates a thunder sound effect
-func (as *AudioSystem) generateThunderSound(ctx *audio.Context) *audio.Player {
-	sampleRate := 44100
-	duration := sampleRate / 2 // 0.5 seconds
-	data := make([]byte, duration*2)
-	
-	for i := 0; i < duration; i++ {
-		// Low rumbling noise
-		t := float64(i) / float64(sampleRate)
-		// Combine multiple low frequencies for rumble effect
-		value := float64(0)
-		value += math.Sin(2*math.Pi*60*t) * 0.5
-		value += math.Sin(2*math.Pi*80*t) * 0.3
-		value += math.Sin(2*math.Pi*100*t) * 0.2
-		value *= (1.0 - float64(i)/float64(duration)) * 32767 / 2
-		data[i*2] = byte(int16(value))
-		data[i*2+1] = byte(int16(value) >> 8)
-	}
-	
-	player := ctx.NewPlayerFromBytes(data)
-	return player
-}
-
-// PlayJump plays the jump sound effect
-func (as *AudioSystem) PlayJump() {
-	if as.jumpSound != nil {
-		as.jumpSound.Rewind()
-		as.jumpSound.Play()
-	}
-}
-
-// PlayCollect plays the collect sound effect
-func (as *AudioSystem) PlayCollect() {
-	if as.collectSound != nil {
-		as.collectSound.Rewind()
-		as.collectSound.Play()
-	}
-}
-
-// PlayEnter plays the enter sound effect
-func (as *AudioSystem) PlayEnter() {
-	if as.enterSound != nil {
-		as.enterSound.Rewind()
-		as.enterSound.Play()
-	}
-}
-
-// PlayThunder plays the thunder sound effect
-func (as *AudioSystem) PlayThunder() {
-	if as.thunderSound != nil {
-		as.thunderSound.Rewind()
-		as.thunderSound.Play()
-	}
-}
+// PlayThunder - заглушка
+func (as *AudioSystem) PlayThunder() {}
 
 type Game struct {
 	playerX    float64
