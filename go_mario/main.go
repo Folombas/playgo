@@ -167,6 +167,38 @@ type Bench struct {
 	height float32
 }
 
+// NPCType - тип NPC
+type NPCType int
+
+const (
+	RabbitNPC NPCType = iota
+	FoxNPC
+	BearNPC
+)
+
+// NPC - неигровой персонаж
+type NPC struct {
+	x          float32
+	y          float32
+	width      float32
+	height     float32
+	npcType    NPCType
+	name       string
+	dialogues  []string
+	currentDialog int
+	facing     int // -1 = left, 1 = right
+	animFrame  int
+}
+
+// DialogueBox - окно диалога
+type DialogueBox struct {
+	active       bool
+	text         string
+	lineHeight   int
+	currentLine  int
+	lines        []string
+}
+
 type Cloud struct {
 	x     float32
 	y     float32
@@ -250,6 +282,8 @@ type Game struct {
 	fences     []Fence
 	well       Well
 	bench      Bench
+	npcs       []NPC
+	dialogueBox DialogueBox
 	audio      *AudioSystem
 	carrotPlots []CarrotPlot
 	inventory  Inventory
@@ -347,6 +381,49 @@ func NewGame() *Game {
 		height: 30,
 	}
 
+	// Initialize NPCs
+	npcs := []NPC{
+		{
+			x:          450,
+			y:          float32(screenHeight - groundHeight - 40),
+			width:      30,
+			height:     40,
+			npcType:    RabbitNPC,
+			name:       "Баба Капа",
+			dialogues:  []string{
+				"Привет, зайчик! Как твой урожай?",
+				"Морковка любит воду, не забывай поливать!",
+				"Я видела, у тебя хорошо растёт. Молодец!",
+			},
+			currentDialog: 0,
+			facing:        -1,
+			animFrame:     0,
+		},
+		{
+			x:          100,
+			y:          float32(screenHeight - groundHeight - 40),
+			width:      30,
+			height:     40,
+			npcType:    FoxNPC,
+			name:       "Лиса Патрикеевна",
+			dialogues:  []string{
+				"Какая у тебя красивая морковка!",
+				"Я люблю свежую морковку, угостишь?",
+				"Спасибо! Вот тебе совет: следи за индикаторами.",
+			},
+			currentDialog: 0,
+			facing:        1,
+			animFrame:     0,
+		},
+	}
+
+	// Initialize dialogue box
+	dialogueBox := DialogueBox{
+		active:      false,
+		lineHeight:  20,
+		currentLine: 0,
+	}
+
 	// Initialize raindrops
 	raindrops := make([]Raindrop, 300)
 	for i := range raindrops {
@@ -437,6 +514,8 @@ func NewGame() *Game {
 		fences:     fences,
 		well:       well,
 		bench:      bench,
+		npcs:       npcs,
+		dialogueBox: dialogueBox,
 		audio:      NewAudioSystem(),
 		carrotPlots: carrotPlots,
 		inventory:  inventory,
@@ -611,6 +690,12 @@ func (g *Game) Update() error {
 
 	// Handle tool selection and plot interaction
 	g.handleCarrotPlotInteraction()
+
+	// Handle NPC interaction
+	g.handleNPCInteraction()
+
+	// Update dialogue
+	g.updateDialogue()
 
 	return nil
 }
@@ -882,6 +967,66 @@ func (g *Game) harvestCarrot(plot *CarrotPlot) {
 	plot.isWatered = false
 	plot.needsWater = true
 	g.audio.PlayCollect()
+}
+
+// handleNPCInteraction - обработка взаимодействия с NPC
+func (g *Game) handleNPCInteraction() {
+	// Открытие диалога с NPC (клавиша E)
+	if inpututil.IsKeyJustPressed(ebiten.KeyE) && g.state == Playing && !g.dialogueBox.active {
+		g.startDialogue()
+	}
+	
+	// Переключение реплик в диалоге (Space или Enter)
+	if g.dialogueBox.active {
+		if inpututil.IsKeyJustPressed(ebiten.KeySpace) || inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
+			g.nextDialogueLine()
+		}
+	}
+}
+
+// startDialogue - начало диалога с ближайшим NPC
+func (g *Game) startDialogue() {
+	playerCX := float32(g.player.x) + g.player.width/2
+	playerCY := float32(g.player.y) + g.player.height/2
+	
+	for i := range g.npcs {
+		npc := &g.npcs[i]
+		npcCX := npc.x + npc.width/2
+		npcCY := npc.y + npc.height/2
+		
+		dx := playerCX - npcCX
+		dy := playerCY - npcCY
+		dist := float32(math.Sqrt(float64(dx*dx + dy*dy)))
+		
+		if dist < 60 {
+			// Игрок рядом с NPC
+			g.dialogueBox.active = true
+			g.dialogueBox.lines = npc.dialogues
+			g.dialogueBox.currentLine = npc.currentDialog
+			g.dialogueBox.text = npc.dialogues[npc.currentDialog]
+			npc.currentDialog = (npc.currentDialog + 1) % len(npc.dialogues)
+			return
+		}
+	}
+}
+
+// nextDialogueLine - следующая реплика в диалоге
+func (g *Game) nextDialogueLine() {
+	g.dialogueBox.currentLine++
+	if g.dialogueBox.currentLine >= len(g.dialogueBox.lines) {
+		g.dialogueBox.active = false
+		g.dialogueBox.currentLine = 0
+	} else {
+		g.dialogueBox.text = g.dialogueBox.lines[g.dialogueBox.currentLine]
+	}
+}
+
+// updateDialogue - обновление диалога (автозакрытие по таймеру)
+func (g *Game) updateDialogue() {
+	// Закрытие диалога по ESC
+	if g.dialogueBox.active && inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
+		g.dialogueBox.active = false
+	}
 }
 
 func (g *Game) drawDaySky(screen *ebiten.Image) {
@@ -1172,6 +1317,190 @@ func (g *Game) drawBench(screen *ebiten.Image) {
 	woodLineColor := color.RGBA{100, 50, 20, 255}
 	vector.StrokeLine(screen, b.x+5, b.y+5, b.x+b.width-5, b.y+5, 1, woodLineColor, false)
 	vector.StrokeLine(screen, b.x+5, b.y-16, b.x+b.width-5, b.y-16, 1, woodLineColor, false)
+}
+
+// drawNPCs - отрисовка NPC
+func (g *Game) drawNPCs(screen *ebiten.Image) {
+	for i := range g.npcs {
+		g.drawNPC(screen, &g.npcs[i])
+	}
+}
+
+// drawNPC - отрисовка одного NPC
+func (g *Game) drawNPC(screen *ebiten.Image, npc *NPC) {
+	x := npc.x
+	y := npc.y
+	w := npc.width
+	h := npc.height
+
+	// Draw based on NPC type
+	switch npc.npcType {
+	case RabbitNPC:
+		g.drawRabbitNPC(screen, x, y, w, h, npc.facing)
+	case FoxNPC:
+		g.drawFoxNPC(screen, x, y, w, h, npc.facing)
+	case BearNPC:
+		g.drawBearNPC(screen, x, y, w, h, npc.facing)
+	}
+
+	// Draw name tag
+	g.drawNPCNameTag(screen, npc)
+}
+
+// drawRabbitNPC - отрисовка кролика NPC
+func (g *Game) drawRabbitNPC(screen *ebiten.Image, x, y, w, h float32, facing int) {
+	// Body (light brown)
+	bodyColor := color.RGBA{200, 180, 160, 255}
+	vector.DrawFilledRect(screen, x+5, y+15, w-10, h-15, bodyColor, false)
+
+	// Head
+	headY := y + 10
+	headX := x + w/2
+	vector.DrawFilledCircle(screen, headX, headY, 12, bodyColor, false)
+
+	// Ears (long, pink inside)
+	earColor := color.RGBA{200, 180, 160, 255}
+	earInnerColor := color.RGBA{255, 180, 180, 255}
+
+	leftEarX := headX - 4
+	leftEarY := headY - 8
+	vector.DrawFilledRect(screen, leftEarX-3, leftEarY-15, 6, 18, earColor, false)
+	vector.DrawFilledRect(screen, leftEarX-1, leftEarY-12, 2, 10, earInnerColor, false)
+
+	rightEarX := headX + 4
+	rightEarY := headY - 8
+	vector.DrawFilledRect(screen, rightEarX-3, rightEarY-15, 6, 18, earColor, false)
+	vector.DrawFilledRect(screen, rightEarX-1, rightEarY-12, 2, 10, earInnerColor, false)
+
+	// Eyes
+	eyeOffset := facing * 3
+	vector.DrawFilledCircle(screen, headX-4+float32(eyeOffset), headY+2, 4, color.RGBA{0, 0, 0, 255}, false)
+	vector.DrawFilledCircle(screen, headX+4+float32(eyeOffset), headY+2, 4, color.RGBA{0, 0, 0, 255}, false)
+
+	// Nose (pink)
+	vector.DrawFilledCircle(screen, headX+float32(facing*2), headY+8, 2, color.RGBA{255, 180, 180, 255}, false)
+
+	// Legs
+	vector.DrawFilledCircle(screen, x+10, y+h-5, 5, bodyColor, false)
+	vector.DrawFilledCircle(screen, x+w-10, y+h-5, 5, bodyColor, false)
+}
+
+// drawFoxNPC - отрисовка лисы NPC
+func (g *Game) drawFoxNPC(screen *ebiten.Image, x, y, w, h float32, facing int) {
+	// Body (orange)
+	bodyColor := color.RGBA{255, 140, 0, 255}
+	vector.DrawFilledRect(screen, x+5, y+15, w-10, h-15, bodyColor, false)
+
+	// Head
+	headY := y + 10
+	headX := x + w/2
+	vector.DrawFilledCircle(screen, headX, headY, 12, bodyColor, false)
+
+	// Pointed ears
+	earColor := color.RGBA{255, 140, 0, 255}
+	leftEarX := headX - 5
+	leftEarY := headY - 8
+	// Left ear triangle
+	vector.DrawFilledCircle(screen, leftEarX, leftEarY-8, 5, earColor, false)
+	// Right ear triangle
+	rightEarX := headX + 5
+	rightEarY := headY - 8
+	vector.DrawFilledCircle(screen, rightEarX, rightEarY-8, 5, earColor, false)
+
+	// Eyes (black with cunning look)
+	eyeOffset := facing * 3
+	vector.DrawFilledCircle(screen, headX-4+float32(eyeOffset), headY+2, 4, color.RGBA{0, 0, 0, 255}, false)
+	vector.DrawFilledCircle(screen, headX+4+float32(eyeOffset), headY+2, 4, color.RGBA{0, 0, 0, 255}, false)
+
+	// Snout (white)
+	vector.DrawFilledCircle(screen, headX+float32(facing*3), headY+6, 6, color.RGBA{255, 255, 240, 255}, false)
+
+	// Nose (black)
+	vector.DrawFilledCircle(screen, headX+float32(facing*5), headY+8, 2, color.RGBA{0, 0, 0, 255}, false)
+
+	// Bushy tail
+	tailX := x - 5
+	if facing == 1 {
+		tailX = x + w + 5
+	}
+	vector.DrawFilledCircle(screen, tailX, y+h/2, 8, bodyColor, false)
+
+	// Legs
+	vector.DrawFilledCircle(screen, x+10, y+h-5, 5, bodyColor, false)
+	vector.DrawFilledCircle(screen, x+w-10, y+h-5, 5, bodyColor, false)
+}
+
+// drawBearNPC - отрисовка медведя NPC
+func (g *Game) drawBearNPC(screen *ebiten.Image, x, y, w, h float32, facing int) {
+	// Body (dark brown)
+	bodyColor := color.RGBA{101, 67, 33, 255}
+	vector.DrawFilledRect(screen, x+2, y+10, w-4, h-10, bodyColor, false)
+
+	// Head (large round)
+	headY := y + 8
+	headX := x + w/2
+	vector.DrawFilledCircle(screen, headX, headY, 14, bodyColor, false)
+
+	// Round ears
+	earColor := color.RGBA{101, 67, 33, 255}
+	vector.DrawFilledCircle(screen, headX-6, headY-10, 5, earColor, false)
+	vector.DrawFilledCircle(screen, headX+6, headY-10, 5, earColor, false)
+
+	// Lighter snout
+	snoutColor := color.RGBA{150, 100, 60, 255}
+	vector.DrawFilledCircle(screen, headX, headY+8, 8, snoutColor, false)
+
+	// Eyes (small black)
+	vector.DrawFilledCircle(screen, headX-4, headY, 3, color.RGBA{0, 0, 0, 255}, false)
+	vector.DrawFilledCircle(screen, headX+4, headY, 3, color.RGBA{0, 0, 0, 255}, false)
+
+	// Nose (black, large)
+	vector.DrawFilledCircle(screen, headX, headY+10, 4, color.RGBA{0, 0, 0, 255}, false)
+
+	// Legs (thick)
+	vector.DrawFilledCircle(screen, x+8, y+h-5, 6, bodyColor, false)
+	vector.DrawFilledCircle(screen, x+w-8, y+h-5, 6, bodyColor, false)
+}
+
+// drawNPCNameTag - отрисовка имени NPC
+func (g *Game) drawNPCNameTag(screen *ebiten.Image, npc *NPC) {
+	nameX := int(npc.x + npc.width/2) - len(npc.name)*5
+	nameY := int(npc.y - 10)
+	ebitenutil.DebugPrintAt(screen, npc.name, nameX, nameY)
+}
+
+// drawDialogueBox - отрисовка окна диалога
+func (g *Game) drawDialogueBox(screen *ebiten.Image) {
+	// Dialogue box background (dark semi-transparent)
+	boxX, boxY := float32(50), float32(screenHeight-100)
+	boxW, boxH := float32(screenWidth-100), float32(90)
+
+	vector.DrawFilledRect(screen, boxX, boxY, boxW, boxH, color.RGBA{0, 0, 0, 200}, false)
+
+	// Border (white)
+	vector.StrokeRect(screen, boxX, boxY, boxW, boxH, 2, color.RGBA{255, 255, 255, 255}, false)
+
+	// Speaker name
+	speakerName := "???"
+	for _, npc := range g.npcs {
+		if npc.dialogues[g.dialogueBox.currentLine] == g.dialogueBox.text {
+			speakerName = npc.name
+			break
+		}
+	}
+	ebitenutil.DebugPrintAt(screen, speakerName+":", int(boxX+10), int(boxY+10))
+
+	// Dialogue text
+	textY := int(boxY + 35)
+	ebitenutil.DebugPrintAt(screen, g.dialogueBox.text, int(boxX+10), textY)
+
+	// Continue hint (blinking)
+	if g.frameCount%60 < 30 {
+		continueHint := "▼ Press Space to continue"
+		hintX := int(boxX + boxW - 150)
+		hintY := int(boxY + boxH - 25)
+		ebitenutil.DebugPrintAt(screen, continueHint, hintX, hintY)
+	}
 }
 
 func (g *Game) updateAndDrawSmoke(screen *ebiten.Image) {
@@ -1719,6 +2048,9 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	g.drawWell(screen)
 	g.drawBench(screen)
 
+	// Draw NPCs
+	g.drawNPCs(screen)
+
 	// Draw player (bunny)
 	g.drawPlayer(screen)
 
@@ -1729,6 +2061,11 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	if g.weather == Stormy {
 		g.drawRain(screen)
 		g.drawLightning(screen)
+	}
+
+	// Draw dialogue box
+	if g.dialogueBox.active {
+		g.drawDialogueBox(screen)
 	}
 
 	// Draw UI (score)
