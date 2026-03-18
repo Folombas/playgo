@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"image/color"
 	"log"
 	"math"
@@ -199,6 +200,29 @@ type DialogueBox struct {
 	lines        []string
 }
 
+// QuestStatus - статус квеста
+type QuestStatus int
+
+const (
+	QuestAvailable QuestStatus = iota
+	QuestInProgress
+	QuestCompleted
+	QuestClaimed
+)
+
+// Quest - квест/задание
+type Quest struct {
+	id          int
+	name        string
+	description string
+	giver       string // имя NPC
+	targetCount int    // требуемое количество
+	currentCount int   // текущее количество
+	reward      int    // награда (очки)
+	status      QuestStatus
+	questType   int    // 0 = собрать морковку, 1 = посадить морковку
+}
+
 type Cloud struct {
 	x     float32
 	y     float32
@@ -284,6 +308,8 @@ type Game struct {
 	bench      Bench
 	npcs       []NPC
 	dialogueBox DialogueBox
+	quests     []Quest
+	activeQuest int // индекс активного квеста
 	audio      *AudioSystem
 	carrotPlots []CarrotPlot
 	inventory  Inventory
@@ -424,6 +450,43 @@ func NewGame() *Game {
 		currentLine: 0,
 	}
 
+	// Initialize quests
+	quests := []Quest{
+		{
+			id:          1,
+			name:        "Первый урожай",
+			description: "Собери 3 морковки с огорода",
+			giver:       "Баба Капа",
+			targetCount: 3,
+			currentCount: 0,
+			reward:      50,
+			status:      QuestAvailable,
+			questType:   0,
+		},
+		{
+			id:          2,
+			name:        "Юный фермер",
+			description: "Посади 5 семян морковки",
+			giver:       "Лиса Патрикеевна",
+			targetCount: 5,
+			currentCount: 0,
+			reward:      30,
+			status:      QuestAvailable,
+			questType:   1,
+		},
+		{
+			id:          3,
+			name:        "Богатый урожай",
+			description: "Собери 10 морковок",
+			giver:       "Баба Капа",
+			targetCount: 10,
+			currentCount: 0,
+			reward:      100,
+			status:      QuestAvailable,
+			questType:   0,
+		},
+	}
+
 	// Initialize raindrops
 	raindrops := make([]Raindrop, 300)
 	for i := range raindrops {
@@ -516,6 +579,8 @@ func NewGame() *Game {
 		bench:      bench,
 		npcs:       npcs,
 		dialogueBox: dialogueBox,
+		quests:     quests,
+		activeQuest: -1,
 		audio:      NewAudioSystem(),
 		carrotPlots: carrotPlots,
 		inventory:  inventory,
@@ -696,6 +761,10 @@ func (g *Game) Update() error {
 
 	// Update dialogue
 	g.updateDialogue()
+
+	// Update quests
+	g.updateQuests()
+	g.checkQuestCompletion()
 
 	return nil
 }
@@ -1026,6 +1095,56 @@ func (g *Game) updateDialogue() {
 	// Закрытие диалога по ESC
 	if g.dialogueBox.active && inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
 		g.dialogueBox.active = false
+	}
+}
+
+// updateQuests - обновление прогресса квестов
+func (g *Game) updateQuests() {
+	for i := range g.quests {
+		quest := &g.quests[i]
+		
+		if quest.status == QuestCompleted || quest.status == QuestClaimed {
+			continue
+		}
+		
+		// Проверка прогресса
+		if quest.questType == 0 {
+			// Квест на сбор морковки
+			if g.inventory.carrots >= quest.targetCount {
+				quest.status = QuestCompleted
+			}
+			quest.currentCount = g.inventory.carrots
+			if quest.currentCount > quest.targetCount {
+				quest.currentCount = quest.targetCount
+			}
+		} else if quest.questType == 1 {
+			// Квест на посадку - проверяем количество посаженных грядок
+			plantedCount := 0
+			for _, plot := range g.carrotPlots {
+				if plot.hasCarrot && plot.stage != Seed {
+					plantedCount++
+				}
+			}
+			if plantedCount >= quest.targetCount {
+				quest.status = QuestCompleted
+			}
+			quest.currentCount = plantedCount
+			if quest.currentCount > quest.targetCount {
+				quest.currentCount = quest.targetCount
+			}
+		}
+	}
+}
+
+// checkQuestCompletion - проверка и уведомление о завершении квеста
+func (g *Game) checkQuestCompletion() {
+	for i := range g.quests {
+		quest := &g.quests[i]
+		if quest.status == QuestCompleted {
+			// Квест выполнен, можно забрать награду
+			quest.status = QuestClaimed
+			g.player.score += quest.reward
+		}
 	}
 }
 
@@ -2070,6 +2189,9 @@ func (g *Game) Draw(screen *ebiten.Image) {
 
 	// Draw UI (score)
 	g.drawUI(screen)
+
+	// Draw quests UI
+	g.drawQuestsUI(screen)
 }
 
 func (g *Game) drawSun(screen *ebiten.Image) {
@@ -2395,6 +2517,46 @@ func (g *Game) drawInventoryUI(screen *ebiten.Image) {
 	
 	// Carrots count
 	ebitenutil.DebugPrintAt(screen, "Carrots: "+string(rune('0'+g.inventory.carrots)), int(invX+110), int(toolY+4))
+}
+
+// drawQuestsUI - отрисовка интерфейса квестов
+func (g *Game) drawQuestsUI(screen *ebiten.Image) {
+	questX, questY := float32(screenWidth-220), float32(10)
+	
+	// Title
+	ebitenutil.DebugPrintAt(screen, "=== Quests ===", int(questX), int(questY))
+	
+	// Draw active quests
+	for i := range g.quests {
+		quest := &g.quests[i]
+		if quest.status == QuestClaimed {
+			continue // Не показывать выполненные
+		}
+		
+		y := int(questY) + 20 + i*50
+		
+		// Quest background
+		bgColor := color.RGBA{0, 0, 0, 100}
+		if quest.status == QuestCompleted {
+			bgColor = color.RGBA{0, 100, 0, 150} // Зелёный для завершённых
+		}
+		vector.DrawFilledRect(screen, questX, float32(y-5), 210, 45, bgColor, false)
+		
+		// Quest name
+		status := ""
+		if quest.status == QuestCompleted {
+			status = " [Готово!]"
+		}
+		ebitenutil.DebugPrintAt(screen, quest.name+status, int(questX+5), y)
+		
+		// Progress
+		progress := fmt.Sprintf("%d/%d", quest.currentCount, quest.targetCount)
+		ebitenutil.DebugPrintAt(screen, progress, int(questX+5), y+15)
+		
+		// Reward
+		reward := fmt.Sprintf("Reward: +%d", quest.reward)
+		ebitenutil.DebugPrintAt(screen, reward, int(questX+120), y+15)
+	}
 }
 
 func (g *Game) drawGround(screen *ebiten.Image) {
