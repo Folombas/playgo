@@ -263,7 +263,7 @@ type Player struct {
 	animFrame int
 }
 
-// AudioSystem - заглушка для системы звуков (отключена в среде без аудио)
+// AudioSystem - система звуков (заглушка для сред без аудио)
 type AudioSystem struct {
 	enabled bool
 }
@@ -273,17 +273,50 @@ func NewAudioSystem() *AudioSystem {
 	return &AudioSystem{enabled: false}
 }
 
-// PlayJump - заглушка
-func (as *AudioSystem) PlayJump() {}
+// PlayJump - звук прыжка
+func (as *AudioSystem) PlayJump() {
+	// TODO: реализовать звук прыжка
+}
 
-// PlayCollect - заглушка
-func (as *AudioSystem) PlayCollect() {}
+// PlayCollect - звук сбора предмета
+func (as *AudioSystem) PlayCollect() {
+	// TODO: реализовать звук сбора
+}
 
-// PlayEnter - заглушка
-func (as *AudioSystem) PlayEnter() {}
+// PlayEnter - звук входа в дом
+func (as *AudioSystem) PlayEnter() {
+	// TODO: реализовать звук входа
+}
 
-// PlayThunder - заглушка
-func (as *AudioSystem) PlayThunder() {}
+// PlayThunder - звук грома
+func (as *AudioSystem) PlayThunder() {
+	// TODO: реализовать звук грома
+}
+
+// PlayRain - звук дождя
+func (as *AudioSystem) PlayRain() {
+	// TODO: реализовать звук дождя
+}
+
+// PlayPlant - звук посадки семени
+func (as *AudioSystem) PlayPlant() {
+	// TODO: реализовать звук посадки
+}
+
+// PlayWater - звук полива
+func (as *AudioSystem) PlayWater() {
+	// TODO: реализовать звук полива
+}
+
+// PlayHarvest - звук сбора урожая
+func (as *AudioSystem) PlayHarvest() {
+	// TODO: реализовать звук сбора урожая
+}
+
+// PlayQuestComplete - звук выполнения квеста
+func (as *AudioSystem) PlayQuestComplete() {
+	// TODO: реализовать звук выполнения квеста
+}
 
 type Game struct {
 	playerX    float64
@@ -1010,6 +1043,7 @@ func (g *Game) plantSeed(plot *CarrotPlot) {
 	plot.growthTimer = 0
 	plot.needsWater = true
 	plot.isWatered = false
+	g.audio.PlayPlant()
 }
 
 // waterPlot - полив грядки
@@ -1020,6 +1054,7 @@ func (g *Game) waterPlot(plot *CarrotPlot) {
 	
 	plot.isWatered = true
 	plot.needsWater = false
+	g.audio.PlayWater()
 }
 
 // harvestCarrot - сбор урожая
@@ -1035,6 +1070,7 @@ func (g *Game) harvestCarrot(plot *CarrotPlot) {
 	plot.growthTimer = 0
 	plot.isWatered = false
 	plot.needsWater = true
+	g.audio.PlayHarvest()
 	g.audio.PlayCollect()
 }
 
@@ -1144,6 +1180,7 @@ func (g *Game) checkQuestCompletion() {
 			// Квест выполнен, можно забрать награду
 			quest.status = QuestClaimed
 			g.player.score += quest.reward
+			g.audio.PlayQuestComplete()
 		}
 	}
 }
@@ -2028,6 +2065,11 @@ func (g *Game) drawRain(screen *ebiten.Image) {
 			drop.x, drop.y,
 			drop.x, drop.y+drop.length,
 			1, rainColor, false)
+	}
+	
+	// Play rain sound (every 60 frames to avoid spam)
+	if g.frameCount%60 == 0 {
+		g.audio.PlayRain()
 	}
 }
 
