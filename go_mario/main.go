@@ -382,6 +382,25 @@ type Shop struct {
 	open       bool
 }
 
+// SecretZone - секретная зона
+type SecretZone struct {
+	x        float32
+	y        float32
+	width    float32
+	height   float32
+	discovered bool
+	reward   int
+	message  string
+}
+
+// EasterEgg - пасхалка
+type EasterEgg struct {
+	id        int
+	triggered bool
+	message   string
+	effect    int // 0 = текст, 1 = частицы, 2 = звук
+}
+
 type Cloud struct {
 	x     float32
 	y     float32
@@ -522,6 +541,8 @@ type Game struct {
 	season       Season
 	shopOpen     bool
 	shop         Shop
+	secretZones  []SecretZone
+	easterEggs   []EasterEgg
 }
 
 func NewGame() *Game {
@@ -690,6 +711,19 @@ func NewGame() *Game {
 		open:     false,
 	}
 
+	// Initialize secret zones
+	secretZones := []SecretZone{
+		{x: 700, y: 200, width: 50, height: 50, discovered: false, reward: 100, message: "Secret found! +100 coins"},
+		{x: 50, y: 150, width: 40, height: 40, discovered: false, reward: 50, message: "Hidden stash! +50 coins"},
+	}
+
+	// Initialize easter eggs
+	easterEggs := []EasterEgg{
+		{id: 1, triggered: false, message: "Konami Code!", effect: 1},
+		{id: 2, triggered: false, message: "Jump 100 times!", effect: 0},
+		{id: 3, triggered: false, message: "Developer Mode: ON", effect: 2},
+	}
+
 	// Initialize quests
 	quests := []Quest{
 		{
@@ -839,6 +873,8 @@ func NewGame() *Game {
 		season:     Spring,
 		shopOpen:   false,
 		shop:       shop,
+		secretZones: secretZones,
+		easterEggs: easterEggs,
 	}
 }
 
@@ -1122,6 +1158,12 @@ func (g *Game) Update() error {
 
 	// Update shop
 	g.updateShop()
+
+	// Update secret zones
+	g.updateSecretZones()
+
+	// Update easter eggs
+	g.updateEasterEggs()
 
 	return nil
 }
@@ -2007,18 +2049,11 @@ func (g *Game) drawShop(screen *ebiten.Image) {
 	// Items
 	for i, item := range g.shop.items {
 		y := 170 + i*50
-		highlight := false
 		if i == g.shop.selected {
-			highlight = true
 			vector.DrawFilledRect(screen, 210, float32(y-5), 380, 45, color.RGBA{255, 255, 0, 50}, false)
 		}
 
 		// Item name
-		nameColor := "white"
-		if highlight {
-			nameColor = "yellow"
-		}
-		_ = nameColor
 		ebitenutil.DebugPrintAt(screen, item.name, 220, y)
 
 		// Description
@@ -2044,6 +2079,84 @@ func (g *Game) drawShop(screen *ebiten.Image) {
 
 	// Hint
 	ebitenutil.DebugPrintAt(screen, "Press S to open/close shop", 10, screenHeight-40)
+}
+
+// updateSecretZones - обновление секретных зон
+func (g *Game) updateSecretZones() {
+	playerRect := struct{ x, y, w, h float32 }{
+		x: float32(g.player.x), y: float32(g.player.y),
+		w: g.player.width, h: g.player.height,
+	}
+
+	for i := range g.secretZones {
+		zone := &g.secretZones[i]
+		if zone.discovered {
+			continue
+		}
+
+		zoneRect := struct{ x, y, w, h float32 }{
+			x: zone.x, y: zone.y, w: zone.width, h: zone.height,
+		}
+
+		if rectCollision(playerRect, zoneRect) {
+			zone.discovered = true
+			g.coins += zone.reward
+			g.spawnQuestCompleteParticles(zone.x, zone.y)
+			g.unlockAchievement(5) // Исследователь
+		}
+	}
+}
+
+// updateEasterEggs - обработка пасхалок
+func (g *Game) updateEasterEggs() {
+	// Konami Code: ↑↑↓↓←→←→BA
+	// Simplified: Press 'X' 10 times rapidly
+	if inpututil.IsKeyJustPressed(ebiten.KeyX) {
+		for i := range g.easterEggs {
+			if g.easterEggs[i].id == 1 && !g.easterEggs[i].triggered {
+				g.easterEggs[i].triggered = true
+				g.spawnQuestCompleteParticles(screenWidth/2, screenHeight/2)
+			}
+		}
+	}
+
+	// Jump 100 times
+	if g.player.score >= 100 { // Using score as jump counter proxy
+		for i := range g.easterEggs {
+			if g.easterEggs[i].id == 2 && !g.easterEggs[i].triggered {
+				g.easterEggs[i].triggered = true
+				g.coins += 50
+			}
+		}
+	}
+}
+
+// drawSecretZones - отрисовка секретных зон
+func (g *Game) drawSecretZones(screen *ebiten.Image) {
+	for _, zone := range g.secretZones {
+		if zone.discovered {
+			continue
+		}
+
+		// Subtle glow effect
+		alpha := uint8(50 + math.Sin(float64(g.frameCount)*0.1)*50)
+		glowColor := color.RGBA{255, 215, 0, alpha}
+		vector.DrawFilledCircle(screen, zone.x+zone.width/2, zone.y+zone.height/2, 10, glowColor, false)
+	}
+}
+
+// drawEasterEggs - отрисовка пасхалок
+func (g *Game) drawEasterEggs(screen *ebiten.Image) {
+	for _, egg := range g.easterEggs {
+		if !egg.triggered {
+			continue
+		}
+
+		// Show triggered message briefly
+		if g.frameCount%300 < 180 { // Show for 3 seconds
+			ebitenutil.DebugPrintAt(screen, "🎉 "+egg.message, screenWidth/2-100, 100)
+		}
+	}
 }
 
 // spawnBossAttackParticles - частицы атаки босса
@@ -3119,6 +3232,12 @@ func (g *Game) Draw(screen *ebiten.Image) {
 
 	// Draw shop
 	g.drawShop(screen)
+
+	// Draw secret zones
+	g.drawSecretZones(screen)
+
+	// Draw easter eggs
+	g.drawEasterEggs(screen)
 }
 
 func (g *Game) drawSun(screen *ebiten.Image) {
