@@ -223,6 +223,31 @@ type Quest struct {
 	questType   int    // 0 = собрать морковку, 1 = посадить морковку
 }
 
+// ParticleType - тип частицы
+type ParticleType int
+
+const (
+	SparkleParticle ParticleType = iota
+	DustParticle
+	DropParticle
+	LeafParticle
+	StarParticle
+)
+
+// Particle - частица для эффектов
+type Particle struct {
+	x        float32
+	y        float32
+	vx       float32
+	vy       float32
+	size     float32
+	life     int
+	maxLife  int
+	pType    ParticleType
+	color    color.RGBA
+	gravity  float32
+}
+
 type Cloud struct {
 	x     float32
 	y     float32
@@ -343,6 +368,7 @@ type Game struct {
 	dialogueBox DialogueBox
 	quests     []Quest
 	activeQuest int // индекс активного квеста
+	particles  []Particle // система частиц
 	audio      *AudioSystem
 	carrotPlots []CarrotPlot
 	inventory  Inventory
@@ -483,6 +509,9 @@ func NewGame() *Game {
 		currentLine: 0,
 	}
 
+	// Initialize particles array
+	particles := make([]Particle, 0, 100)
+
 	// Initialize quests
 	quests := []Quest{
 		{
@@ -614,6 +643,7 @@ func NewGame() *Game {
 		dialogueBox: dialogueBox,
 		quests:     quests,
 		activeQuest: -1,
+		particles:  particles,
 		audio:      NewAudioSystem(),
 		carrotPlots: carrotPlots,
 		inventory:  inventory,
@@ -798,6 +828,9 @@ func (g *Game) Update() error {
 	// Update quests
 	g.updateQuests()
 	g.checkQuestCompletion()
+
+	// Update particles
+	g.updateParticles()
 
 	return nil
 }
@@ -1044,6 +1077,7 @@ func (g *Game) plantSeed(plot *CarrotPlot) {
 	plot.needsWater = true
 	plot.isWatered = false
 	g.audio.PlayPlant()
+	g.spawnPlantParticles(plot.x+plot.width/2, plot.y+plot.height/2)
 }
 
 // waterPlot - полив грядки
@@ -1055,6 +1089,7 @@ func (g *Game) waterPlot(plot *CarrotPlot) {
 	plot.isWatered = true
 	plot.needsWater = false
 	g.audio.PlayWater()
+	g.spawnWaterParticles(plot.x+plot.width/2, plot.y+plot.height/2)
 }
 
 // harvestCarrot - сбор урожая
@@ -1072,6 +1107,7 @@ func (g *Game) harvestCarrot(plot *CarrotPlot) {
 	plot.needsWater = true
 	g.audio.PlayHarvest()
 	g.audio.PlayCollect()
+	g.spawnHarvestParticles(plot.x+plot.width/2, plot.y+plot.height/2)
 }
 
 // handleNPCInteraction - обработка взаимодействия с NPC
@@ -1181,8 +1217,81 @@ func (g *Game) checkQuestCompletion() {
 			quest.status = QuestClaimed
 			g.player.score += quest.reward
 			g.audio.PlayQuestComplete()
+			g.spawnQuestCompleteParticles(screenWidth/2, screenHeight/2)
 		}
 	}
+}
+
+// spawnParticles - создание частиц
+func (g *Game) spawnParticles(x, y float32, count int, pType ParticleType, c color.RGBA) {
+	for i := 0; i < count; i++ {
+		particle := Particle{
+			x:       x,
+			y:       y,
+			vx:      float32(i%5-2) * 2,
+			vy:      float32(i%3-1) * 2 - 3,
+			size:    float32(i%3+2),
+			life:    0,
+			maxLife: 30 + i%20,
+			pType:   pType,
+			color:   c,
+			gravity: 0.1,
+		}
+		g.particles = append(g.particles, particle)
+	}
+}
+
+// updateParticles - обновление частиц
+func (g *Game) updateParticles() {
+	// Update all particles
+	for i := len(g.particles) - 1; i >= 0; i-- {
+		p := &g.particles[i]
+		p.x += p.vx
+		p.y += p.vy
+		p.vy += p.gravity
+		p.life++
+
+		// Remove dead particles
+		if p.life >= p.maxLife {
+			g.particles = append(g.particles[:i], g.particles[i+1:]...)
+		}
+	}
+}
+
+// drawParticles - отрисовка частиц
+func (g *Game) drawParticles(screen *ebiten.Image) {
+	for _, p := range g.particles {
+		alpha := uint8(255 - p.life*255/p.maxLife)
+		c := color.RGBA{p.color.R, p.color.G, p.color.B, alpha}
+		vector.DrawFilledCircle(screen, p.x, p.y, p.size, c, false)
+	}
+}
+
+// spawnCollectParticles - частицы при сборе предмета
+func (g *Game) spawnCollectParticles(x, y float32) {
+	g.spawnParticles(x, y, 10, SparkleParticle, color.RGBA{255, 255, 0, 255})
+}
+
+// spawnHarvestParticles - частицы при сборе урожая
+func (g *Game) spawnHarvestParticles(x, y float32) {
+	g.spawnParticles(x, y, 15, SparkleParticle, color.RGBA{255, 140, 0, 255})
+	g.spawnParticles(x, y, 5, LeafParticle, color.RGBA{34, 139, 34, 255})
+}
+
+// spawnWaterParticles - частицы при поливе
+func (g *Game) spawnWaterParticles(x, y float32) {
+	g.spawnParticles(x, y, 8, DropParticle, color.RGBA{70, 130, 180, 255})
+}
+
+// spawnPlantParticles - частицы при посадке
+func (g *Game) spawnPlantParticles(x, y float32) {
+	g.spawnParticles(x, y, 5, DustParticle, color.RGBA{139, 69, 19, 255})
+}
+
+// spawnQuestCompleteParticles - частицы при выполнении квеста
+func (g *Game) spawnQuestCompleteParticles(x, y float32) {
+	g.spawnParticles(x, y, 20, StarParticle, color.RGBA{255, 215, 0, 255})
+	g.spawnParticles(x, y, 10, SparkleParticle, color.RGBA{255, 255, 255, 255})
 }
 
 func (g *Game) drawDaySky(screen *ebiten.Image) {
@@ -2234,6 +2343,9 @@ func (g *Game) Draw(screen *ebiten.Image) {
 
 	// Draw quests UI
 	g.drawQuestsUI(screen)
+
+	// Draw particles
+	g.drawParticles(screen)
 }
 
 func (g *Game) drawSun(screen *ebiten.Image) {
