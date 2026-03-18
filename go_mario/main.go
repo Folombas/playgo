@@ -131,6 +131,19 @@ type House struct {
 	smoke     []SmokeParticle
 }
 
+type Shed struct {
+	x         float32
+	y         float32
+	width     float32
+	height    float32
+	doorX     float32
+	doorY     float32
+	doorW     float32
+	doorH     float32
+	roofX     float32
+	roofY     float32
+}
+
 type Cloud struct {
 	x     float32
 	y     float32
@@ -210,6 +223,7 @@ type Game struct {
 	lightning  Lightning
 	stormClouds []Cloud
 	house      House
+	shed       Shed
 	audio      *AudioSystem
 	carrotPlots []CarrotPlot
 	inventory  Inventory
@@ -263,8 +277,22 @@ func NewGame() *Game {
 		windowW:  30,
 		windowH:  40,
 		chimneyX: 600,
-		chimneyY: screenHeight - groundHeight - 100 - 40, // На крыше дома
+		chimneyY: screenHeight - groundHeight - 100 - 40,
 		smoke:    smoke,
+	}
+
+	// Initialize shed (tool shed near garden)
+	shed := Shed{
+		x:       200,
+		y:       screenHeight - groundHeight,
+		width:   70,
+		height:  60,
+		doorX:   220,
+		doorY:   screenHeight - groundHeight,
+		doorW:   30,
+		doorH:   40,
+		roofX:   235,
+		roofY:   screenHeight - groundHeight - 60,
 	}
 
 	// Initialize raindrops
@@ -353,6 +381,7 @@ func NewGame() *Game {
 		raindrops:  raindrops,
 		lightning:  Lightning{active: false, timer: 0, branches: []LightningBranch{}},
 		house:      house,
+		shed:       shed,
 		audio:      NewAudioSystem(),
 		carrotPlots: carrotPlots,
 		inventory:  inventory,
@@ -918,6 +947,92 @@ func (g *Game) drawHouseWindow(screen *ebiten.Image, x, y, w, h float32) {
 	}
 }
 
+// drawShed - отрисовка сарая с инструментами
+func (g *Game) drawShed(screen *ebiten.Image) {
+	s := g.shed
+
+	// Shed walls (weathered wood - grayish brown)
+	wallColor := color.RGBA{160, 120, 80, 255}
+	vector.DrawFilledRect(screen, s.x, s.y-s.height, s.width, s.height, wallColor, false)
+
+	// Wood plank lines
+	woodLineColor := color.RGBA{120, 80, 50, 255}
+	for i := 0; i < 4; i++ {
+		y := s.y - s.height + float32(i)*15 + 10
+		vector.StrokeLine(screen, s.x, y, s.x+s.width, y, 1, woodLineColor, false)
+	}
+
+	// Sloped roof (dark green)
+	roofColor := color.RGBA{60, 80, 60, 255}
+	// Roof triangle
+	for dy := float32(0); dy <= 25; dy++ {
+		progress := dy / 25
+		xLeft := s.x - 10 + progress*10
+		xRight := s.x + s.width + 10 - progress*10
+		y := s.y - s.height - dy
+		vector.StrokeLine(screen, xLeft, y, xRight, y, 1, roofColor, false)
+	}
+
+	// Door (dark brown)
+	doorColor := color.RGBA{101, 67, 33, 255}
+	vector.DrawFilledRect(screen, s.doorX, s.doorY-s.doorH, s.doorW, s.doorH, doorColor, false)
+
+	// Door frame
+	vector.StrokeRect(screen, s.doorX-2, s.doorY-s.doorH-2, s.doorW+4, s.doorH+4, 2, color.RGBA{60, 40, 20, 255}, false)
+
+	// Door handle (metal)
+	vector.DrawFilledCircle(screen, s.doorX+s.doorW-8, s.doorY-s.doorH/2, 3, color.RGBA{150, 150, 150, 255}, false)
+
+	// Tools hanging on shed wall
+	g.drawShedTools(screen, s)
+
+	// Shed foundation
+	foundationColor := color.RGBA{100, 100, 100, 255}
+	vector.DrawFilledRect(screen, s.x-5, s.y, s.width+10, 10, foundationColor, false)
+
+	// "Tools" hint
+	g.drawShedHint(screen)
+}
+
+// drawShedTools - инструменты на стене сарая
+func (g *Game) drawShedTools(screen *ebiten.Image, s Shed) {
+	// Watering can hanging on wall
+	waterX, waterY := s.x+15, s.y-s.height-25
+	// Can body
+	vector.DrawFilledCircle(screen, waterX, waterY, 8, color.RGBA{70, 130, 180, 255}, false)
+	// Spout
+	vector.StrokeLine(screen, waterX+6, waterY, waterX+15, waterY-5, 3, color.RGBA{70, 130, 180, 255}, false)
+	// Handle
+	vector.StrokeLine(screen, waterX-5, waterY-8, waterX+5, waterY-8, 2, color.RGBA{100, 100, 100, 255}, false)
+
+	// Shovel leaning on wall
+	shovelX, shovelY := s.x+s.width-20, s.y-s.height-10
+	// Handle
+	vector.StrokeLine(screen, shovelX, shovelY, shovelX+5, shovelY-50, 4, color.RGBA{139, 69, 19, 255}, false)
+	// Blade
+	vector.DrawFilledRect(screen, shovelX-5, shovelY-5, 15, 20, color.RGBA{120, 120, 120, 255}, false)
+}
+
+// drawShedHint - подсказка у сарая
+func (g *Game) drawShedHint(screen *ebiten.Image) {
+	playerCX := float32(g.player.x) + g.player.width/2
+	playerCY := float32(g.player.y) + g.player.height
+
+	shedCX := g.shed.doorX + g.shed.doorW/2
+	shedCY := g.shed.doorY
+
+	dx := playerCX - shedCX
+	dy := playerCY - shedCY
+	dist := float32(math.Sqrt(float64(dx*dx + dy*dy)))
+
+	if dist < 80 {
+		hintText := "Tools: 1=Seeds 2=Water 3=Harvest"
+		hintX := int(shedCX) - len(hintText)*6
+		hintY := int(g.shed.y - g.shed.height - 40)
+		ebitenutil.DebugPrintAt(screen, hintText, hintX, hintY)
+	}
+}
+
 func (g *Game) updateAndDrawSmoke(screen *ebiten.Image) {
 	h := g.house
 	chimneyTopX := h.chimneyX + 10
@@ -1448,6 +1563,9 @@ func (g *Game) Draw(screen *ebiten.Image) {
 
 	// Draw house
 	g.drawHouse(screen)
+
+	// Draw shed
+	g.drawShed(screen)
 
 	// Draw trees
 	g.drawTrees(screen)
