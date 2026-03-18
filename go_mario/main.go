@@ -248,6 +248,121 @@ type Particle struct {
 	gravity  float32
 }
 
+// LevelType - тип уровня/локации
+type LevelType int
+
+const (
+	GardenLevel LevelType = iota
+	ForestLevel
+	CaveLevel
+	VillageLevel
+)
+
+// Level - структура уровня
+type Level struct {
+	id            int
+	name          string
+	levelType     LevelType
+	background    color.RGBA
+	platforms     []Platform
+	enemies       []Enemy
+	collectibles  []Collectible
+	exitX         float32
+	exitY         float32
+	exitW         float32
+	exitH         float32
+	entryX        float32
+	entryY        float32
+	hasBoss       bool
+	boss          *Boss
+}
+
+// Platform - платформа
+type Platform struct {
+	x      float32
+	y      float32
+	width  float32
+	height float32
+	solid  bool
+}
+
+// EnemyType - тип врага
+type EnemyType int
+
+const (
+	WolfEnemy EnemyType = iota
+	TrapEnemy
+	BatEnemy
+)
+
+// Enemy - враг
+type Enemy struct {
+	x         float32
+	y         float32
+	width     float32
+	height    float32
+	vx        float32
+	vy        float32
+	eType     EnemyType
+	health    int
+	damage    int
+	patrolMin float32
+	patrolMax float32
+	animFrame int
+}
+
+// Boss - босс
+type Boss struct {
+	x           float32
+	y           float32
+	width       float32
+	height      float32
+	health      int
+	maxHealth   int
+	phase       int
+	attackTimer int
+	pattern     int
+}
+
+// CollectibleType - тип собираемого предмета
+type CollectibleType int
+
+const (
+	CoinCollectible CollectibleType = iota
+	HeartCollectible
+	MushroomCollectible
+	GemCollectible
+)
+
+// Collectible - собираемый предмет
+type Collectible struct {
+	x        float32
+	y        float32
+	cType    CollectibleType
+	value    int
+	collected bool
+	animOffset float32
+}
+
+// Season - время года
+type Season int
+
+const (
+	Spring Season = iota
+	Summer
+	Autumn
+	Winter
+)
+
+// Achievement - достижение
+type Achievement struct {
+	id          int
+	name        string
+	description string
+	unlocked    bool
+	unlockDate  int
+}
+
 type Cloud struct {
 	x     float32
 	y     float32
@@ -373,6 +488,20 @@ type Game struct {
 	carrotPlots []CarrotPlot
 	inventory  Inventory
 	currentTool Tool
+	
+	// New fields for expanded gameplay
+	currentLevel LevelType
+	levels       map[LevelType]*Level
+	health       int
+	maxHealth    int
+	lives        int
+	combo        int
+	comboTimer   int
+	coins        int
+	gems         int
+	achievements []Achievement
+	season       Season
+	shopOpen     bool
 }
 
 func NewGame() *Game {
@@ -512,6 +641,21 @@ func NewGame() *Game {
 	// Initialize particles array
 	particles := make([]Particle, 0, 100)
 
+	// Initialize levels
+	levels := make(map[LevelType]*Level)
+	levels[GardenLevel] = createGardenLevel()
+	levels[ForestLevel] = createForestLevel()
+	levels[CaveLevel] = createCaveLevel()
+
+	// Initialize achievements
+	achievements := []Achievement{
+		{id: 1, name: "Первый шаг", description: "Начать игру", unlocked: false},
+		{id: 2, name: "Фермер", description: "Собрать 10 морковок", unlocked: false},
+		{id: 3, name: "Богач", description: "Собрать 100 монет", unlocked: false},
+		{id: 4, name: "Герой", description: "Победить босса", unlocked: false},
+		{id: 5, name: "Исследователь", description: "Посетить все уровни", unlocked: false},
+	}
+
 	// Initialize quests
 	quests := []Quest{
 		{
@@ -648,6 +792,106 @@ func NewGame() *Game {
 		carrotPlots: carrotPlots,
 		inventory:  inventory,
 		currentTool: NoneTool,
+		currentLevel: GardenLevel,
+		levels:     levels,
+		health:     100,
+		maxHealth:  100,
+		lives:      3,
+		combo:      0,
+		comboTimer: 0,
+		coins:      0,
+		gems:       0,
+		achievements: achievements,
+		season:     Spring,
+		shopOpen:   false,
+	}
+}
+
+// createGardenLevel - создание уровня "Огород"
+func createGardenLevel() *Level {
+	return &Level{
+		id:        1,
+		name:      "Родной огород",
+		levelType: GardenLevel,
+		background: color.RGBA{135, 206, 235, 255},
+		platforms: []Platform{
+			{x: 0, y: screenHeight - groundHeight, width: screenWidth, height: groundHeight, solid: true},
+			{x: 200, y: 450, width: 150, height: 20, solid: true},
+			{x: 450, y: 380, width: 150, height: 20, solid: true},
+			{x: 100, y: 300, width: 120, height: 20, solid: true},
+		},
+		enemies: []Enemy{},
+		collectibles: []Collectible{
+			{x: 250, y: 420, cType: CoinCollectible, value: 1},
+			{x: 500, y: 350, cType: CoinCollectible, value: 1},
+		},
+		exitX: 750, exitY: screenHeight - groundHeight - 60, exitW: 50, exitH: 60,
+		entryX: 50, entryY: screenHeight - groundHeight - 40,
+		hasBoss: false,
+	}
+}
+
+// createForestLevel - создание уровня "Лес"
+func createForestLevel() *Level {
+	return &Level{
+		id:        2,
+		name:      "Тёмный лес",
+		levelType: ForestLevel,
+		background: color.RGBA{34, 50, 34, 255},
+		platforms: []Platform{
+			{x: 0, y: screenHeight - groundHeight, width: screenWidth, height: groundHeight, solid: true},
+			{x: 150, y: 480, width: 100, height: 20, solid: true},
+			{x: 300, y: 420, width: 100, height: 20, solid: true},
+			{x: 450, y: 360, width: 100, height: 20, solid: true},
+			{x: 600, y: 300, width: 150, height: 20, solid: true},
+			{x: 50, y: 250, width: 100, height: 20, solid: true},
+		},
+		enemies: []Enemy{
+			{x: 300, y: screenHeight - groundHeight - 40, width: 40, height: 30, vx: 1, eType: WolfEnemy, health: 3, damage: 10, patrolMin: 250, patrolMax: 500},
+			{x: 600, y: screenHeight - groundHeight - 40, width: 40, height: 30, vx: -1, eType: WolfEnemy, health: 3, damage: 10, patrolMin: 550, patrolMax: 750},
+		},
+		collectibles: []Collectible{
+			{x: 200, y: 450, cType: MushroomCollectible, value: 20},
+			{x: 350, y: 390, cType: CoinCollectible, value: 5},
+			{x: 500, y: 330, cType: GemCollectible, value: 50},
+			{x: 650, y: 270, cType: HeartCollectible, value: 25},
+		},
+		exitX: 750, exitY: screenHeight - groundHeight - 60, exitW: 50, exitH: 60,
+		entryX: 50, entryY: screenHeight - groundHeight - 40,
+		hasBoss: false,
+	}
+}
+
+// createCaveLevel - создание уровня "Пещера" с боссом
+func createCaveLevel() *Level {
+	boss := &Boss{
+		x: 400, y: screenHeight - groundHeight - 80, width: 100, height: 80,
+		health: 100, maxHealth: 100, phase: 1, attackTimer: 0, pattern: 0,
+	}
+	
+	return &Level{
+		id:        3,
+		name:      "Пещера Медведя",
+		levelType: CaveLevel,
+		background: color.RGBA{40, 30, 30, 255},
+		platforms: []Platform{
+			{x: 0, y: screenHeight - groundHeight, width: screenWidth, height: groundHeight, solid: true},
+			{x: 100, y: 500, width: 80, height: 20, solid: true},
+			{x: 250, y: 450, width: 80, height: 20, solid: true},
+			{x: 400, y: 400, width: 200, height: 30, solid: true},
+			{x: 650, y: 350, width: 100, height: 20, solid: true},
+		},
+		enemies: []Enemy{
+			{x: 200, y: screenHeight - groundHeight - 40, width: 30, height: 30, vx: 2, eType: BatEnemy, health: 2, damage: 15, patrolMin: 150, patrolMax: 350},
+		},
+		collectibles: []Collectible{
+			{x: 130, y: 470, cType: GemCollectible, value: 100},
+			{x: 700, y: 320, cType: HeartCollectible, value: 50},
+		},
+		exitX: 50, exitY: screenHeight - groundHeight - 60, exitW: 50, exitH: 60,
+		entryX: 750, entryY: screenHeight - groundHeight - 40,
+		hasBoss: true,
+		boss:    boss,
 	}
 }
 
@@ -831,6 +1075,15 @@ func (g *Game) Update() error {
 
 	// Update particles
 	g.updateParticles()
+
+	// Update level entities
+	g.updateLevel()
+
+	// Update combo
+	g.updateCombo()
+
+	// Update season
+	g.updateSeason()
 
 	return nil
 }
@@ -1292,6 +1545,332 @@ func (g *Game) spawnPlantParticles(x, y float32) {
 func (g *Game) spawnQuestCompleteParticles(x, y float32) {
 	g.spawnParticles(x, y, 20, StarParticle, color.RGBA{255, 215, 0, 255})
 	g.spawnParticles(x, y, 10, SparkleParticle, color.RGBA{255, 255, 255, 255})
+}
+
+// updateLevel - обновление сущностей уровня
+func (g *Game) updateLevel() {
+	level := g.levels[g.currentLevel]
+	if level == nil {
+		return
+	}
+	
+	// Update enemies
+	g.updateEnemies(level)
+	
+	// Update boss
+	if level.hasBoss && level.boss != nil {
+		g.updateBoss(level)
+	}
+	
+	// Update collectibles
+	g.updateCollectibles(level)
+	
+	// Check level exit
+	g.checkLevelExit(level)
+	
+	// Check enemy collisions
+	g.checkEnemyCollisions(level)
+	
+	// Check collectible collisions
+	g.checkCollectibleCollisions(level)
+	
+	// Check platform collisions
+	g.checkPlatformCollisions(level)
+}
+
+// updateEnemies - обновление врагов
+func (g *Game) updateEnemies(level *Level) {
+	for i := range level.enemies {
+		enemy := &level.enemies[i]
+		
+		if enemy.eType == BatEnemy {
+			// Bats fly in sine pattern
+			enemy.y += float32(math.Sin(float64(g.frameCount)*0.1)) * 2
+			enemy.x += enemy.vx
+		} else {
+			// Ground enemies patrol
+			enemy.x += enemy.vx
+			enemy.animFrame++
+		}
+		
+		// Patrol bounds
+		if enemy.x <= enemy.patrolMin || enemy.x >= enemy.patrolMax {
+			enemy.vx = -enemy.vx
+		}
+	}
+}
+
+// updateBoss - обновление босса
+func (g *Game) updateBoss(level *Level) {
+	boss := level.boss
+	if boss.health <= 0 {
+		return
+	}
+	
+	boss.attackTimer++
+	
+	// Boss moves towards player slowly
+	if boss.x < float32(g.player.x) {
+		boss.x += 0.5
+	} else {
+		boss.x -= 0.5
+	}
+	
+	// Attack patterns
+	if boss.attackTimer >= 120 {
+		boss.attackTimer = 0
+		boss.pattern = (boss.pattern + 1) % 3
+		
+		// Different attack patterns
+		switch boss.pattern {
+		case 0: // Charge
+			boss.x += 10 * float32(g.player.facing)
+		case 1: // Jump
+			boss.y -= 50
+		case 2: // Stomp
+			g.spawnBossAttackParticles(boss.x+boss.width/2, boss.y+boss.height)
+		}
+	}
+}
+
+// updateCollectibles - анимация собираемых предметов
+func (g *Game) updateCollectibles(level *Level) {
+	for i := range level.collectibles {
+		level.collectibles[i].animOffset += 0.05
+	}
+}
+
+// checkLevelExit - проверка выхода с уровня
+func (g *Game) checkLevelExit(level *Level) {
+	playerRect := struct{ x, y, w, h float32 }{
+		x: float32(g.player.x), y: float32(g.player.y),
+		w: g.player.width, h: g.player.height,
+	}
+	
+	exitRect := struct{ x, y, w, h float32 }{
+		x: level.exitX, y: level.exitY,
+		w: level.exitW, h: level.exitH,
+	}
+	
+	if rectCollision(playerRect, exitRect) {
+		// Transition to next level
+		g.transitionToNextLevel()
+	}
+}
+
+// transitionToNextLevel - переход на следующий уровень
+func (g *Game) transitionToNextLevel() {
+	switch g.currentLevel {
+	case GardenLevel:
+		g.currentLevel = ForestLevel
+		g.player.x = 50
+	case ForestLevel:
+		g.currentLevel = CaveLevel
+		g.player.x = 750
+	case CaveLevel:
+		g.currentLevel = GardenLevel
+		g.player.x = 50
+	}
+	g.player.y = screenHeight - groundHeight - 40
+	g.spawnLevelTransitionParticles()
+}
+
+// checkEnemyCollisions - проверка столкновений с врагами
+func (g *Game) checkEnemyCollisions(level *Level) {
+	playerRect := struct{ x, y, w, h float32 }{
+		x: float32(g.player.x), y: float32(g.player.y),
+		w: g.player.width, h: g.player.height,
+	}
+	
+	for i := range level.enemies {
+		enemy := &level.enemies[i]
+		enemyRect := struct{ x, y, w, h float32 }{
+			x: enemy.x, y: enemy.y, w: enemy.width, h: enemy.height,
+		}
+		
+		if rectCollision(playerRect, enemyRect) {
+			// Check if jumping on enemy (Mario-style)
+			if g.player.vy > 0 && float32(g.player.y) < enemy.y {
+				// Kill enemy
+				enemy.health--
+				if enemy.health <= 0 {
+					g.combo++
+					g.comboTimer = 120
+					g.spawnCollectParticles(enemy.x, enemy.y)
+				} else {
+					g.player.vy = -8 // Bounce
+				}
+			} else {
+				// Take damage
+				g.takeDamage(enemy.damage)
+			}
+		}
+	}
+	
+	// Boss collision
+	if level.hasBoss && level.boss != nil && level.boss.health > 0 {
+		boss := level.boss
+		bossRect := struct{ x, y, w, h float32 }{
+			x: boss.x, y: boss.y, w: boss.width, h: boss.height,
+		}
+		
+		if rectCollision(playerRect, bossRect) {
+			if g.player.vy > 0 && float32(g.player.y) < boss.y {
+				boss.health -= 10
+				g.player.vy = -10
+				g.combo++
+				if boss.health <= 0 {
+					g.unlockAchievement(4) // Герой
+					g.spawnQuestCompleteParticles(boss.x, boss.y)
+				}
+			} else {
+				g.takeDamage(20)
+			}
+		}
+	}
+}
+
+// checkCollectibleCollisions - проверка сбора предметов
+func (g *Game) checkCollectibleCollisions(level *Level) {
+	playerRect := struct{ x, y, w, h float32 }{
+		x: float32(g.player.x), y: float32(g.player.y),
+		w: g.player.width, h: g.player.height,
+	}
+	
+	for i := range level.collectibles {
+		collectible := &level.collectibles[i]
+		if collectible.collected {
+			continue
+		}
+		
+		collectRect := struct{ x, y, w, h float32 }{
+			x: collectible.x - 10, y: collectible.y - 10,
+			w: 20, h: 20,
+		}
+		
+		if rectCollision(playerRect, collectRect) {
+			collectible.collected = true
+			g.collectItem(collectible)
+		}
+	}
+}
+
+// collectItem - сбор предмета
+func (g *Game) collectItem(c *Collectible) {
+	switch c.cType {
+	case CoinCollectible:
+		g.coins += c.value
+		g.combo++
+		g.comboTimer = 60
+		g.spawnCollectParticles(c.x, c.y)
+	case HeartCollectible:
+		g.health += c.value
+		if g.health > g.maxHealth {
+			g.health = g.maxHealth
+		}
+		g.spawnCollectParticles(c.x, c.y)
+	case MushroomCollectible:
+		g.coins += c.value
+		g.combo += 2
+		g.spawnCollectParticles(c.x, c.y)
+	case GemCollectible:
+		g.gems += c.value
+		g.coins += c.value
+		g.spawnQuestCompleteParticles(c.x, c.y)
+	}
+	g.audio.PlayCollect()
+}
+
+// checkPlatformCollisions - проверка столкновений с платформами
+func (g *Game) checkPlatformCollisions(level *Level) {
+	playerRect := struct{ x, y, w, h float32 }{
+		x: float32(g.player.x), y: float32(g.player.y),
+		w: g.player.width, h: g.player.height,
+	}
+	
+	g.player.onGround = false
+	
+	for _, platform := range level.platforms {
+		platRect := struct{ x, y, w, h float32 }{
+			x: platform.x, y: platform.y,
+			w: platform.width, h: platform.height,
+		}
+		
+		if rectCollision(playerRect, platRect) {
+			// Landing on top
+			if g.player.vy >= 0 && float32(g.player.y)+g.player.height <= platform.y+10 {
+				g.player.y = float64(platform.y - g.player.height)
+				g.player.vy = 0
+				g.player.onGround = true
+			}
+		}
+	}
+}
+
+// rectCollision - проверка столкновения прямоугольников
+func rectCollision(a, b struct{ x, y, w, h float32 }) bool {
+	return a.x < b.x+b.w && a.x+a.w > b.x && a.y < b.y+b.h && a.y+a.h > b.y
+}
+
+// takeDamage - получение урона
+func (g *Game) takeDamage(amount int) {
+	g.health -= amount
+	g.combo = 0
+	g.spawnParticles(float32(g.player.x), float32(g.player.y), 10, SparkleParticle, color.RGBA{255, 0, 0, 255})
+	
+	if g.health <= 0 {
+		g.lives--
+		if g.lives <= 0 {
+			g.state = Menu
+			g.health = g.maxHealth
+			g.lives = 3
+			g.coins = 0
+			g.gems = 0
+		} else {
+			g.health = g.maxHealth
+			g.player.x = 100
+			g.player.y = screenHeight - groundHeight - 40
+		}
+	}
+}
+
+// updateCombo - обновление комбо
+func (g *Game) updateCombo() {
+	if g.combo > 0 {
+		g.comboTimer--
+		if g.comboTimer <= 0 {
+			g.combo = 0
+		}
+	}
+}
+
+// updateSeason - смена сезонов
+func (g *Game) updateSeason() {
+	// Change season every 30 seconds (1800 frames)
+	if g.frameCount%1800 == 0 {
+		g.season = Season((int(g.season) + 1) % 4)
+	}
+}
+
+// spawnBossAttackParticles - частицы атаки босса
+func (g *Game) spawnBossAttackParticles(x, y float32) {
+	g.spawnParticles(x, y, 30, DustParticle, color.RGBA{139, 69, 19, 255})
+}
+
+// spawnLevelTransitionParticles - частицы перехода между уровнями
+func (g *Game) spawnLevelTransitionParticles() {
+	g.spawnParticles(screenWidth/2, screenHeight/2, 50, StarParticle, color.RGBA{255, 255, 255, 255})
+}
+
+// unlockAchievement - разблокировка достижения
+func (g *Game) unlockAchievement(id int) {
+	for i := range g.achievements {
+		if g.achievements[i].id == id && !g.achievements[i].unlocked {
+			g.achievements[i].unlocked = true
+			g.achievements[i].unlockDate = g.frameCount
+			g.spawnQuestCompleteParticles(screenWidth/2, 100)
+		}
+	}
 }
 
 func (g *Game) drawDaySky(screen *ebiten.Image) {
@@ -2277,14 +2856,8 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		return
 	}
 
-	// Draw sky based on time of day and weather
-	if g.weather == Stormy {
-		g.drawStormySky(screen)
-	} else if g.timeOfDay == Day {
-		g.drawDaySky(screen)
-	} else {
-		g.drawNightSky(screen)
-	}
+	// Draw level background
+	g.drawLevelBackground(screen)
 
 	// Draw sun (day only, clear weather)
 	if g.timeOfDay == Day && g.weather == Clear {
@@ -2300,6 +2873,9 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	if g.weather == Stormy {
 		g.drawStormClouds(screen)
 	}
+
+	// Draw level entities
+	g.drawLevel(screen)
 
 	// Draw house
 	g.drawHouse(screen)
@@ -2713,6 +3289,280 @@ func (g *Game) drawQuestsUI(screen *ebiten.Image) {
 	}
 }
 
+// drawLevelBackground - отрисовка фона уровня
+func (g *Game) drawLevelBackground(screen *ebiten.Image) {
+	level := g.levels[g.currentLevel]
+	if level == nil {
+		g.drawDaySky(screen)
+		return
+	}
+	
+	// Fill with level background color
+	screen.Fill(level.background)
+	
+	// Draw season-specific overlay
+	switch g.season {
+	case Spring:
+		// Light pink tint
+	case Summer:
+		// Bright green tint
+	case Autumn:
+		// Orange tint
+		overlay := color.RGBA{255, 140, 0, 50}
+		vector.DrawFilledRect(screen, 0, 0, screenWidth, screenHeight, overlay, false)
+	case Winter:
+		// Light blue tint
+		overlay := color.RGBA{200, 220, 255, 80}
+		vector.DrawFilledRect(screen, 0, 0, screenWidth, screenHeight, overlay, false)
+	}
+}
+
+// drawLevel - отрисовка сущностей уровня
+func (g *Game) drawLevel(screen *ebiten.Image) {
+	level := g.levels[g.currentLevel]
+	if level == nil {
+		return
+	}
+	
+	// Draw platforms
+	g.drawPlatforms(screen, level.platforms)
+	
+	// Draw enemies
+	g.drawEnemies(screen, level.enemies)
+	
+	// Draw boss
+	if level.hasBoss && level.boss != nil && level.boss.health > 0 {
+		g.drawBoss(screen, level.boss)
+	}
+	
+	// Draw collectibles
+	g.drawCollectibles(screen, level.collectibles)
+	
+	// Draw level exit
+	g.drawLevelExit(screen, level)
+	
+	// Draw level name
+	g.drawLevelName(screen, level)
+}
+
+// drawPlatforms - отрисовка платформ
+func (g *Game) drawPlatforms(screen *ebiten.Image, platforms []Platform) {
+	for _, p := range platforms {
+		// Platform top (grass)
+		grassColor := color.RGBA{34, 139, 34, 255}
+		vector.DrawFilledRect(screen, p.x, p.y, p.width, 5, grassColor, false)
+		
+		// Platform body (dirt)
+		dirtColor := color.RGBA{139, 69, 19, 255}
+		vector.DrawFilledRect(screen, p.x, p.y+5, p.width, p.height-5, dirtColor, false)
+	}
+}
+
+// drawEnemies - отрисовка врагов
+func (g *Game) drawEnemies(screen *ebiten.Image, enemies []Enemy) {
+	for _, e := range enemies {
+		if e.health <= 0 {
+			continue
+		}
+		
+		switch e.eType {
+		case WolfEnemy:
+			g.drawWolfEnemy(screen, &e)
+		case BatEnemy:
+			g.drawBatEnemy(screen, &e)
+		case TrapEnemy:
+			g.drawTrapEnemy(screen, &e)
+		}
+	}
+}
+
+// drawWolfEnemy - отрисовка волка
+func (g *Game) drawWolfEnemy(screen *ebiten.Image, e *Enemy) {
+	// Body (gray)
+	bodyColor := color.RGBA{100, 100, 100, 255}
+	vector.DrawFilledRect(screen, e.x, e.y, e.width, e.height, bodyColor, false)
+	
+	// Head
+	vector.DrawFilledCircle(screen, e.x+e.width/2, e.y+10, 12, bodyColor, false)
+	
+	// Ears
+	vector.DrawFilledCircle(screen, e.x+e.width/2-5, e.y-5, 6, bodyColor, false)
+	vector.DrawFilledCircle(screen, e.x+e.width/2+5, e.y-5, 6, bodyColor, false)
+	
+	// Eyes (red)
+	vector.DrawFilledCircle(screen, e.x+e.width/2-3, e.y+8, 3, color.RGBA{255, 0, 0, 255}, false)
+	vector.DrawFilledCircle(screen, e.x+e.width/2+3, e.y+8, 3, color.RGBA{255, 0, 0, 255}, false)
+	
+	// Snout
+	vector.DrawFilledCircle(screen, e.x+e.width/2, e.y+15, 5, color.RGBA{200, 200, 200, 255}, false)
+	
+	// Legs
+	vector.DrawFilledCircle(screen, e.x+8, e.y+e.height, 5, bodyColor, false)
+	vector.DrawFilledCircle(screen, e.x+e.width-8, e.y+e.height, 5, bodyColor, false)
+}
+
+// drawBatEnemy - отрисовка летучей мыши
+func (g *Game) drawBatEnemy(screen *ebiten.Image, e *Enemy) {
+	// Body (dark purple)
+	bodyColor := color.RGBA{60, 30, 60, 255}
+	vector.DrawFilledCircle(screen, e.x+e.width/2, e.y+e.height/2, 10, bodyColor, false)
+	
+	// Wings
+	wingColor := color.RGBA{80, 40, 80, 200}
+	wingOffset := float32(math.Sin(float64(g.frameCount)*0.3)) * 10
+	vector.DrawFilledCircle(screen, e.x, e.y+e.height/2+wingOffset, 15, wingColor, false)
+	vector.DrawFilledCircle(screen, e.x+e.width, e.y+e.height/2-wingOffset, 15, wingColor, false)
+	
+	// Eyes (yellow)
+	vector.DrawFilledCircle(screen, e.x+e.width/2-3, e.y+e.height/2-2, 2, color.RGBA{255, 255, 0, 255}, false)
+	vector.DrawFilledCircle(screen, e.x+e.width/2+3, e.y+e.height/2-2, 2, color.RGBA{255, 255, 0, 255}, false)
+}
+
+// drawTrapEnemy - отрисовка капкана
+func (g *Game) drawTrapEnemy(screen *ebiten.Image, e *Enemy) {
+	// Metal trap
+	trapColor := color.RGBA{120, 120, 120, 255}
+	vector.DrawFilledRect(screen, e.x, e.y, e.width, 10, trapColor, false)
+	
+	// Jaws
+	vector.StrokeLine(screen, e.x, e.y, e.x+e.width/2, e.y-10, 3, trapColor, false)
+	vector.StrokeLine(screen, e.x+e.width, e.y, e.x+e.width/2, e.y-10, 3, trapColor, false)
+}
+
+// drawBoss - отрисовка босса
+func (g *Game) drawBoss(screen *ebiten.Image, boss *Boss) {
+	// Body (brown bear)
+	bodyColor := color.RGBA{101, 67, 33, 255}
+	vector.DrawFilledRect(screen, boss.x, boss.y, boss.width, boss.height, bodyColor, false)
+	
+	// Head
+	vector.DrawFilledCircle(screen, boss.x+boss.width/2, boss.y+20, 30, bodyColor, false)
+	
+	// Ears
+	vector.DrawFilledCircle(screen, boss.x+boss.width/2-20, boss.y, 12, bodyColor, false)
+	vector.DrawFilledCircle(screen, boss.x+boss.width/2+20, boss.y, 12, bodyColor, false)
+	
+	// Eyes (angry)
+	vector.DrawFilledCircle(screen, boss.x+boss.width/2-10, boss.y+15, 5, color.RGBA{255, 0, 0, 255}, false)
+	vector.DrawFilledCircle(screen, boss.x+boss.width/2+10, boss.y+15, 5, color.RGBA{255, 0, 0, 255}, false)
+	
+	// Snout
+	vector.DrawFilledCircle(screen, boss.x+boss.width/2, boss.y+30, 15, color.RGBA{150, 100, 60, 255}, false)
+	
+	// Nose
+	vector.DrawFilledCircle(screen, boss.x+boss.width/2, boss.y+35, 6, color.RGBA{0, 0, 0, 255}, false)
+	
+	// Health bar
+	barX := boss.x
+	barY := boss.y - 20
+	barW := boss.width
+	barH := float32(10)
+	
+	// Background
+	vector.DrawFilledRect(screen, barX, barY, barW, barH, color.RGBA{50, 50, 50, 255}, false)
+	
+	// Health
+	healthPercent := float32(boss.health) / float32(boss.maxHealth)
+	vector.DrawFilledRect(screen, barX, barY, barW*healthPercent, barH, color.RGBA{255, 0, 0, 255}, false)
+}
+
+// drawCollectibles - отрисовка собираемых предметов
+func (g *Game) drawCollectibles(screen *ebiten.Image, collectibles []Collectible) {
+	for _, c := range collectibles {
+		if c.collected {
+			continue
+		}
+		
+		y := c.y + float32(math.Sin(float64(c.animOffset)))*5
+		
+		switch c.cType {
+		case CoinCollectible:
+			g.drawCoin(screen, c.x, y)
+		case HeartCollectible:
+			g.drawHeart(screen, c.x, y)
+		case MushroomCollectible:
+			g.drawMushroom(screen, c.x, y)
+		case GemCollectible:
+			g.drawGem(screen, c.x, y)
+		}
+	}
+}
+
+// drawCoin - отрисовка монеты
+func (g *Game) drawCoin(screen *ebiten.Image, x, y float32) {
+	vector.DrawFilledCircle(screen, x, y, 8, color.RGBA{255, 215, 0, 255}, false)
+	vector.DrawFilledCircle(screen, x, y, 5, color.RGBA{255, 255, 200, 255}, false)
+}
+
+// drawHeart - отрисовка сердца
+func (g *Game) drawHeart(screen *ebiten.Image, x, y float32) {
+	heartColor := color.RGBA{255, 50, 50, 255}
+	vector.DrawFilledCircle(screen, x-5, y-3, 6, heartColor, false)
+	vector.DrawFilledCircle(screen, x+5, y-3, 6, heartColor, false)
+	vector.DrawFilledCircle(screen, x, y+3, 8, heartColor, false)
+}
+
+// drawMushroom - отрисовка гриба
+func (g *Game) drawMushroom(screen *ebiten.Image, x, y float32) {
+	// Cap (red with white spots)
+	vector.DrawFilledCircle(screen, x, y, 10, color.RGBA{255, 50, 50, 255}, false)
+	vector.DrawFilledCircle(screen, x-3, y-3, 2, color.RGBA{255, 255, 255, 255}, false)
+	vector.DrawFilledCircle(screen, x+3, y-3, 2, color.RGBA{255, 255, 255, 255}, false)
+	
+	// Stem
+	vector.DrawFilledRect(screen, x-3, y, 6, 8, color.RGBA{255, 255, 200, 255}, false)
+}
+
+// drawGem - отрисовка кристалла
+func (g *Game) drawGem(screen *ebiten.Image, x, y float32) {
+	gemColor := color.RGBA{0, 255, 255, 255}
+	// Diamond shape
+	vector.DrawFilledCircle(screen, x, y-8, 6, gemColor, false)
+	vector.DrawFilledCircle(screen, x-8, y, 6, gemColor, false)
+	vector.DrawFilledCircle(screen, x+8, y, 6, gemColor, false)
+	vector.DrawFilledCircle(screen, x, y+8, 6, gemColor, false)
+}
+
+// drawLevelExit - отрисовка выхода с уровня
+func (g *Game) drawLevelExit(screen *ebiten.Image, level *Level) {
+	// Portal/exit effect
+	exitX := level.exitX + level.exitW/2
+	exitY := level.exitY + level.exitH/2
+	
+	// Swirling portal
+	for i := 0; i < 8; i++ {
+		angle := float64(g.frameCount)*0.1 + float64(i)*math.Pi/4
+		radius := 20.0 + math.Sin(angle)*5
+		x := exitX + float32(math.Cos(angle))*float32(radius)
+		y := exitY + float32(math.Sin(angle))*float32(radius)
+		vector.DrawFilledCircle(screen, x, y, 5, color.RGBA{100, 100, 255, 200}, false)
+	}
+	
+	// Center
+	vector.DrawFilledCircle(screen, exitX, exitY, 15, color.RGBA{150, 150, 255, 255}, false)
+}
+
+// drawLevelName - отрисовка названия уровня
+func (g *Game) drawLevelName(screen *ebiten.Image, level *Level) {
+	nameText := level.name
+	nameX := screenWidth/2 - len(nameText)*8
+	ebitenutil.DebugPrintAt(screen, nameText, nameX, 10)
+	
+	// Season indicator
+	seasonText := ""
+	switch g.season {
+	case Spring:
+		seasonText = "🌸 Spring"
+	case Summer:
+		seasonText = "☀️ Summer"
+	case Autumn:
+		seasonText = "🍂 Autumn"
+	case Winter:
+		seasonText = "❄️ Winter"
+	}
+	ebitenutil.DebugPrintAt(screen, seasonText, nameX, 30)
+}
+
 func (g *Game) drawGround(screen *ebiten.Image) {
 	// Ground position
 	groundY := float32(screenHeight - groundHeight)
@@ -2810,27 +3660,68 @@ func (g *Game) drawPlayer(screen *ebiten.Image) {
 }
 
 func (g *Game) drawUI(screen *ebiten.Image) {
-	// Score display
+	// Health bar
+	barX, barY := float32(10), float32(screenHeight-50)
+	barW, barH := float32(150), float32(15)
+	
+	// Background
+	vector.DrawFilledRect(screen, barX, barY, barW, barH, color.RGBA{50, 50, 50, 255}, false)
+	
+	// Health
+	healthPercent := float32(g.health) / float32(g.maxHealth)
+	vector.DrawFilledRect(screen, barX, barY, barW*healthPercent, barH, color.RGBA{255, 50, 50, 255}, false)
+	
+	// Health text
+	healthText := fmt.Sprintf("HP: %d/%d", g.health, g.maxHealth)
+	ebitenutil.DebugPrintAt(screen, healthText, int(barX+5), int(barY+2))
+	
+	// Lives
+	livesText := fmt.Sprintf("Lives: %d", g.lives)
+	ebitenutil.DebugPrintAt(screen, livesText, int(barX), int(barY+20))
+	
+	// Combo
+	if g.combo > 1 {
+		comboText := fmt.Sprintf("COMBO x%d!", g.combo)
+		comboX := screenWidth/2 - len(comboText)*6
+		comboY := screenHeight/2 + 100
+		// Pulsing effect
+		alpha := uint8(150 + math.Sin(float64(g.frameCount)*0.2)*100)
+		vector.DrawFilledRect(screen, float32(comboX-5), float32(comboY-5), float32(len(comboText)*12+10), 25, color.RGBA{255, 215, 0, alpha}, false)
+		ebitenutil.DebugPrintAt(screen, comboText, comboX, comboY)
+	}
+	
+	// Coins and gems
+	coinsText := fmt.Sprintf("💰 %d", g.coins)
+	ebitenutil.DebugPrintAt(screen, coinsText, 10, screenHeight-80)
+	
+	gemsText := fmt.Sprintf("💎 %d", g.gems)
+	ebitenutil.DebugPrintAt(screen, gemsText, 10, screenHeight-65)
+	
+	// Score display (apples)
 	scoreText := "Apples: " + string(rune('0'+g.player.score))
-	ebitenutil.DebugPrintAt(screen, scoreText, 10, 10)
+	ebitenutil.DebugPrintAt(screen, scoreText, screenWidth-120, 10)
 
 	// Time of day indicator
 	timeText := "Time: Day"
 	if g.timeOfDay == Night {
 		timeText = "Time: Night"
 	}
-	ebitenutil.DebugPrintAt(screen, timeText, 10, 25)
+	ebitenutil.DebugPrintAt(screen, timeText, screenWidth-120, 25)
 
 	// Weather indicator
 	weatherText := "Weather: Clear"
 	if g.weather == Stormy {
 		weatherText = "Weather: Stormy"
 	}
-	ebitenutil.DebugPrintAt(screen, weatherText, 10, 40)
+	ebitenutil.DebugPrintAt(screen, weatherText, screenWidth-120, 40)
 
 	// Controls hint
 	controlsText := "Arrow Keys/WASD: Move | Space/W/Up: Jump"
 	ebitenutil.DebugPrintAt(screen, controlsText, 10, screenHeight-25)
+	
+	// Level hint
+	levelHint := "Find portal ➤"
+	ebitenutil.DebugPrintAt(screen, levelHint, screenWidth-100, screenHeight-25)
 }
 
 func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
