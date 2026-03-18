@@ -144,6 +144,29 @@ type Shed struct {
 	roofY     float32
 }
 
+type Fence struct {
+	x      float32
+	y      float32
+	width  float32
+	height float32
+}
+
+type Well struct {
+	x      float32
+	y      float32
+	width  float32
+	height float32
+	roofX  float32
+	roofY  float32
+}
+
+type Bench struct {
+	x      float32
+	y      float32
+	width  float32
+	height float32
+}
+
 type Cloud struct {
 	x     float32
 	y     float32
@@ -224,6 +247,9 @@ type Game struct {
 	stormClouds []Cloud
 	house      House
 	shed       Shed
+	fences     []Fence
+	well       Well
+	bench      Bench
 	audio      *AudioSystem
 	carrotPlots []CarrotPlot
 	inventory  Inventory
@@ -293,6 +319,32 @@ func NewGame() *Game {
 		doorH:   40,
 		roofX:   235,
 		roofY:   screenHeight - groundHeight - 60,
+	}
+
+	// Initialize fence sections (around garden)
+	fences := []Fence{
+		{x: 250, y: screenHeight - groundHeight, width: 10, height: 30},
+		{x: 260, y: screenHeight - groundHeight, width: 10, height: 30},
+		{x: 500, y: screenHeight - groundHeight, width: 10, height: 30},
+		{x: 510, y: screenHeight - groundHeight, width: 10, height: 30},
+	}
+
+	// Initialize well (near house)
+	well := Well{
+		x:      680,
+		y:      screenHeight - groundHeight,
+		width:  50,
+		height: 40,
+		roofX:  705,
+		roofY:  screenHeight - groundHeight - 50,
+	}
+
+	// Initialize bench (near garden)
+	bench := Bench{
+		x:      350,
+		y:      screenHeight - groundHeight - 30,
+		width:  60,
+		height: 30,
 	}
 
 	// Initialize raindrops
@@ -382,6 +434,9 @@ func NewGame() *Game {
 		lightning:  Lightning{active: false, timer: 0, branches: []LightningBranch{}},
 		house:      house,
 		shed:       shed,
+		fences:     fences,
+		well:       well,
+		bench:      bench,
 		audio:      NewAudioSystem(),
 		carrotPlots: carrotPlots,
 		inventory:  inventory,
@@ -1033,6 +1088,92 @@ func (g *Game) drawShedHint(screen *ebiten.Image) {
 	}
 }
 
+// drawFences - отрисовка забора
+func (g *Game) drawFences(screen *ebiten.Image) {
+	for _, fence := range g.fences {
+		// Fence post (brown wood)
+		postColor := color.RGBA{139, 69, 19, 255}
+		vector.DrawFilledRect(screen, fence.x, fence.y-fence.height, fence.width, fence.height, postColor, false)
+		
+		// Fence top (pointed)
+		topY := fence.y - fence.height
+		vector.DrawFilledCircle(screen, fence.x+fence.width/2, topY-5, 6, postColor, false)
+		
+		// Wood grain details
+		woodColor := color.RGBA{100, 50, 20, 255}
+		vector.StrokeLine(screen, fence.x+2, fence.y-fence.height/2, fence.x+fence.width-2, fence.y-fence.height/2, 1, woodColor, false)
+	}
+}
+
+// drawWell - отрисовка колодца
+func (g *Game) drawWell(screen *ebiten.Image) {
+	w := g.well
+
+	// Well base (stone gray)
+	baseColor := color.RGBA{120, 120, 120, 255}
+	vector.DrawFilledRect(screen, w.x, w.y-w.height, w.width, w.height, baseColor, false)
+
+	// Stone texture
+	for i := 0; i < 3; i++ {
+		for j := 0; j < 2; j++ {
+			stoneX := w.x + float32(j)*25 + float32(i%2)*12
+			stoneY := w.y - w.height + float32(i)*13 + 5
+			vector.DrawFilledRect(screen, stoneX, stoneY, 20, 10, color.RGBA{100, 100, 100, 255}, false)
+		}
+	}
+
+	// Well top rim (darker stone)
+	rimColor := color.RGBA{80, 80, 80, 255}
+	vector.DrawFilledRect(screen, w.x-5, w.y-w.height-10, w.width+10, 15, rimColor, false)
+
+	// Well roof supports
+	supportColor := color.RGBA{139, 69, 19, 255}
+	vector.StrokeLine(screen, w.x+5, w.y-w.height-10, w.x+5, w.roofY+10, 4, supportColor, false)
+	vector.StrokeLine(screen, w.x+w.width-5, w.y-w.height-10, w.x+w.width-5, w.roofY+10, 4, supportColor, false)
+
+	// Well roof (red tiles)
+	roofColor := color.RGBA{139, 69, 50, 255}
+	// Roof triangle
+	for dy := float32(0); dy <= 20; dy++ {
+		progress := dy / 20
+		xLeft := w.roofX - 25 + progress*10
+		xRight := w.roofX + 25 - progress*10
+		y := w.roofY - dy
+		vector.StrokeLine(screen, xLeft, y, xRight, y, 2, roofColor, false)
+	}
+
+	// Water inside well (blue circle)
+	waterY := w.y - w.height + 5
+	vector.DrawFilledCircle(screen, w.x+w.width/2, waterY, 15, color.RGBA{70, 130, 180, 255}, false)
+}
+
+// drawBench - отрисовка скамейки
+func (g *Game) drawBench(screen *ebiten.Image) {
+	b := g.bench
+
+	// Bench legs (dark brown)
+	legColor := color.RGBA{101, 67, 33, 255}
+	vector.DrawFilledRect(screen, b.x+5, b.y+10, 8, 20, legColor, false)
+	vector.DrawFilledRect(screen, b.x+b.width-13, b.y+10, 8, 20, legColor, false)
+
+	// Bench seat (wood planks)
+	seatColor := color.RGBA{139, 69, 19, 255}
+	vector.DrawFilledRect(screen, b.x, b.y, b.width, 10, seatColor, false)
+
+	// Bench backrest
+	backrestColor := color.RGBA{139, 69, 19, 255}
+	vector.DrawFilledRect(screen, b.x, b.y-20, b.width, 8, backrestColor, false)
+
+	// Backrest supports
+	vector.DrawFilledRect(screen, b.x+5, b.y-18, 5, 18, legColor, false)
+	vector.DrawFilledRect(screen, b.x+b.width-10, b.y-18, 5, 18, legColor, false)
+
+	// Wood plank lines
+	woodLineColor := color.RGBA{100, 50, 20, 255}
+	vector.StrokeLine(screen, b.x+5, b.y+5, b.x+b.width-5, b.y+5, 1, woodLineColor, false)
+	vector.StrokeLine(screen, b.x+5, b.y-16, b.x+b.width-5, b.y-16, 1, woodLineColor, false)
+}
+
 func (g *Game) updateAndDrawSmoke(screen *ebiten.Image) {
 	h := g.house
 	chimneyTopX := h.chimneyX + 10
@@ -1572,6 +1713,11 @@ func (g *Game) Draw(screen *ebiten.Image) {
 
 	// Draw carrot garden
 	g.drawCarrotGarden(screen)
+
+	// Draw decorations
+	g.drawFences(screen)
+	g.drawWell(screen)
+	g.drawBench(screen)
 
 	// Draw player (bunny)
 	g.drawPlayer(screen)
