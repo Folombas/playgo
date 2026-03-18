@@ -20,6 +20,49 @@ const (
 	moveSpeed    = 4
 )
 
+// CarrotGrowthStage - стадия роста морковки
+type CarrotGrowthStage int
+
+const (
+	Seed CarrotGrowthStage = iota
+	Sprout
+	Growing
+	Mature
+	Ready
+)
+
+// CarrotPlot - грядка с морковкой
+type CarrotPlot struct {
+	x           float32
+	y           float32
+	width       float32
+	height      float32
+	stage       CarrotGrowthStage
+	growthTimer int
+	needsWater  bool
+	isWatered   bool
+	hasCarrot   bool
+}
+
+// Inventory - инвентарь игрока
+type Inventory struct {
+	seeds     int
+	carrots   int
+	wateringCan bool
+	shovel    bool
+	selected   int // 0 = seeds, 1 = carrots
+}
+
+// Tool - текущий инструмент игрока
+type Tool int
+
+const (
+	NoneTool Tool = iota
+	WateringCanTool
+	ShovelTool
+	SeedTool
+)
+
 type GameState int
 
 const (
@@ -168,6 +211,9 @@ type Game struct {
 	stormClouds []Cloud
 	house      House
 	audio      *AudioSystem
+	carrotPlots []CarrotPlot
+	inventory  Inventory
+	currentTool Tool
 }
 
 func NewGame() *Game {
@@ -263,6 +309,33 @@ func NewGame() *Game {
 		animFrame: 0,
 	}
 
+	// Initialize carrot plots (garden beds)
+	carrotPlots := make([]CarrotPlot, 6)
+	plotStartX := float32(280)
+	plotY := float32(screenHeight - groundHeight - 40)
+	for i := 0; i < 6; i++ {
+		carrotPlots[i] = CarrotPlot{
+			x:           plotStartX + float32(i)*45,
+			y:           plotY,
+			width:       40,
+			height:      35,
+			stage:       Seed,
+			growthTimer: 0,
+			needsWater:  true,
+			isWatered:   false,
+			hasCarrot:   false,
+		}
+	}
+
+	// Initialize inventory
+	inventory := Inventory{
+		seeds:     10,
+		carrots:   0,
+		wateringCan: true,
+		shovel:    true,
+		selected:  0,
+	}
+
 	return &Game{
 		playerX:    100,
 		playerY:    screenHeight - groundHeight - 50,
@@ -281,6 +354,9 @@ func NewGame() *Game {
 		lightning:  Lightning{active: false, timer: 0, branches: []LightningBranch{}},
 		house:      house,
 		audio:      NewAudioSystem(),
+		carrotPlots: carrotPlots,
+		inventory:  inventory,
+		currentTool: NoneTool,
 	}
 }
 
@@ -446,6 +522,12 @@ func (g *Game) Update() error {
 	// Apple collection
 	g.checkAppleCollection()
 
+	// Update carrot growth
+	g.updateCarrotGrowth()
+
+	// Handle tool selection and plot interaction
+	g.handleCarrotPlotInteraction()
+
 	return nil
 }
 
@@ -573,6 +655,149 @@ func (g *Game) checkAppleCollection() {
 			}
 		}
 	}
+}
+
+// updateCarrotGrowth - обновляет рост морковки на грядках
+func (g *Game) updateCarrotGrowth() {
+	for i := range g.carrotPlots {
+		plot := &g.carrotPlots[i]
+		
+		// Рост только если полито и есть семя
+		if plot.isWatered && plot.stage != Ready && plot.hasCarrot {
+			plot.growthTimer++
+			
+			// Стадии роста (каждые ~60 кадров = 1 секунда)
+			switch plot.stage {
+			case Seed:
+				if plot.growthTimer >= 180 { // 3 секунды
+					plot.stage = Sprout
+					plot.growthTimer = 0
+				}
+			case Sprout:
+				if plot.growthTimer >= 300 { // 5 секунд
+					plot.stage = Growing
+					plot.growthTimer = 0
+				}
+			case Growing:
+				if plot.growthTimer >= 420 { // 7 секунд
+					plot.stage = Mature
+					plot.growthTimer = 0
+				}
+			case Mature:
+				if plot.growthTimer >= 300 { // 5 секунд
+					plot.stage = Ready
+					plot.growthTimer = 0
+				}
+			}
+		}
+		
+		// Сброс флага полива со временем
+		if plot.isWatered && plot.growthTimer%600 == 0 {
+			plot.needsWater = true
+			plot.isWatered = false
+		}
+	}
+}
+
+// handleCarrotPlotInteraction - обработка взаимодействия с грядками
+func (g *Game) handleCarrotPlotInteraction() {
+	// Выбор инструмента цифрами
+	if inpututil.IsKeyJustPressed(ebiten.KeyDigit1) {
+		g.currentTool = SeedTool
+	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyDigit2) {
+		if g.inventory.wateringCan {
+			g.currentTool = WateringCanTool
+		}
+	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyDigit3) {
+		if g.inventory.shovel {
+			g.currentTool = ShovelTool
+		}
+	}
+	
+	// Взаимодействие с грядками (клавиша E)
+	if inpututil.IsKeyJustPressed(ebiten.KeyE) && g.state == Playing {
+		g.interactWithPlot()
+	}
+}
+
+// interactWithPlot - взаимодействие с ближайшей грядкой
+func (g *Game) interactWithPlot() {
+	playerCX := float32(g.player.x) + g.player.width/2
+	playerCY := float32(g.player.y) + g.player.height
+	
+	for i := range g.carrotPlots {
+		plot := &g.carrotPlots[i]
+		plotCX := plot.x + plot.width/2
+		plotCY := plot.y + plot.height/2
+		
+		// Проверка дистанции до грядки
+		dx := playerCX - plotCX
+		dy := playerCY - plotCY
+		dist := float32(math.Sqrt(float64(dx*dx + dy*dy)))
+		
+		if dist < 60 {
+			// Игрок рядом с грядкой
+			switch g.currentTool {
+			case SeedTool:
+				g.plantSeed(plot)
+			case WateringCanTool:
+				g.waterPlot(plot)
+			case ShovelTool:
+				g.harvestCarrot(plot)
+			case NoneTool:
+				// Автоматический сбор готовой морковки
+				if plot.stage == Ready {
+					g.harvestCarrot(plot)
+				}
+			}
+			break
+		}
+	}
+}
+
+// plantSeed - посадка семени
+func (g *Game) plantSeed(plot *CarrotPlot) {
+	if plot.hasCarrot || plot.stage != Seed {
+		return // Уже что-то растёт
+	}
+	if g.inventory.seeds <= 0 {
+		return // Нет семян
+	}
+	
+	g.inventory.seeds--
+	plot.hasCarrot = true
+	plot.stage = Seed
+	plot.growthTimer = 0
+	plot.needsWater = true
+	plot.isWatered = false
+}
+
+// waterPlot - полив грядки
+func (g *Game) waterPlot(plot *CarrotPlot) {
+	if !plot.hasCarrot {
+		return // Нечего поливать
+	}
+	
+	plot.isWatered = true
+	plot.needsWater = false
+}
+
+// harvestCarrot - сбор урожая
+func (g *Game) harvestCarrot(plot *CarrotPlot) {
+	if plot.stage != Ready {
+		return // Ещё не готово
+	}
+	
+	g.inventory.carrots++
+	g.player.score++
+	plot.hasCarrot = false
+	plot.stage = Seed
+	plot.growthTimer = 0
+	plot.isWatered = false
+	plot.needsWater = true
+	g.audio.PlayCollect()
 }
 
 func (g *Game) drawDaySky(screen *ebiten.Image) {
@@ -1055,12 +1280,18 @@ func (g *Game) drawMenu(screen *ebiten.Image) {
 		"Controls:",
 		"Arrow Keys / WASD - Move",
 		"Space / W / Up - Jump",
-		"E / Enter - Enter house",
+		"E / Enter - Enter house / Interact",
 		"ESC - Exit house",
+		"",
+		"Garden Controls:",
+		"1 - Plant seeds",
+		"2 - Watering can",
+		"3 - Shovel (harvest)",
+		"E - Use tool on garden plot",
 		"Collect apples from trees!",
 	}
 	for i, line := range controls {
-		ebitenutil.DebugPrintAt(screen, line, screenWidth/2-100, 490+i*22)
+		ebitenutil.DebugPrintAt(screen, line, screenWidth/2-120, 490+i*22)
 	}
 }
 
@@ -1220,6 +1451,9 @@ func (g *Game) Draw(screen *ebiten.Image) {
 
 	// Draw trees
 	g.drawTrees(screen)
+
+	// Draw carrot garden
+	g.drawCarrotGarden(screen)
 
 	// Draw player (bunny)
 	g.drawPlayer(screen)
@@ -1416,6 +1650,150 @@ func (g *Game) drawApple(screen *ebiten.Image, x, y, offset float32, collected b
 	
 	// Leaf vein (lighter green)
 	vector.StrokeLine(screen, leafX, leafY, leafX+3, leafY+1, 0.5, color.RGBA{100, 200, 100, 255}, false)
+}
+
+// drawCarrotGarden - отрисовка огорода с грядками
+func (g *Game) drawCarrotGarden(screen *ebiten.Image) {
+	for i := range g.carrotPlots {
+		g.drawCarrotPlot(screen, &g.carrotPlots[i])
+	}
+	
+	// Draw inventory UI
+	g.drawInventoryUI(screen)
+}
+
+// drawCarrotPlot - отрисовка одной грядки
+func (g *Game) drawCarrotPlot(screen *ebiten.Image, plot *CarrotPlot) {
+	// Garden bed (wooden frame)
+	bedColor := color.RGBA{139, 69, 19, 255}
+	vector.DrawFilledRect(screen, plot.x, plot.y, plot.width, plot.height, bedColor, false)
+	
+	// Soil (darker brown)
+	soilColor := color.RGBA{101, 67, 33, 255}
+	vector.DrawFilledRect(screen, plot.x+2, plot.y+2, plot.width-4, plot.height-4, soilColor, false)
+	
+	// Draw carrot based on growth stage
+	if plot.hasCarrot {
+		g.drawCarrotAtStage(screen, plot)
+	}
+	
+	// Water indicator (blue drops if needs water)
+	if plot.needsWater && plot.hasCarrot {
+		g.drawWaterIndicator(screen, plot.x+plot.width/2, plot.y-5)
+	}
+	
+	// Ready indicator (sparkle when ready to harvest)
+	if plot.stage == Ready {
+		g.drawReadyIndicator(screen, plot)
+	}
+}
+
+// drawCarrotAtStage - отрисовка морковки на стадии роста
+func (g *Game) drawCarrotAtStage(screen *ebiten.Image, plot *CarrotPlot) {
+	cx := plot.x + plot.width/2
+	cy := plot.y + plot.height/2
+	
+	switch plot.stage {
+	case Seed:
+		// Small brown seed
+		vector.DrawFilledCircle(screen, cx, cy+5, 3, color.RGBA{139, 69, 19, 255}, false)
+	case Sprout:
+		// Small green sprout
+		vector.StrokeLine(screen, cx, cy+8, cx, cy, 2, color.RGBA{34, 139, 34, 255}, false)
+		vector.DrawFilledCircle(screen, cx-3, cy+2, 2, color.RGBA{34, 139, 34, 255}, false)
+		vector.DrawFilledCircle(screen, cx+3, cy+2, 2, color.RGBA{34, 139, 34, 255}, false)
+	case Growing:
+		// Green leaves growing
+		vector.StrokeLine(screen, cx, cy+8, cx, cy-5, 2, color.RGBA{34, 139, 34, 255}, false)
+		vector.DrawFilledCircle(screen, cx-5, cy, 4, color.RGBA{34, 139, 34, 255}, false)
+		vector.DrawFilledCircle(screen, cx+5, cy, 4, color.RGBA{34, 139, 34, 255}, false)
+		vector.DrawFilledCircle(screen, cx, cy-8, 5, color.RGBA{34, 139, 34, 255}, false)
+	case Mature:
+		// Full green top with hint of orange
+		g.drawCarrotTop(screen, cx, cy)
+		// Slight orange peek
+		vector.DrawFilledCircle(screen, cx, cy+5, 4, color.RGBA{255, 140, 0, 200}, false)
+	case Ready:
+		// Full carrot with orange visible
+		g.drawCarrotTop(screen, cx, cy)
+		// Orange carrot body
+		vector.DrawFilledCircle(screen, cx, cy+8, 6, color.RGBA{255, 140, 0, 255}, false)
+		vector.DrawFilledCircle(screen, cx, cy+3, 4, color.RGBA{255, 165, 0, 255}, false)
+	}
+}
+
+// drawCarrotTop - отрисовка зелёной ботвы морковки
+func (g *Game) drawCarrotTop(screen *ebiten.Image, cx, cy float32) {
+	// Stem
+	vector.StrokeLine(screen, cx, cy+5, cx, cy-10, 2, color.RGBA{34, 139, 34, 255}, false)
+	// Leaves
+	vector.DrawFilledCircle(screen, cx-8, cy-5, 5, color.RGBA{34, 139, 34, 255}, false)
+	vector.DrawFilledCircle(screen, cx+8, cy-5, 5, color.RGBA{34, 139, 34, 255}, false)
+	vector.DrawFilledCircle(screen, cx, cy-12, 6, color.RGBA{34, 139, 34, 255}, false)
+	vector.DrawFilledCircle(screen, cx-5, cy-8, 4, color.RGBA{34, 139, 34, 255}, false)
+	vector.DrawFilledCircle(screen, cx+5, cy-8, 4, color.RGBA{34, 139, 34, 255}, false)
+}
+
+// drawWaterIndicator - индикатор необходимости полива
+func (g *Game) drawWaterIndicator(screen *ebiten.Image, x, y float32) {
+	// Blue drop
+	dropColor := color.RGBA{70, 130, 180, 255}
+	vector.DrawFilledCircle(screen, x, y, 4, dropColor, false)
+	vector.DrawFilledCircle(screen, x, y-3, 2, color.RGBA{100, 180, 255, 255}, false)
+}
+
+// drawReadyIndicator - индикатор готовности к сбору
+func (g *Game) drawReadyIndicator(screen *ebiten.Image, plot *CarrotPlot) {
+	// Sparkle effect
+	sparkleX := plot.x + plot.width/2
+	sparkleY := plot.y - 10
+	
+	twinkle := float32(math.Sin(float64(g.frameCount)*0.2)) * 3
+	alpha := uint8(150 + twinkle*30)
+	
+	vector.DrawFilledCircle(screen, sparkleX, sparkleY+twinkle, 3, color.RGBA{255, 255, 0, alpha}, false)
+	vector.DrawFilledCircle(screen, sparkleX-5, sparkleY, 2, color.RGBA{255, 255, 255, alpha}, false)
+	vector.DrawFilledCircle(screen, sparkleX+5, sparkleY, 2, color.RGBA{255, 255, 255, alpha}, false)
+}
+
+// drawInventoryUI - отрисовка интерфейса инвентаря
+func (g *Game) drawInventoryUI(screen *ebiten.Image) {
+	// Inventory background
+	invX, invY := float32(10), float32(screenHeight-80)
+	vector.DrawFilledRect(screen, invX, invY, 200, 70, color.RGBA{0, 0, 0, 150}, false)
+	
+	// Tool selection
+	toolY := float32(screenHeight - 70)
+	
+	// Seed tool (1)
+	seedColor := color.RGBA{139, 69, 19, 255}
+	if g.currentTool == SeedTool {
+		vector.DrawFilledRect(screen, invX+5, toolY-3, 20, 20, color.RGBA{255, 255, 0, 100}, false)
+	}
+	vector.DrawFilledRect(screen, invX+5, toolY, 15, 15, seedColor, false)
+	ebitenutil.DebugPrintAt(screen, "1", int(invX+8), int(toolY+4))
+	ebitenutil.DebugPrintAt(screen, "Seeds: "+string(rune('0'+g.inventory.seeds)), int(invX+30), int(toolY+4))
+	
+	// Watering can tool (2)
+	waterColor := color.RGBA{70, 130, 180, 255}
+	if g.currentTool == WateringCanTool {
+		vector.DrawFilledRect(screen, invX+5, toolY+22-3, 20, 20, color.RGBA{255, 255, 0, 100}, false)
+	}
+	vector.DrawFilledRect(screen, invX+5, toolY+22, 15, 15, waterColor, false)
+	ebitenutil.DebugPrintAt(screen, "2", int(invX+8), int(toolY+26))
+	ebitenutil.DebugPrintAt(screen, "Water", int(invX+30), int(toolY+26))
+	
+	// Shovel tool (3)
+	shovelColor := color.RGBA{120, 120, 120, 255}
+	if g.currentTool == ShovelTool {
+		vector.DrawFilledRect(screen, invX+5, toolY+44-3, 20, 20, color.RGBA{255, 255, 0, 100}, false)
+	}
+	vector.DrawFilledRect(screen, invX+5, toolY+44, 15, 15, shovelColor, false)
+	ebitenutil.DebugPrintAt(screen, "3", int(invX+8), int(toolY+48))
+	ebitenutil.DebugPrintAt(screen, "Harvest", int(invX+30), int(toolY+48))
+	
+	// Carrots count
+	ebitenutil.DebugPrintAt(screen, "Carrots: "+string(rune('0'+g.inventory.carrots)), int(invX+110), int(toolY+4))
 }
 
 func (g *Game) drawGround(screen *ebiten.Image) {
