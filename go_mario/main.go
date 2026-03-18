@@ -216,8 +216,8 @@ func NewGame() *Game {
 		windowY:  screenHeight - groundHeight - 50,
 		windowW:  30,
 		windowH:  40,
-		chimneyX: 590,
-		chimneyY: screenHeight - groundHeight - 80,
+		chimneyX: 600,
+		chimneyY: screenHeight - groundHeight - 100 - 40, // На крыше дома
 		smoke:    smoke,
 	}
 
@@ -612,11 +612,17 @@ func (g *Game) drawHouse(screen *ebiten.Image) {
 		vector.StrokeLine(screen, xLeft, y, xRight, y, 1, roofColor, false)
 	}
 
-	// Draw chimney (dark gray)
+	// Draw chimney (dark gray) - on the roof
 	chimneyColor := color.RGBA{80, 80, 80, 255}
-	vector.DrawFilledRect(screen, h.chimneyX, h.chimneyY, 20, 40, chimneyColor, false)
-	// Chimney top
-	vector.DrawFilledRect(screen, h.chimneyX-5, h.chimneyY, 30, 10, chimneyColor, false)
+	chimneyBaseY := h.y - h.height - 20 // На крыше, чуть ниже пика
+	vector.DrawFilledRect(screen, h.chimneyX, chimneyBaseY-40, 20, 40, chimneyColor, false)
+	// Chimney top cap (wider)
+	vector.DrawFilledRect(screen, h.chimneyX-5, chimneyBaseY-40, 30, 10, chimneyColor, false)
+	// Chimney base (where it meets roof)
+	vector.DrawFilledRect(screen, h.chimneyX-8, chimneyBaseY-5, 36, 10, chimneyColor, false)
+
+	// Update chimneyY for smoke particles
+	h.chimneyY = chimneyBaseY - 40
 
 	// Draw smoke particles
 	g.updateAndDrawSmoke(screen)
@@ -689,23 +695,27 @@ func (g *Game) drawHouseWindow(screen *ebiten.Image, x, y, w, h float32) {
 
 func (g *Game) updateAndDrawSmoke(screen *ebiten.Image) {
 	h := g.house
+	chimneyTopX := h.chimneyX + 10
+	chimneyTopY := h.chimneyY // Верх трубы
+	
 	for i := range g.house.smoke {
 		particle := &g.house.smoke[i]
 
-		// Update particle
-		particle.x = h.chimneyX + 10 + particle.vx*float32(g.frameCount%60)
-		particle.y = h.chimneyY + particle.vy*float32(g.frameCount%60) - float32(particle.life)/3
+		// Update particle position - smoke rises from chimney top
+		timeOffset := float32(g.frameCount+i*5) * 0.5
+		particle.x = chimneyTopX + float32(math.Sin(float64(timeOffset)))*5 + particle.vx*2
+		particle.y = chimneyTopY - float32(particle.life)*0.8 - particle.size/2
 		particle.life++
 
 		if particle.life >= particle.maxLife {
 			particle.life = 0
-			particle.y = h.chimneyY
 		}
 
-		// Draw smoke (gray circles with decreasing alpha)
+		// Draw smoke (gray circles with decreasing alpha and increasing size)
 		alpha := uint8(150 - particle.life*150/particle.maxLife)
-		smokeColor := color.RGBA{150, 150, 150, alpha}
-		vector.DrawFilledCircle(screen, particle.x, particle.y, particle.size, smokeColor, false)
+		size := particle.size + float32(particle.life)/5
+		smokeColor := color.RGBA{180, 180, 180, alpha}
+		vector.DrawFilledCircle(screen, particle.x, particle.y, size, smokeColor, false)
 	}
 }
 
