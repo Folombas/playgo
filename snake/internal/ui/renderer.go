@@ -169,6 +169,11 @@ func (r *Renderer) DrawGame(screen *ebiten.Image, g *game.Game, es *effects.Effe
 		r.drawArrow(screen, arrow)
 	}
 
+	// Отрисовка бонусов
+	for _, powerUp := range g.PowerUps {
+		r.drawPowerUp(screen, powerUp)
+	}
+
 	// Отрисовка счёта
 	ebitenutil.DebugPrintAt(screen, fmt.Sprintf("Score: %d", g.Score), 10, 10)
 	ebitenutil.DebugPrintAt(screen, fmt.Sprintf("Arrows: %d", g.ArrowCount), 10, 25)
@@ -177,6 +182,21 @@ func (r *Renderer) DrawGame(screen *ebiten.Image, g *game.Game, es *effects.Effe
 	}
 	if len(g.Coins) > 0 {
 		ebitenutil.DebugPrintAt(screen, "x2 XP COINS!", 10, 55)
+	}
+	// Отображение жизней
+	if g.Lives > 1 {
+		ebitenutil.DebugPrintAt(screen, fmt.Sprintf("Lives: %d", g.Lives), 10, 70)
+	}
+	// Отображение активных эффектов
+	effectY := 10
+	if g.Lives > 1 {
+		effectY = 85
+	}
+	for effectType, duration := range g.ActiveEffects {
+		effectName := effectType.String()[:3] // Первые 3 буквы
+		seconds := duration / 60
+		ebitenutil.DebugPrintAt(screen, fmt.Sprintf("%s: %ds", effectName, seconds), r.screenWidth-100, effectY)
+		effectY += 15
 	}
 }
 
@@ -610,3 +630,51 @@ func (r *Renderer) drawArrow(screen *ebiten.Image, arrow game.Arrow) {
 	vector.StrokeLine(screen, headX2, headY2, headX3, headY3, shaftWidth, arrowColor, false)
 	vector.StrokeLine(screen, headX3, headY3, headX1, headY1, shaftWidth, arrowColor, false)
 }
+
+// drawPowerUp отрисовывает бонус
+func (r *Renderer) drawPowerUp(screen *ebiten.Image, powerUp game.PowerUp) {
+	x := float32(powerUp.Pos.X * r.tileSize)
+	y := float32(powerUp.Pos.Y * r.tileSize)
+	size := float32(r.tileSize)
+
+	// Пульсация бонуса
+	pulseScale := effects.PulseScale(powerUp.PulsePhase, 0.15)
+
+	centerX := x + size/2
+	centerY := y + size/2
+	radius := size/2 - 3
+
+	// Цвет в зависимости от типа бонуса
+	var powerUpColor color.RGBA
+	switch powerUp.Type {
+	case game.PowerUpSlowMotion:
+		powerUpColor = color.RGBA{0, 191, 255, 255} // Голубой
+	case game.PowerUpShield:
+		powerUpColor = color.RGBA{65, 105, 225, 255} // Синий
+	case game.PowerUpShrink:
+		powerUpColor = color.RGBA{34, 139, 34, 255} // Зелёный
+	case game.PowerUpExtraLife:
+		powerUpColor = color.RGBA{255, 0, 0, 255} // Красный
+	case game.PowerUpLightning:
+		powerUpColor = color.RGBA{255, 255, 0, 255} // Жёлтый
+	case game.PowerUpMultiplier:
+		powerUpColor = color.RGBA{50, 205, 50, 255} // Светло-зелёный
+	}
+
+	// Основная форма бонуса (ромб)
+	vector.DrawFilledCircle(screen, centerX, centerY, radius*pulseScale, powerUpColor, false)
+
+	// Блик
+	highlightX := centerX - radius/3
+	highlightY := centerY - radius/3
+	vector.DrawFilledCircle(screen, highlightX, highlightY, radius/4*pulseScale, color.RGBA{255, 255, 255, 200}, false)
+
+	// Символ бонуса (точка в центре)
+	vector.DrawFilledCircle(screen, centerX, centerY, 2, color.RGBA{255, 255, 255, 255}, false)
+
+	// Свечение
+	glowPhase := (time.Now().UnixMilli() / 200) % 2
+	glowIntensity := uint8(100 + glowPhase*80)
+	vector.DrawFilledCircle(screen, centerX, centerY, radius*pulseScale+3, color.RGBA{powerUpColor.R, powerUpColor.G, powerUpColor.B, glowIntensity}, false)
+}
+

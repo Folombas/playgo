@@ -104,6 +104,47 @@ type Coin struct {
 	PulsePhase float64
 }
 
+// PowerUpType представляет тип бонуса
+type PowerUpType int
+
+const (
+	PowerUpSlowMotion PowerUpType = iota // Замедление времени
+	PowerUpShield                         // Неуязвимость
+	PowerUpShrink                         // Уменьшение змейки
+	PowerUpExtraLife                      // Дополнительная жизнь
+	PowerUpLightning                      // Уничтожение врагов
+	PowerUpMultiplier                     // Множитель очков
+)
+
+// String возвращает строковое представление бонуса
+func (p PowerUpType) String() string {
+	switch p {
+	case PowerUpSlowMotion:
+		return "Slow Motion"
+	case PowerUpShield:
+		return "Shield"
+	case PowerUpShrink:
+		return "Shrink"
+	case PowerUpExtraLife:
+		return "Extra Life"
+	case PowerUpLightning:
+		return "Lightning"
+	case PowerUpMultiplier:
+		return "Multiplier"
+	default:
+		return "Unknown"
+	}
+}
+
+// PowerUp представляет бонус
+type PowerUp struct {
+	Pos        Point
+	Type       PowerUpType
+	Active     bool
+	Duration   int  // длительность в тиках для временных эффектов
+	PulsePhase float64
+}
+
 // Arrow представляет стрелу
 type Arrow struct {
 	Pos       Point
@@ -160,6 +201,13 @@ type Game struct {
 	Difficulty Difficulty
 	FoodTimer  int
 	
+	// Power-ups
+	PowerUps       []PowerUp
+	PowerUpTimer   int
+	PowerUpDelay   int
+	ActiveEffects  map[PowerUpType]int // тип -> оставшаяся длительность
+	Lives          int                 // количество жизней
+	
 	config *Config
 }
 
@@ -177,14 +225,18 @@ func NewGame() *Game {
 		EnemyDelay: 12,
 		BombDelay:  180,
 		CoinDelay:  300,
+		PowerUpDelay: 600, // Спавн бонуса каждые 600 тиков (~10 сек)
 		Enemies:    []Enemy{},
 		Bombs:      []Bomb{},
 		Coins:      []Coin{},
+		PowerUps:   []PowerUp{},
 		Arrows:     []Arrow{},
 		HasKey:     false,
 		ArrowCount: 0,
 		State:      Menu,
 		FoodTimer:  0,
+		Lives:      1,
+		ActiveEffects: make(map[PowerUpType]int),
 		config:     cfg,
 	}
 	return g
@@ -393,6 +445,138 @@ func (g *Game) spawnCoin() {
 	}
 }
 
+// spawnPowerUp создаёт бонус
+func (g *Game) spawnPowerUp() {
+	rand.Seed(time.Now().UnixNano())
+	gridX, gridY := g.config.GridSize()
+	
+	// Выбираем случайный тип бонуса
+	powerUpTypes := []PowerUpType{
+		PowerUpSlowMotion,
+		PowerUpShield,
+		PowerUpShrink,
+		PowerUpExtraLife,
+		PowerUpLightning,
+		PowerUpMultiplier,
+	}
+	randomType := powerUpTypes[rand.Intn(len(powerUpTypes))]
+	
+	for {
+		pos := Point{
+			X: rand.Intn(gridX),
+			Y: rand.Intn(gridY),
+		}
+		tooClose := false
+		for _, segment := range g.Snake {
+			dx := segment.X - pos.X
+			if dx < 0 {
+				dx = -dx
+			}
+			dy := segment.Y - pos.Y
+			if dy < 0 {
+				dy = -dy
+			}
+			if dx < 15 && dy < 10 {
+				tooClose = true
+				break
+			}
+		}
+		if !tooClose {
+			g.PowerUps = append(g.PowerUps, PowerUp{
+				Pos: pos,
+				Type: randomType,
+				Active: true,
+				Duration: 0,
+				PulsePhase: 0,
+			})
+			break
+		}
+	}
+}
+
+// applyPowerUp применяет эффект бонуса
+func (g *Game) applyPowerUp(powerUp PowerUp) (events []GameEvent) {
+	switch powerUp.Type {
+	case PowerUpSlowMotion:
+		g.ActiveEffects[PowerUpSlowMotion] = 600 // 10 секунд при 60 FPS
+		g.MoveDelay = g.MoveDelay * 2 // Замедление
+		events = append(events, GameEvent{Type: EventPowerUpSlowMotion, Pos: powerUp.Pos})
+		
+	case PowerUpShield:
+		g.ActiveEffects[PowerUpShield] = 480 // 8 секунд
+		events = append(events, GameEvent{Type: EventPowerUpShield, Pos: powerUp.Pos})
+		
+	case PowerUpShrink:
+		// Уменьшаем змейку на половину
+		if len(g.Snake) > 3 {
+			newLen := len(g.Snake) / 2
+			g.Snake = g.Snake[:newLen]
+		}
+		events = append(events, GameEvent{Type: EventPowerUpShrink, Pos: powerUp.Pos})
+		
+	case PowerUpExtraLife:
+		g.Lives++
+		events = append(events, GameEvent{Type: EventPowerUpExtraLife, Pos: powerUp.Pos})
+		
+	case PowerUpLightning:
+		// Уничтожаем всех врагов
+		for _, enemy := range g.Enemies {
+			events = append(events, GameEvent{Type: EventEnemyKill, Pos: enemy.Pos})
+			g.Score++
+		}
+		g.Enemies = []Enemy{}
+		events = append(events, GameEvent{Type: EventPowerUpLightning, Pos: powerUp.Pos})
+		
+	case PowerUpMultiplier:
+		g.ActiveEffects[PowerUpMultiplier] = 900 // 15 секунд
+		events = append(events, GameEvent{Type: EventPowerUpMultiplier, Pos: powerUp.Pos})
+	}
+	
+	return events
+}
+
+// updatePowerUps обновляет активные эффекты
+func (g *Game) updatePowerUps() {
+	// Уменьшаем длительность эффектов
+	for effectType, duration := range g.ActiveEffects {
+		g.ActiveEffects[effectType] = duration - 1
+		if g.ActiveEffects[effectType] <= 0 {
+			// Эффект закончился
+			delete(g.ActiveEffects, effectType)
+			
+			// Восстанавливаем нормальную скорость
+			if effectType == PowerUpSlowMotion {
+				g.MoveDelay = 8
+			}
+		}
+	}
+	
+	// Обновляем пульсацию бонусов
+	for i := range g.PowerUps {
+		g.PowerUps[i].PulsePhase += 0.15
+	}
+}
+
+// HasShield возвращает true, если активен щит
+func (g *Game) HasShield() bool {
+	_, ok := g.ActiveEffects[PowerUpShield]
+	return ok
+}
+
+// IsSlowMotion возвращает true, если активно замедление
+func (g *Game) IsSlowMotion() bool {
+	_, ok := g.ActiveEffects[PowerUpSlowMotion]
+	return ok
+}
+
+// GetScoreMultiplier возвращает множитель очков
+func (g *Game) GetScoreMultiplier() int {
+	if _, ok := g.ActiveEffects[PowerUpMultiplier]; ok {
+		return 3
+	}
+	return 1
+}
+
 // UpdateDirection обновляет направление движения
 func (g *Game) UpdateDirection(newDir Direction) {
 	if newDir == Up && g.Direction != Down {
@@ -429,9 +613,21 @@ func (g *Game) Update() (events []GameEvent) {
 	}
 
 	gridX, gridY := g.config.GridSize()
-	
+
 	// Проверка столкновения со стеной
 	if newHead.X < 0 || newHead.X >= gridX || newHead.Y < 0 || newHead.Y >= gridY {
+		// Если есть дополнительная жизнь
+		if g.Lives > 1 {
+			g.Lives--
+			g.Snake = g.Snake[:3]
+			g.Snake[0] = Point{gridX / 2, gridY / 2}
+			g.Snake[1] = Point{gridX/2 - 1, gridY / 2}
+			g.Snake[2] = Point{gridX/2 - 2, gridY / 2}
+			g.Direction = Right
+			events = append(events, GameEvent{Type: EventPowerUpExtraLife, Pos: newHead})
+			return events
+		}
+		
 		g.GameOver = true
 		g.State = GameOver
 		events = append(events, GameEvent{Type: EventWallCollision, Pos: newHead})
@@ -441,6 +637,17 @@ func (g *Game) Update() (events []GameEvent) {
 	// Проверка столкновения с хвостом
 	for _, segment := range g.Snake {
 		if segment.X == newHead.X && segment.Y == newHead.Y {
+			// Если есть дополнительная жизнь
+			if g.Lives > 1 {
+				g.Lives--
+				g.Snake = g.Snake[:3]
+				g.Snake[0] = Point{gridX / 2, gridY / 2}
+				g.Snake[1] = Point{gridX/2 - 1, gridY / 2}
+				g.Snake[2] = Point{gridX/2 - 2, gridY / 2}
+				events = append(events, GameEvent{Type: EventPowerUpExtraLife, Pos: newHead})
+				return events
+			}
+			
 			g.GameOver = true
 			g.State = GameOver
 			events = append(events, GameEvent{Type: EventSelfCollision, Pos: newHead})
@@ -453,10 +660,11 @@ func (g *Game) Update() (events []GameEvent) {
 
 	// Проверка поедания еды
 	if newHead.X == g.Food.X && newHead.Y == g.Food.Y {
-		g.Score++
+		multiplier := g.GetScoreMultiplier()
+		g.Score += multiplier
 		g.placeFood()
 		events = append(events, GameEvent{Type: EventEatFood, Pos: g.Food})
-		
+
 		// Спавн нового врага каждые 2 очка
 		if g.Score%2 == 0 {
 			g.spawnEnemy()
@@ -486,6 +694,13 @@ func (g *Game) Update() (events []GameEvent) {
 	if g.CoinTimer >= g.CoinDelay {
 		g.CoinTimer = 0
 		g.spawnCoin()
+	}
+
+	// Спавн бонусов
+	g.PowerUpTimer++
+	if g.PowerUpTimer >= g.PowerUpDelay {
+		g.PowerUpTimer = 0
+		g.spawnPowerUp()
 	}
 
 	// Обновление бомб
@@ -528,10 +743,23 @@ func (g *Game) Update() (events []GameEvent) {
 	arrowEvents := g.updateArrows()
 	events = append(events, arrowEvents...)
 
-	// Обновление пульсации монет
-	for i := range g.Coins {
-		g.Coins[i].PulsePhase += 0.15
+	// Проверка сбора бонусов
+	for i := range g.PowerUps {
+		if g.PowerUps[i].Active && newHead.X == g.PowerUps[i].Pos.X && newHead.Y == g.PowerUps[i].Pos.Y {
+			g.PowerUps[i].Active = false
+			powerUpEvents := g.applyPowerUp(g.PowerUps[i])
+			events = append(events, powerUpEvents...)
+		}
 	}
+	// Удаление использованных бонусов
+	for i := len(g.PowerUps) - 1; i >= 0; i-- {
+		if !g.PowerUps[i].Active {
+			g.PowerUps = append(g.PowerUps[:i], g.PowerUps[i+1:]...)
+		}
+	}
+
+	// Обновление активных эффектов
+	g.updatePowerUps()
 
 	return events
 }
@@ -572,6 +800,28 @@ func (g *Game) updateEnemies() (events []GameEvent) {
 		// Проверка столкновения со змейкой
 		for _, segment := range g.Snake {
 			if segment.X == enemy.Pos.X && segment.Y == enemy.Pos.Y {
+				// Если есть щит, не умираем
+				if g.HasShield() {
+					// Уничтожаем врага
+					events = append(events, GameEvent{Type: EventEnemyKill, Pos: enemy.Pos})
+					// Удаляем врага из списка (будет обработано в updateEnemies)
+					g.Enemies = append(g.Enemies[:i], g.Enemies[i+1:]...)
+					g.Score++
+					return events
+				}
+				
+				// Если есть дополнительная жизнь
+				if g.Lives > 1 {
+					g.Lives--
+					// Отбрасываем змейку
+					g.Snake = g.Snake[:3]
+					g.Snake[0] = Point{gridX / 2, gridY / 2}
+					g.Snake[1] = Point{gridX/2 - 1, gridY / 2}
+					g.Snake[2] = Point{gridX/2 - 2, gridY / 2}
+					events = append(events, GameEvent{Type: EventPowerUpExtraLife, Pos: enemy.Pos})
+					return events
+				}
+				
 				g.GameOver = true
 				g.State = GameOver
 				events = append(events, GameEvent{Type: EventEnemyCollision, Pos: enemy.Pos})
@@ -706,6 +956,13 @@ const (
 	EventBombCollision
 	EventWallCollision
 	EventSelfCollision
+	// Power-up события
+	EventPowerUpSlowMotion
+	EventPowerUpShield
+	EventPowerUpShrink
+	EventPowerUpExtraLife
+	EventPowerUpLightning
+	EventPowerUpMultiplier
 )
 
 // GameEvent представляет игровое событие

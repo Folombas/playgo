@@ -137,6 +137,23 @@ func (a *App) Update() error {
 		case game.EventSelfCollision:
 			a.effects.SpawnParticles(x, y, 20, color.RGBA{255, 100, 100, 255}, 3)
 			a.effects.TriggerShake(5, 20)
+			
+		// Power-up события
+		case game.EventPowerUpSlowMotion:
+			a.effects.SpawnParticles(x, y, 20, color.RGBA{0, 191, 255, 255}, 3)
+			a.effects.TriggerShake(3, 15)
+		case game.EventPowerUpShield:
+			a.effects.SpawnParticles(x, y, 20, color.RGBA{65, 105, 225, 255}, 3)
+		case game.EventPowerUpShrink:
+			a.effects.SpawnParticles(x, y, 15, color.RGBA{34, 139, 34, 255}, 2.5)
+		case game.EventPowerUpExtraLife:
+			a.effects.SpawnParticles(x, y, 25, color.RGBA{255, 0, 0, 255}, 4)
+			a.effects.TriggerShake(5, 20)
+		case game.EventPowerUpLightning:
+			a.effects.SpawnParticles(x, y, 40, color.RGBA{255, 255, 0, 255}, 5)
+			a.effects.TriggerShake(8, 25)
+		case game.EventPowerUpMultiplier:
+			a.effects.SpawnParticles(x, y, 20, color.RGBA{50, 205, 50, 255}, 3)
 		}
 	}
 
