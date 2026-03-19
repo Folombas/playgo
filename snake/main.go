@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"image/color"
 	"log"
+	"math"
 	"math/rand"
 	"time"
 
@@ -74,6 +75,56 @@ func (d Difficulty) EnemyCount() int {
 	}
 }
 
+// Particle represents a visual effect particle
+type Particle struct {
+	X, Y     float32
+	VX, VY   float32
+	Life     int
+	MaxLife  int
+	Color    color.RGBA
+	Size     float32
+	Gravity  float32
+}
+
+// ScreenShake handles screen shake effect
+type ScreenShake struct {
+	Intensity float32
+	Duration  int
+	Timer     int
+	Angle     float64
+}
+
+func (ss *ScreenShake) Update() {
+	if ss.Timer > 0 {
+		ss.Timer--
+		ss.Angle += math.Pi / 8
+		if ss.Timer <= 0 {
+			ss.Intensity = 0
+		}
+	}
+}
+
+func (ss *ScreenShake) IsActive() bool {
+	return ss.Timer > 0
+}
+
+func (ss *ScreenShake) GetOffset() (float32, float32) {
+	if !ss.IsActive() {
+		return 0, 0
+	}
+	offset := ss.Intensity * float32(ss.Timer) / float32(ss.Duration)
+	dx := offset * float32(math.Sin(ss.Angle))
+	dy := offset * float32(math.Cos(ss.Angle))
+	return dx, dy
+}
+
+func (ss *ScreenShake) Trigger(intensity float32, duration int) {
+	ss.Intensity = intensity
+	ss.Duration = duration
+	ss.Timer = duration
+	ss.Angle = rand.Float64() * math.Pi * 2
+}
+
 type Game struct {
 	snake       []Point
 	direction   Direction
@@ -99,6 +150,12 @@ type Game struct {
 	shootTimer  int
 	state       GameState
 	difficulty  Difficulty
+	
+	// Visual effects
+	particles   []Particle
+	screenShake ScreenShake
+	foodTimer   int // для анимации появления еды
+	backgroundGradient *ebiten.Image
 }
 
 type Point struct {
@@ -132,6 +189,7 @@ type Coin struct {
 	pos      Point
 	value    int // множитель очков (2 = x2 XP)
 	collected bool
+	pulsePhase float64 // для анимации пульсации
 }
 
 type Arrow struct {
@@ -141,16 +199,35 @@ type Arrow struct {
 	speed     int
 }
 
+func createGradientBackground() *ebiten.Image {
+	gradient := ebiten.NewImage(screenWidth, screenHeight)
+	
+	// Создаём градиент от тёмно-синего к чёрному
+	for y := 0; y < screenHeight; y++ {
+		ratio := float32(y) / float32(screenHeight)
+		// Тёмно-синий (10, 10, 30) к чёрному (0, 0, 0)
+		r := uint8(float32(10) * (1 - ratio))
+		g := uint8(float32(10) * (1 - ratio))
+		b := uint8(float32(30) * (1 - ratio) + float32(0)*ratio)
+		
+		for x := 0; x < screenWidth; x++ {
+			gradient.Set(x, y, color.RGBA{r, g, b, 255})
+		}
+	}
+	
+	return gradient
+}
+
 func NewGame() *Game {
 	g := &Game{
 		snake:     []Point{{gridSizeX / 2, gridSizeY / 2}, {gridSizeX/2 - 1, gridSizeY / 2}, {gridSizeX/2 - 2, gridSizeY / 2}},
 		direction: Right,
 		score:     0,
 		gameOver:  false,
-		moveDelay: 8,   // скорость движения змейки
-		enemyDelay: 12,  // скорость врагов (медленнее змейки)
-		bombDelay: 180,  // спавн бомбы каждые 180 тиков (~3 сек)
-		coinDelay: 300,  // спавн монетки каждые 300 тиков (~5 сек)
+		moveDelay: 8,
+		enemyDelay: 12,
+		bombDelay: 180,
+		coinDelay: 300,
 		enemies:   []Enemy{},
 		bombs:     []Bomb{},
 		coins:     []Coin{},
@@ -158,6 +235,8 @@ func NewGame() *Game {
 		hasKey:    false,
 		arrowCount: 0,
 		state:     Menu,
+		particles: []Particle{},
+		backgroundGradient: createGradientBackground(),
 	}
 	return g
 }
@@ -166,12 +245,12 @@ func (g *Game) startGame() {
 	g.placeFood()
 	g.spawnChest()
 	g.spawnKey()
-	// Spawn enemies based on difficulty
 	enemyCount := g.difficulty.EnemyCount()
 	for i := 0; i < enemyCount; i++ {
 		g.spawnEnemy()
 	}
 	g.state = Playing
+	g.foodTimer = 20 // Анимация появления еды
 }
 
 func (g *Game) placeFood() {
@@ -181,7 +260,6 @@ func (g *Game) placeFood() {
 			X: rand.Intn(gridSizeX),
 			Y: rand.Intn(gridSizeY),
 		}
-		// Check if food is not on snake
 		onSnake := false
 		for _, segment := range g.snake {
 			if segment.X == g.food.X && segment.Y == g.food.Y {
@@ -193,6 +271,7 @@ func (g *Game) placeFood() {
 			break
 		}
 	}
+	g.foodTimer = 20 // Сброс таймера для анимации
 }
 
 func (g *Game) spawnEnemy() {
@@ -202,7 +281,6 @@ func (g *Game) spawnEnemy() {
 			X: rand.Intn(gridSizeX),
 			Y: rand.Intn(gridSizeY),
 		}
-		// Don't spawn on snake or too close to player
 		tooClose := false
 		for _, segment := range g.snake {
 			dx := segment.X - pos.X
@@ -233,7 +311,6 @@ func (g *Game) spawnBomb() {
 			X: rand.Intn(gridSizeX),
 			Y: rand.Intn(gridSizeY),
 		}
-		// Don't spawn on snake
 		tooClose := false
 		for _, segment := range g.snake {
 			dx := segment.X - pos.X
@@ -250,7 +327,7 @@ func (g *Game) spawnBomb() {
 			}
 		}
 		if !tooClose {
-			g.bombs = append(g.bombs, Bomb{pos: pos, timer: 0, maxTime: 180}) // 3 секунды до взрыва
+			g.bombs = append(g.bombs, Bomb{pos: pos, timer: 0, maxTime: 180})
 			break
 		}
 	}
@@ -263,7 +340,6 @@ func (g *Game) spawnChest() {
 			X: rand.Intn(gridSizeX),
 			Y: rand.Intn(gridSizeY),
 		}
-		// Don't spawn too close to snake
 		tooClose := false
 		for _, segment := range g.snake {
 			dx := segment.X - pos.X
@@ -293,7 +369,6 @@ func (g *Game) spawnKey() {
 			X: rand.Intn(gridSizeX),
 			Y: rand.Intn(gridSizeY),
 		}
-		// Don't spawn too close to snake
 		tooClose := false
 		for _, segment := range g.snake {
 			dx := segment.X - pos.X
@@ -323,7 +398,6 @@ func (g *Game) spawnCoin() {
 			X: rand.Intn(gridSizeX),
 			Y: rand.Intn(gridSizeY),
 		}
-		// Don't spawn too close to snake
 		tooClose := false
 		for _, segment := range g.snake {
 			dx := segment.X - pos.X
@@ -340,23 +414,71 @@ func (g *Game) spawnCoin() {
 			}
 		}
 		if !tooClose {
-			g.coins = append(g.coins, Coin{pos: pos, value: 2, collected: false})
+			g.coins = append(g.coins, Coin{pos: pos, value: 2, collected: false, pulsePhase: 0})
 			break
 		}
 	}
 }
 
+// spawnParticles создаёт частицы в указанной позиции
+func (g *Game) spawnParticles(x, y float32, count int, baseColor color.RGBA, spread float32) {
+	for i := 0; i < count; i++ {
+		angle := rand.Float64() * math.Pi * 2
+		speed := rand.Float64() * float64(spread)
+		particle := Particle{
+			X: x,
+			Y: y,
+			VX: float32(math.Cos(angle) * speed),
+			VY: float32(math.Sin(angle) * speed),
+			Life: 20 + rand.Intn(10),
+			MaxLife: 30,
+			Color: baseColor,
+			Size: 2 + rand.Float32()*3,
+			Gravity: 0.1,
+		}
+		g.particles = append(g.particles, particle)
+	}
+}
+
+func (g *Game) updateParticles() {
+	for i := len(g.particles) - 1; i >= 0; i-- {
+		p := &g.particles[i]
+		p.X += p.VX
+		p.Y += p.VY
+		p.VY += p.Gravity
+		p.Life--
+		
+		if p.Life <= 0 {
+			g.particles = append(g.particles[:i], g.particles[i+1:]...)
+		}
+	}
+}
+
+func (g *Game) drawParticles(screen *ebiten.Image) {
+	for _, p := range g.particles {
+		alpha := uint8(float32(p.Color.A) * float32(p.Life) / float32(p.MaxLife))
+		c := color.RGBA{p.Color.R, p.Color.G, p.Color.B, alpha}
+		vector.DrawFilledCircle(screen, p.X, p.Y, p.Size, c, false)
+	}
+}
+
 func (g *Game) Update() error {
+	// Обновление тряски экрана
+	g.screenShake.Update()
+	
+	// Обновление пульсации монет
+	for i := range g.coins {
+		g.coins[i].pulsePhase += 0.15
+	}
+	
 	switch g.state {
 	case Menu:
-		// Go to difficulty selection with Enter or Space
 		if inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeySpace) {
 			g.state = SelectDifficulty
 		}
 		return nil
 
 	case SelectDifficulty:
-		// Navigate difficulty with Up/Down arrows
 		if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) {
 			if g.difficulty == Easy {
 				g.difficulty = Hard
@@ -370,35 +492,30 @@ func (g *Game) Update() error {
 				g.difficulty++
 			}
 		}
-		// Confirm difficulty with Enter or Space
 		if inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeySpace) {
 			g.startGame()
 		}
 		return nil
 
 	case Paused:
-		// Unpause with P
 		if inpututil.IsKeyJustPressed(ebiten.KeyP) {
 			g.state = Playing
 		}
 		return nil
 
 	case GameOver:
-		// Restart with Enter
 		if inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
 			*g = *NewGame()
 		}
 		return nil
 
 	case Playing:
-		// Pause with P
 		if inpututil.IsKeyJustPressed(ebiten.KeyP) {
 			g.state = Paused
 			return nil
 		}
 	}
 
-	// Handle input
 	if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) && g.direction != Down {
 		g.direction = Up
 	} else if inpututil.IsKeyJustPressed(ebiten.KeyArrowDown) && g.direction != Up {
@@ -409,19 +526,17 @@ func (g *Game) Update() error {
 		g.direction = Right
 	}
 
-	// Shoot arrow with Space key
 	if inpututil.IsKeyJustPressed(ebiten.KeySpace) && g.arrowCount > 0 {
 		g.shootArrow()
 	}
 
-	// Update move timer
 	g.moveTimer++
 	if g.moveTimer < g.moveDelay {
+		g.updateParticles()
 		return nil
 	}
 	g.moveTimer = 0
 
-	// Move snake
 	head := g.snake[0]
 	newHead := head
 
@@ -436,94 +551,88 @@ func (g *Game) Update() error {
 		newHead.X++
 	}
 
-	// Check wall collision
 	if newHead.X < 0 || newHead.X >= gridSizeX || newHead.Y < 0 || newHead.Y >= gridSizeY {
 		g.gameOver = true
 		g.state = GameOver
+		g.screenShake.Trigger(5, 20) // Тряска при ударе о стену
+		g.spawnParticles(float32(newHead.X*tileSize+tileSize/2), float32(newHead.Y*tileSize+tileSize/2), 20, color.RGBA{255, 100, 100, 255}, 3)
 		return nil
 	}
 
-	// Check self collision
 	for _, segment := range g.snake {
 		if segment.X == newHead.X && segment.Y == newHead.Y {
 			g.gameOver = true
 			g.state = GameOver
+			g.screenShake.Trigger(5, 20)
+			g.spawnParticles(float32(newHead.X*tileSize+tileSize/2), float32(newHead.Y*tileSize+tileSize/2), 20, color.RGBA{255, 100, 100, 255}, 3)
 			return nil
 		}
 	}
 
-	// Add new head
 	g.snake = append([]Point{newHead}, g.snake...)
 
-	// Check food collision
 	if newHead.X == g.food.X && newHead.Y == g.food.Y {
 		g.score++
 		g.placeFood()
-		// Spawn new enemy every 2 points
 		if g.score%2 == 0 {
 			g.spawnEnemy()
 		}
+		// Частицы при поедании еды
+		g.spawnParticles(float32(g.food.X*tileSize+tileSize/2), float32(g.food.Y*tileSize+tileSize/2), 10, color.RGBA{255, 100, 0, 255}, 2)
 	} else {
-		// Remove tail
 		g.snake = g.snake[:len(g.snake)-1]
 	}
 
-	// Update enemies
 	g.enemyTimer++
 	if g.enemyTimer >= g.enemyDelay {
 		g.enemyTimer = 0
 		g.updateEnemies()
 	}
 
-	// Spawn bombs periodically
 	g.bombTimer++
 	if g.bombTimer >= g.bombDelay {
 		g.bombTimer = 0
 		g.spawnBomb()
 	}
 
-	// Spawn coins periodically
 	g.coinTimer++
 	if g.coinTimer >= g.coinDelay {
 		g.coinTimer = 0
 		g.spawnCoin()
 	}
 
-	// Update bombs
 	g.updateBombs()
 
-	// Check key collision
 	if g.key != nil && newHead.X == g.key.pos.X && newHead.Y == g.key.pos.Y {
 		g.hasKey = true
 		g.key = nil
+		g.spawnParticles(float32(g.key.pos.X*tileSize+tileSize/2), float32(g.key.pos.Y*tileSize+tileSize/2), 15, color.RGBA{255, 215, 0, 255}, float32(2.5))
 	}
 
-	// Check coin collision
 	for i := range g.coins {
 		if !g.coins[i].collected && newHead.X == g.coins[i].pos.X && newHead.Y == g.coins[i].pos.Y {
 			g.coins[i].collected = true
-			// x2 XP bonus for next food collection
 			g.score += g.coins[i].value
+			g.spawnParticles(float32(g.coins[i].pos.X*tileSize+tileSize/2), float32(g.coins[i].pos.Y*tileSize+tileSize/2), 15, color.RGBA{255, 215, 0, 255}, float32(2.5))
 		}
 	}
-	// Remove collected coins
 	for i := len(g.coins) - 1; i >= 0; i-- {
 		if g.coins[i].collected {
 			g.coins = append(g.coins[:i], g.coins[i+1:]...)
 		}
 	}
 
-	// Check chest collision
 	if g.chest != nil && !g.chest.open && newHead.X == g.chest.pos.X && newHead.Y == g.chest.pos.Y {
 		if g.hasKey {
 			g.chest.open = true
 			g.arrowCount += g.chest.arrows
 			g.hasKey = false
+			g.spawnParticles(float32(g.chest.pos.X*tileSize+tileSize/2), float32(g.chest.pos.Y*tileSize+tileSize/2), 20, color.RGBA{255, 215, 0, 255}, 3)
 		}
 	}
 
-	// Update arrows
 	g.updateArrows()
+	g.updateParticles()
 
 	return nil
 }
@@ -533,7 +642,6 @@ func (g *Game) updateEnemies() {
 		enemy := &g.enemies[i]
 		enemy.animFrame++
 
-		// Move enemy
 		newPos := enemy.pos
 		switch enemy.direction {
 		case Up:
@@ -546,7 +654,6 @@ func (g *Game) updateEnemies() {
 			newPos.X++
 		}
 
-		// Check bounds - reverse direction if hitting wall
 		if newPos.X < 0 || newPos.X >= gridSizeX || newPos.Y < 0 || newPos.Y >= gridSizeY {
 			enemy.direction = Direction(rand.Intn(4))
 			continue
@@ -554,16 +661,16 @@ func (g *Game) updateEnemies() {
 
 		enemy.pos = newPos
 
-		// Random direction change
 		if rand.Intn(10) < 2 {
 			enemy.direction = Direction(rand.Intn(4))
 		}
 
-		// Check collision with snake
 		for _, segment := range g.snake {
 			if segment.X == enemy.pos.X && segment.Y == enemy.pos.Y {
 				g.gameOver = true
 				g.state = GameOver
+				g.screenShake.Trigger(8, 25) // Сильная тряска при столкновении с врагом
+				g.spawnParticles(float32(enemy.pos.X*tileSize+tileSize/2), float32(enemy.pos.Y*tileSize+tileSize/2), 30, color.RGBA{128, 0, 128, 255}, 4)
 				return
 			}
 		}
@@ -575,18 +682,20 @@ func (g *Game) updateBombs() {
 		bomb := &g.bombs[i]
 		bomb.timer++
 
-		// Check collision with snake
 		for _, segment := range g.snake {
 			if segment.X == bomb.pos.X && segment.Y == bomb.pos.Y {
 				g.gameOver = true
 				g.state = GameOver
+				g.screenShake.Trigger(5, 20)
 				return
 			}
 		}
 
-		// Bomb explodes after maxTime
 		if bomb.timer >= bomb.maxTime {
-			// Check if snake is near explosion
+			// Взрыв бомбы
+			g.screenShake.Trigger(10, 30) // Очень сильная тряска при взрыве
+			g.spawnParticles(float32(bomb.pos.X*tileSize+tileSize/2), float32(bomb.pos.Y*tileSize+tileSize/2), 40, color.RGBA{255, 100, 0, 255}, 5)
+			
 			for _, segment := range g.snake {
 				dx := segment.X - bomb.pos.X
 				if dx < 0 {
@@ -602,7 +711,6 @@ func (g *Game) updateBombs() {
 					return
 				}
 			}
-			// Remove exploded bomb
 			g.bombs = append(g.bombs[:i], g.bombs[i+1:]...)
 		}
 	}
@@ -634,7 +742,6 @@ func (g *Game) updateArrows() {
 		}
 		arrow.speed = 0
 
-		// Move arrow
 		switch arrow.direction {
 		case Up:
 			arrow.pos.Y--
@@ -646,19 +753,18 @@ func (g *Game) updateArrows() {
 			arrow.pos.X++
 		}
 
-		// Check bounds
 		if arrow.pos.X < 0 || arrow.pos.X >= gridSizeX || arrow.pos.Y < 0 || arrow.pos.Y >= gridSizeY {
 			arrow.active = false
 			continue
 		}
 
-		// Check collision with enemies
 		for j := len(g.enemies) - 1; j >= 0; j-- {
 			enemy := &g.enemies[j]
 			if arrow.pos.X == enemy.pos.X && arrow.pos.Y == enemy.pos.Y {
 				g.enemies = append(g.enemies[:j], g.enemies[j+1:]...)
 				arrow.active = false
-				g.score += 1 // Bonus for killing enemy
+				g.score += 1
+				g.spawnParticles(float32(enemy.pos.X*tileSize+tileSize/2), float32(enemy.pos.Y*tileSize+tileSize/2), 25, color.RGBA{128, 0, 128, 255}, 4)
 				break
 			}
 		}
@@ -666,50 +772,63 @@ func (g *Game) updateArrows() {
 }
 
 func (g *Game) Draw(screen *ebiten.Image) {
-	// Clear screen
-	screen.Fill(color.RGBA{0, 0, 0, 255})
+	// Применяем тряску экрана
+	dx, dy := g.screenShake.GetOffset()
 
-	// Draw based on game state
+	// Рисуем градиентный фон
+	screen.DrawImage(g.backgroundGradient, nil)
+
+	// Создаём временную поверхность для игры со смещением
+	gameScreen := ebiten.NewImage(screenWidth, screenHeight)
+
 	switch g.state {
 	case Menu:
-		g.drawMenu(screen)
+		g.drawMenu(gameScreen)
+		g.drawParticles(gameScreen)
+		screen.DrawImage(gameScreen, nil)
 		return
 	case SelectDifficulty:
-		g.drawDifficultySelection(screen)
+		g.drawDifficultySelection(gameScreen)
+		g.drawParticles(gameScreen)
+		screen.DrawImage(gameScreen, nil)
 		return
 	case Paused:
-		// Draw game paused
-		g.drawGame(screen)
-		g.drawPauseOverlay(screen)
+		g.drawGame(gameScreen)
+		g.drawParticles(gameScreen)
+		g.drawPauseOverlay(gameScreen)
+		screen.DrawImage(gameScreen, nil)
 		return
 	case GameOver:
-		// Draw game over
-		g.drawGame(screen)
-		g.drawGameOverOverlay(screen)
+		g.drawGame(gameScreen)
+		g.drawParticles(gameScreen)
+		g.drawGameOverOverlay(gameScreen)
+		screen.DrawImage(gameScreen, nil)
 		return
 	case Playing:
-		g.drawGame(screen)
+		g.drawGame(gameScreen)
+		g.drawParticles(gameScreen)
 	}
+
+	// Рисуем игровую поверхность со смещением тряски
+	op := &ebiten.DrawImageOptions{}
+	op.GeoM.Translate(float64(dx), float64(dy))
+	screen.DrawImage(gameScreen, op)
 }
 
 func (g *Game) drawMenu(screen *ebiten.Image) {
-	// Title
 	title := "SNAKE GAME"
 	titleX := float32(screenWidth/2 - len(title)*10)
 	titleY := float32(screenHeight/2 - 100)
 	ebitenutil.DebugPrintAt(screen, title, int(titleX), int(titleY))
 
-	// Subtitle
-	subtitle := "Go365 Go76 - Ebitengine"
+	subtitle := "Go365 Go79 - Ebitengine"
 	subX := float32(screenWidth/2 - len(subtitle)*5)
 	ebitenutil.DebugPrintAt(screen, subtitle, int(subX), int(titleY+40))
 
-	// Start button prompt
 	startText := "Press ENTER or SPACE to Start"
 	startX := float32(screenWidth/2 - len(startText)*6)
 	ebitenutil.DebugPrintAt(screen, startText, int(startX), int(titleY+100))
 
-	// Controls info
 	controls := []string{
 		"Controls:",
 		"Arrow Keys - Move",
@@ -725,42 +844,36 @@ func (g *Game) drawMenu(screen *ebiten.Image) {
 }
 
 func (g *Game) drawDifficultySelection(screen *ebiten.Image) {
-	// Title
 	title := "SNAKE GAME"
 	titleX := float32(screenWidth/2 - len(title)*10)
 	titleY := float32(screenHeight/2 - 150)
 	ebitenutil.DebugPrintAt(screen, title, int(titleX), int(titleY))
 
-	// Subtitle
-	subtitle := "Go365 Go76 - Ebitengine"
+	subtitle := "Go365 Go79 - Ebitengine"
 	subX := float32(screenWidth/2 - len(subtitle)*5)
 	ebitenutil.DebugPrintAt(screen, subtitle, int(subX), int(titleY+40))
 
-	// Select difficulty prompt
 	selectText := "Select Difficulty"
 	selectX := float32(screenWidth/2 - len(selectText)*8)
 	ebitenutil.DebugPrintAt(screen, selectText, int(selectX), int(titleY+100))
 
-	// Difficulty options with highlight
 	difficulties := []struct {
 		name        string
 		enemyCount  int
-		color       string
 	}{
-		{"Easy", 2, "Green"},
-		{"Medium", 3, "Yellow"},
-		{"Hard", 5, "Red"},
+		{"Easy", 2},
+		{"Medium", 3},
+		{"Hard", 5},
 	}
 
 	for i, diff := range difficulties {
 		y := int(titleY) + 160 + i*40
 		marker := "  "
 		prefix := "  "
-		
+
 		if Difficulty(i) == g.difficulty {
 			marker = ">> "
-			prefix = "<< "
-			// Highlight current selection
+			prefix = "<<"
 			highlight := fmt.Sprintf("%s%s - %d bugs %s", marker, diff.name, diff.enemyCount, prefix)
 			ebitenutil.DebugPrintAt(screen, highlight, screenWidth/2-100, y)
 		} else {
@@ -769,7 +882,6 @@ func (g *Game) drawDifficultySelection(screen *ebiten.Image) {
 		}
 	}
 
-	// Controls info
 	controls := []string{
 		"",
 		"UP/DOWN - Change difficulty",
@@ -781,14 +893,11 @@ func (g *Game) drawDifficultySelection(screen *ebiten.Image) {
 }
 
 func (g *Game) drawGame(screen *ebiten.Image) {
-	// Draw border around play area
 	vector.StrokeRect(screen, 0, 0, screenWidth, screenHeight, 2, color.RGBA{100, 100, 100, 255}, false)
 
-	// Draw snake
 	for i, segment := range g.snake {
 		green := color.RGBA{0, 255, 0, 255}
 		if i == 0 {
-			// Head is brighter
 			green = color.RGBA{100, 255, 100, 255}
 		}
 		vector.DrawFilledRect(
@@ -800,93 +909,75 @@ func (g *Game) drawGame(screen *ebiten.Image) {
 			green,
 			false,
 		)
-		// Draw eyes on head
 		if i == 0 {
 			g.drawSnakeEyes(screen, segment, g.direction)
 			g.drawSnakeTongue(screen, segment, g.direction)
 		}
 	}
 
-	// Draw food
 	g.drawFood(screen)
 
-	// Draw enemies (bugs with legs and antennae)
 	for _, enemy := range g.enemies {
 		g.drawEnemy(screen, enemy)
 	}
 
-	// Draw bombs
 	for _, bomb := range g.bombs {
 		g.drawBomb(screen, bomb)
 	}
 
-	// Draw treasure chest
 	if g.chest != nil {
 		g.drawChest(screen, *g.chest)
 	}
 
-	// Draw key
 	if g.key != nil {
 		g.drawKey(screen, *g.key)
 	}
 
-	// Draw coins
 	for _, coin := range g.coins {
 		g.drawCoin(screen, coin)
 	}
 
-	// Draw arrows
 	for _, arrow := range g.arrows {
 		g.drawArrow(screen, arrow)
 	}
 
-	// Draw score
 	ebitenutil.DebugPrintAt(screen, "Score: "+string(rune('0'+g.score)), 10, 10)
 	ebitenutil.DebugPrintAt(screen, fmt.Sprintf("Arrows: %d", g.arrowCount), 10, 25)
 	if g.hasKey {
 		ebitenutil.DebugPrintAt(screen, "KEY!", 10, 40)
 	}
-	// Show coin bonus indicator
 	if len(g.coins) > 0 {
 		ebitenutil.DebugPrintAt(screen, "x2 XP COINS!", 10, 55)
 	}
 }
 
 func (g *Game) drawPauseOverlay(screen *ebiten.Image) {
-	// Semi-transparent overlay
 	screen.Fill(color.RGBA{0, 0, 0, 128})
 
-	// PAUSED text
 	pausedText := "PAUSED"
 	pausedX := screenWidth/2 - len(pausedText)*8
 	ebitenutil.DebugPrintAt(screen, pausedText, pausedX, screenHeight/2-50)
 
-	// Continue prompt
 	continueText := "Press P to Continue"
 	contX := screenWidth/2 - len(continueText)*6
 	ebitenutil.DebugPrintAt(screen, continueText, contX, screenHeight/2)
 }
 
 func (g *Game) drawGameOverOverlay(screen *ebiten.Image) {
-	// Semi-transparent overlay
 	screen.Fill(color.RGBA{50, 0, 0, 180})
 
-	// GAME OVER text
 	gameOverText := "GAME OVER"
 	gameOverX := screenWidth/2 - len(gameOverText)*8
 	ebitenutil.DebugPrintAt(screen, gameOverText, gameOverX, screenHeight/2-80)
 
-	// Final score
 	scoreText := fmt.Sprintf("Final Score: %d", g.score)
 	scoreX := screenWidth/2 - len(scoreText)*6
 	ebitenutil.DebugPrintAt(screen, scoreText, scoreX, screenHeight/2-20)
 
-	// Enemies killed
 	enemiesText := fmt.Sprintf("Enemies: %d", len(g.enemies))
 	enemiesX := screenWidth/2 - len(enemiesText)*6
 	ebitenutil.DebugPrintAt(screen, enemiesText, enemiesX, screenHeight/2+10)
 
-	// Restart prompt
 	restartText := "Press ENTER to Restart"
 	restartX := screenWidth/2 - len(restartText)*7
 	ebitenutil.DebugPrintAt(screen, restartText, restartX, screenHeight/2+60)
@@ -899,83 +990,57 @@ func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
 func (g *Game) drawEnemy(screen *ebiten.Image, enemy Enemy) {
 	x := float32(enemy.pos.X * tileSize)
 	y := float32(enemy.pos.Y * tileSize)
-	size := float32(tileSize) * 1.5 // Increase bug size by 1.5x
+	size := float32(tileSize) * 1.5
 
-	// Body (dark purple oval)
 	vector.DrawFilledCircle(screen, x+size/2, y+size/2, size/2-2, color.RGBA{128, 0, 128, 255}, false)
 
-	// Head
 	headX := x + size/2
 	headY := y + size/2
 	vector.DrawFilledCircle(screen, headX, headY, size/3, color.RGBA{100, 0, 100, 255}, false)
 
-	// Animated legs (6 legs - 3 on each side)
 	legOffset := float32((enemy.animFrame % 20) / 10.0 * 3)
 	if enemy.animFrame%40 < 20 {
 		legOffset = -legOffset
 	}
 
-	// Left legs
 	for i := 0; i < 3; i++ {
 		legY := y + size/4 + float32(i)*size/4
 		vector.StrokeLine(screen, x+size/3, legY, x-size/4, legY+legOffset+float32(i)*2, 2, color.RGBA{100, 0, 100, 255}, false)
 	}
 
-	// Right legs
 	for i := 0; i < 3; i++ {
 		legY := y + size/4 + float32(i)*size/4
 		vector.StrokeLine(screen, x+2*size/3, legY, x+5*size/4, legY-legOffset+float32(i)*2, 2, color.RGBA{100, 0, 100, 255}, false)
 	}
 
-	// Antennae (animated)
 	antennaAngle := float32((enemy.animFrame % 30) / 30.0 * 1.0)
 	if enemy.animFrame%60 < 30 {
 		antennaAngle = -antennaAngle
 	}
 
-	// Left antenna
 	vector.StrokeLine(screen, headX-size/6, headY-size/3, headX-size/2-antennaAngle*size, headY-size/2-antennaAngle*size, 1, color.RGBA{150, 50, 50, 255}, false)
-	// Right antenna
 	vector.StrokeLine(screen, headX+size/6, headY-size/3, headX+size/2+antennaAngle*size, headY-size/2-antennaAngle*size, 1, color.RGBA{150, 50, 50, 255}, false)
 
-	// Menacing mouth with two front teeth
 	mouthX := headX
 	mouthY := headY + size/8
-
-	// Dark mouth opening (circle)
 	vector.DrawFilledCircle(screen, mouthX, mouthY, size/8, color.RGBA{50, 0, 0, 255}, false)
 
-	// Big scary glowing eyes (red with glow effect)
 	eyeSize := size / 5
-	// Left eye glow (multiple layers for glow effect)
 	leftEyeX := headX - size/6
 	leftEyeY := headY - size/8
-	// Outer glow (red)
 	vector.DrawFilledCircle(screen, leftEyeX, leftEyeY, eyeSize+2, color.RGBA{255, 50, 0, 100}, false)
-	// Middle glow
 	vector.DrawFilledCircle(screen, leftEyeX, leftEyeY, eyeSize, color.RGBA{255, 100, 0, 180}, false)
-	// Inner bright eye
 	vector.DrawFilledCircle(screen, leftEyeX, leftEyeY, eyeSize-2, color.RGBA{255, 0, 0, 255}, false)
-	// Pupil (black)
 	vector.DrawFilledCircle(screen, leftEyeX, leftEyeY, eyeSize/3, color.RGBA{0, 0, 0, 255}, false)
-	// White highlight for scary look
 	vector.DrawFilledCircle(screen, leftEyeX-eyeSize/4, leftEyeY-eyeSize/4, eyeSize/5, color.RGBA{255, 255, 255, 255}, false)
 
-	// Right eye glow (multiple layers for glow effect)
 	rightEyeX := headX + size/6
 	rightEyeY := headY - size/8
-	// Outer glow (red)
 	vector.DrawFilledCircle(screen, rightEyeX, rightEyeY, eyeSize+2, color.RGBA{255, 50, 0, 100}, false)
-	// Middle glow
 	vector.DrawFilledCircle(screen, rightEyeX, rightEyeY, eyeSize, color.RGBA{255, 100, 0, 180}, false)
-	// Inner bright eye
 	vector.DrawFilledCircle(screen, rightEyeX, rightEyeY, eyeSize-2, color.RGBA{255, 0, 0, 255}, false)
-	// Pupil (black)
 	vector.DrawFilledCircle(screen, rightEyeX, rightEyeY, eyeSize/3, color.RGBA{0, 0, 0, 255}, false)
-	// White highlight for scary look
 	vector.DrawFilledCircle(screen, rightEyeX+eyeSize/4, rightEyeY-eyeSize/4, eyeSize/5, color.RGBA{255, 255, 255, 255}, false)
-
-	// Eyes (yellow dots) - removed, now have big red glowing eyes
 }
 
 func (g *Game) drawSnakeEyes(screen *ebiten.Image, head Point, direction Direction) {
@@ -985,7 +1050,6 @@ func (g *Game) drawSnakeEyes(screen *ebiten.Image, head Point, direction Directi
 	eyeSize := size / 6
 	pupilSize := eyeSize / 2
 
-	// Eye positions based on direction
 	var leftEyeX, leftEyeY, rightEyeX, rightEyeY float32
 
 	switch direction {
@@ -1011,11 +1075,8 @@ func (g *Game) drawSnakeEyes(screen *ebiten.Image, head Point, direction Directi
 		rightEyeY = y + 2*size/3
 	}
 
-	// Draw whites of eyes
 	vector.DrawFilledCircle(screen, leftEyeX, leftEyeY, eyeSize, color.RGBA{255, 255, 255, 255}, false)
 	vector.DrawFilledCircle(screen, rightEyeX, rightEyeY, eyeSize, color.RGBA{255, 255, 255, 255}, false)
-
-	// Draw pupils (black)
 	vector.DrawFilledCircle(screen, leftEyeX, leftEyeY, pupilSize, color.RGBA{0, 0, 0, 255}, false)
 	vector.DrawFilledCircle(screen, rightEyeX, rightEyeY, pupilSize, color.RGBA{0, 0, 0, 255}, false)
 }
@@ -1025,14 +1086,10 @@ func (g *Game) drawSnakeTongue(screen *ebiten.Image, head Point, direction Direc
 	y := float32(head.Y * tileSize)
 	size := float32(tileSize)
 
-	// Tongue color (red/pink)
 	tongueColor := color.RGBA{255, 50, 50, 255}
-
-	// Tongue dimensions
 	tongueLength := size / 2
 	tongueWidth := size / 12
 
-	// Calculate tongue start and end based on direction
 	var startX, startY, endX, endY float32
 
 	switch direction {
@@ -1058,10 +1115,8 @@ func (g *Game) drawSnakeTongue(screen *ebiten.Image, head Point, direction Direc
 		endY = y + size/2
 	}
 
-	// Draw tongue (thin line)
 	vector.StrokeLine(screen, startX, startY, endX, endY, tongueWidth, tongueColor, false)
 
-	// Forked tongue (two prongs)
 	forkLength := size / 6
 	var leftForkX, leftForkY, rightForkX, rightForkY float32
 
@@ -1088,7 +1143,6 @@ func (g *Game) drawSnakeTongue(screen *ebiten.Image, head Point, direction Direc
 		rightForkY = endY + forkLength/2
 	}
 
-	// Draw fork prongs
 	vector.StrokeLine(screen, endX, endY, leftForkX, leftForkY, tongueWidth, tongueColor, false)
 	vector.StrokeLine(screen, endX, endY, rightForkX, rightForkY, tongueWidth, tongueColor, false)
 }
@@ -1098,45 +1152,45 @@ func (g *Game) drawFood(screen *ebiten.Image) {
 	y := float32(g.food.Y * tileSize)
 	size := float32(tileSize)
 
-	// Apple body (red circle)
 	centerX := x + size/2
 	centerY := y + size/2 + 2
 	radius := size/2 - 3
 
-	// Main red body
-	vector.DrawFilledCircle(screen, centerX, centerY, radius, color.RGBA{255, 0, 0, 255}, false)
+	// Анимация появления (пульсация в начале)
+	pulseScale := 1.0
+	if g.foodTimer > 0 {
+		pulseScale = 1.0 + 0.3*math.Sin(float64(g.foodTimer)*math.Pi/10)
+		g.foodTimer--
+	}
 
-	// Shine/highlight on apple (lighter red)
+	// Main red body
+	vector.DrawFilledCircle(screen, centerX, centerY, radius*float32(pulseScale), color.RGBA{255, 0, 0, 255}, false)
+
 	highlightX := centerX - radius/3
 	highlightY := centerY - radius/3
-	vector.DrawFilledCircle(screen, highlightX, highlightY, radius/3, color.RGBA{255, 100, 100, 255}, false)
+	vector.DrawFilledCircle(screen, highlightX, highlightY, radius/3*float32(pulseScale), color.RGBA{255, 100, 100, 255}, false)
 
-	// Small indentation at top
 	vector.DrawFilledCircle(screen, centerX, centerY-radius+2, 2, color.RGBA{200, 0, 0, 255}, false)
 
-	// Brown stem
 	stemX := centerX
 	stemY := centerY - radius
 	vector.StrokeLine(screen, stemX, stemY, stemX, stemY-4, 2, color.RGBA{139, 69, 19, 255}, false)
 
-	// Green leaf
-	leafColor := color.RGBA{34, 139, 34, 255} // Forest green
+	leafColor := color.RGBA{34, 139, 34, 255}
 	leafBaseX := centerX + 1
 	leafBaseY := stemY - 2
+	
+	// Leaf tip and bottom positions
+	tipX := centerX + 5
+	tipY := leafBaseY - 3
+	botX := centerX + 2
+	botY := leafBaseY + 2
 
-	// Draw leaf as a filled ellipse (using polygon approximation)
-	leafTipX := leafBaseX + 5
-	leafTipY := leafBaseY - 3
-	leafBottomX := leafBaseX + 2
-	leafBottomY := leafBaseY + 2
-
-	// Main leaf shape (triangle-like)
 	vector.DrawFilledRect(screen, leafBaseX, leafBaseY-1, 5, 2, leafColor, false)
-	vector.DrawFilledCircle(screen, leafTipX-1, leafTipY, 2, leafColor, false)
-	vector.DrawFilledCircle(screen, leafBottomX, leafBottomY, 2, leafColor, false)
+	vector.DrawFilledCircle(screen, tipX-1, tipY, 2, leafColor, false)
+	vector.DrawFilledCircle(screen, botX, botY, 2, leafColor, false)
 
-	// Leaf vein (lighter green line)
-	vector.StrokeLine(screen, leafBaseX+1, leafBaseY, leafTipX-1, leafTipY, 1, color.RGBA{100, 200, 100, 255}, false)
+	vector.StrokeLine(screen, leafBaseX+1, leafBaseY, tipX-1, tipY, 1, color.RGBA{100, 200, 100, 255}, false)
 }
 
 func (g *Game) drawCoin(screen *ebiten.Image, coin Coin) {
@@ -1144,37 +1198,31 @@ func (g *Game) drawCoin(screen *ebiten.Image, coin Coin) {
 	y := float32(coin.pos.Y * tileSize)
 	size := float32(tileSize)
 
-	// Coin dimensions
 	coinRadius := size/2 - 4
 	centerX := x + size/2
 	centerY := y + size/2
 
-	// Outer gold ring
-	vector.DrawFilledCircle(screen, centerX, centerY, coinRadius, color.RGBA{255, 215, 0, 255}, false)
+	// Пульсация монеты
+	pulseScale := 1.0 + 0.1*math.Sin(coin.pulsePhase)
+	
+	vector.DrawFilledCircle(screen, centerX, centerY, coinRadius*float32(pulseScale), color.RGBA{255, 215, 0, 255}, false)
 
-	// Inner lighter gold (shine effect)
 	innerRadius := coinRadius - 3
-	vector.DrawFilledCircle(screen, centerX, centerY, innerRadius, color.RGBA{255, 235, 100, 255}, false)
+	vector.DrawFilledCircle(screen, centerX, centerY, innerRadius*float32(pulseScale), color.RGBA{255, 235, 100, 255}, false)
 
-	// Dollar sign or "X2" indicator (golden center dot)
 	dotRadius := innerRadius / 2
-	vector.DrawFilledCircle(screen, centerX, centerY, dotRadius, color.RGBA{255, 200, 0, 255}, false)
+	vector.DrawFilledCircle(screen, centerX, centerY, dotRadius*float32(pulseScale), color.RGBA{255, 200, 0, 255}, false)
 
-	// Sparkle effect (small white dots around)
 	sparkleOffset := coinRadius - 1
-	// Top sparkle
-	vector.DrawFilledCircle(screen, centerX, centerY-sparkleOffset, 1, color.RGBA{255, 255, 255, 255}, false)
-	// Bottom sparkle
-	vector.DrawFilledCircle(screen, centerX, centerY+sparkleOffset, 1, color.RGBA{255, 255, 255, 255}, false)
-	// Left sparkle
-	vector.DrawFilledCircle(screen, centerX-sparkleOffset, centerY, 1, color.RGBA{255, 255, 255, 255}, false)
-	// Right sparkle
-	vector.DrawFilledCircle(screen, centerX+sparkleOffset, centerY, 1, color.RGBA{255, 255, 255, 255}, false)
+	vector.DrawFilledCircle(screen, centerX, centerY-sparkleOffset*float32(pulseScale), 1, color.RGBA{255, 255, 255, 255}, false)
+	vector.DrawFilledCircle(screen, centerX, centerY+sparkleOffset*float32(pulseScale), 1, color.RGBA{255, 255, 255, 255}, false)
+	vector.DrawFilledCircle(screen, centerX-sparkleOffset*float32(pulseScale), centerY, 1, color.RGBA{255, 255, 255, 255}, false)
+	vector.DrawFilledCircle(screen, centerX+sparkleOffset*float32(pulseScale), centerY, 1, color.RGBA{255, 255, 255, 255}, false)
 
-	// Animated glow (pulsing effect)
+	// Анимированное свечение
 	glowPhase := (time.Now().UnixMilli() / 200) % 2
 	glowIntensity := uint8(100 + glowPhase*50)
-	vector.DrawFilledCircle(screen, centerX, centerY, coinRadius+2, color.RGBA{255, 215, 0, glowIntensity}, false)
+	vector.DrawFilledCircle(screen, centerX, centerY, coinRadius*float32(pulseScale)+2, color.RGBA{255, 215, 0, glowIntensity}, false)
 }
 
 func (g *Game) drawBomb(screen *ebiten.Image, bomb Bomb) {
@@ -1182,28 +1230,20 @@ func (g *Game) drawBomb(screen *ebiten.Image, bomb Bomb) {
 	y := float32(bomb.pos.Y * tileSize)
 	size := float32(tileSize)
 
-	// Bomb body (black circle)
 	vector.DrawFilledCircle(screen, x+size/2, y+size/2, size/2-2, color.RGBA{0, 0, 0, 255}, false)
-
-	// Shine on bomb
 	vector.DrawFilledCircle(screen, x+size/3, y+size/3, size/6, color.RGBA{50, 50, 50, 255}, false)
 
-	// Fuse (brown stick)
 	fuseX := x + size/2
 	fuseY := y + size/4
 	vector.StrokeLine(screen, fuseX, fuseY, fuseX, fuseY-size/3, 2, color.RGBA{139, 69, 19, 255}, false)
 
-	// Spark at end of fuse (animated - blinking)
-	sparkPhase := (bomb.timer % 10) / 5.0
-	sparkSize := size/6 + float32(sparkPhase)*size/8
+	// Мигание искры перед взрывом
+	blinkPhase := float32(bomb.timer%5) * 0.4
+	sparkSize := size/6 + float32(blinkPhase)*size/8
 
-	// Yellow/orange spark glow
 	vector.DrawFilledCircle(screen, fuseX, fuseY-size/3, sparkSize, color.RGBA{255, 200, 0, 200}, false)
-
-	// White hot center
 	vector.DrawFilledCircle(screen, fuseX, fuseY-size/3, sparkSize/2, color.RGBA{255, 255, 255, 255}, false)
 
-	// Spark particles (random sparks around)
 	rand.Seed(time.Now().UnixNano())
 	for i := 0; i < 3; i++ {
 		particleX := fuseX + float32(rand.Intn(8)-4)
@@ -1217,24 +1257,19 @@ func (g *Game) drawChest(screen *ebiten.Image, chest TreasureChest) {
 	y := float32(chest.pos.Y * tileSize)
 	size := float32(tileSize)
 
-	// Chest body (brown rectangle)
 	chestColor := color.RGBA{139, 69, 19, 255}
 	if chest.open {
-		chestColor = color.RGBA{100, 50, 10, 255} // Darker when open
+		chestColor = color.RGBA{100, 50, 10, 255}
 	}
 	vector.DrawFilledRect(screen, x+2, y+4, size-4, size-6, chestColor, false)
 
-	// Chest lid (gold trim)
 	lidColor := color.RGBA{255, 215, 0, 255}
 	if chest.open {
-		// Open lid - draw it tilted up
 		vector.StrokeLine(screen, x+2, y+4, x+size-2, y+4, 2, lidColor, false)
 	} else {
-		// Closed lid - draw rounded top
 		vector.DrawFilledRect(screen, x+2, y+2, size-4, size/3, lidColor, false)
 	}
 
-	// Lock (gold circle in center)
 	if !chest.open {
 		vector.DrawFilledCircle(screen, x+size/2, y+size/2, 3, color.RGBA{255, 215, 0, 255}, false)
 	}
@@ -1245,19 +1280,15 @@ func (g *Game) drawKey(screen *ebiten.Image, key Key) {
 	y := float32(key.pos.Y * tileSize)
 	size := float32(tileSize)
 
-	// Key color (gold)
 	keyColor := color.RGBA{255, 215, 0, 255}
 
-	// Key head (circle)
 	headSize := size / 3
 	vector.DrawFilledCircle(screen, x+size/2, y+size/3, headSize, keyColor, false)
 
-	// Key shaft (rectangle)
 	shaftWidth := size / 8
 	shaftHeight := size / 2
 	vector.DrawFilledRect(screen, x+size/2-shaftWidth/2, y+size/2, shaftWidth, shaftHeight, keyColor, false)
 
-	// Key teeth (two notches at bottom)
 	toothSize := size / 6
 	vector.DrawFilledRect(screen, x+size/2-shaftWidth/2, y+size/2+shaftHeight-toothSize, shaftWidth, toothSize, keyColor, false)
 	vector.DrawFilledRect(screen, x+size/2, y+size/2+shaftHeight-toothSize, shaftWidth, toothSize/2, keyColor, false)
@@ -1268,10 +1299,8 @@ func (g *Game) drawArrow(screen *ebiten.Image, arrow Arrow) {
 	y := float32(arrow.pos.Y * tileSize)
 	size := float32(tileSize)
 
-	// Arrow color (silver/gray)
 	arrowColor := color.RGBA{192, 192, 192, 255}
 
-	// Arrow shaft (line in direction of travel)
 	shaftLength := size / 2
 	shaftWidth := float32(2)
 
@@ -1302,7 +1331,6 @@ func (g *Game) drawArrow(screen *ebiten.Image, arrow Arrow) {
 
 	vector.StrokeLine(screen, startX, startY, endX, endY, shaftWidth, arrowColor, false)
 
-	// Arrow head (triangle at front)
 	headSize := size / 6
 	var headX1, headY1, headX2, headY2, headX3, headY3 float32
 
@@ -1337,7 +1365,6 @@ func (g *Game) drawArrow(screen *ebiten.Image, arrow Arrow) {
 		headY3 = endY + headSize/2
 	}
 
-	// Draw arrow head as triangle outline
 	vector.StrokeLine(screen, headX1, headY1, headX2, headY2, shaftWidth, arrowColor, false)
 	vector.StrokeLine(screen, headX2, headY2, headX3, headY3, shaftWidth, arrowColor, false)
 	vector.StrokeLine(screen, headX3, headY3, headX1, headY1, shaftWidth, arrowColor, false)
@@ -1345,7 +1372,7 @@ func (g *Game) drawArrow(screen *ebiten.Image, arrow Arrow) {
 
 func main() {
 	ebiten.SetWindowSize(screenWidth, screenHeight)
-	ebiten.SetWindowTitle("Simple Snake - Go365 Go75")
+	ebiten.SetWindowTitle("Simple Snake - Go365 Go79")
 
 	game := NewGame()
 
