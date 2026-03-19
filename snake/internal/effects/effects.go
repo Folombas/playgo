@@ -21,6 +21,26 @@ type Particle struct {
 	Gravity float32
 }
 
+// BloodParticle представляет частицу крови
+type BloodParticle struct {
+	X, Y    float32
+	VX, VY  float32
+	Life    int
+	MaxLife int
+	Size    float32
+	Gravity float32
+	Color   color.RGBA
+}
+
+// BloodStain представляет пятно крови на земле
+type BloodStain struct {
+	X, Y    float32
+	Size    float32
+	Color   color.RGBA
+	Life    int
+	MaxLife int
+}
+
 // ScreenShake управляет тряской экрана
 type ScreenShake struct {
 	Intensity float32
@@ -66,15 +86,19 @@ func (ss *ScreenShake) Trigger(intensity float32, duration int) {
 
 // EffectSystem управляет всеми эффектами
 type EffectSystem struct {
-	Particles   []Particle
-	ScreenShake ScreenShake
+	Particles    []Particle
+	BloodParticles []BloodParticle
+	BloodStains  []BloodStain
+	ScreenShake  ScreenShake
 }
 
 // NewEffectSystem создаёт новую систему эффектов
 func NewEffectSystem() *EffectSystem {
 	return &EffectSystem{
-		Particles:   []Particle{},
-		ScreenShake: ScreenShake{},
+		Particles:    []Particle{},
+		BloodParticles: []BloodParticle{},
+		BloodStains:  []BloodStain{},
+		ScreenShake:  ScreenShake{},
 	}
 }
 
@@ -100,6 +124,7 @@ func (es *EffectSystem) SpawnParticles(x, y float32, count int, baseColor color.
 
 // Update обновляет все частицы
 func (es *EffectSystem) Update() {
+	// Обновление обычных частиц
 	for i := len(es.Particles) - 1; i >= 0; i-- {
 		p := &es.Particles[i]
 		p.X += p.VX
@@ -111,12 +136,78 @@ func (es *EffectSystem) Update() {
 			es.Particles = append(es.Particles[:i], es.Particles[i+1:]...)
 		}
 	}
-	
+
+	// Обновление частиц крови
+	for i := len(es.BloodParticles) - 1; i >= 0; i-- {
+		bp := &es.BloodParticles[i]
+		bp.X += bp.VX
+		bp.Y += bp.VY
+		bp.VY += bp.Gravity
+		bp.Life--
+
+		if bp.Life <= 0 {
+			// Создаём пятно крови
+			es.BloodStains = append(es.BloodStains, BloodStain{
+				X: bp.X,
+				Y: bp.Y,
+				Size: bp.Size * 0.8,
+				Color: color.RGBA{bp.Color.R, bp.Color.G, bp.Color.B, 180},
+				Life: 300, // Пятно держится 5 секунд
+				MaxLife: 300,
+			})
+			es.BloodParticles = append(es.BloodParticles[:i], es.BloodParticles[i+1:]...)
+		}
+	}
+
+	// Обновление пятен крови
+	for i := len(es.BloodStains) - 1; i >= 0; i-- {
+		bs := &es.BloodStains[i]
+		bs.Life--
+		if bs.Life <= 0 {
+			es.BloodStains = append(es.BloodStains[:i], es.BloodStains[i+1:]...)
+		}
+	}
+
 	es.ScreenShake.Update()
+}
+
+// SpawnBlood создаёт брызги крови
+func (es *EffectSystem) SpawnBlood(x, y float32, count int, spread float32) {
+	for i := 0; i < count; i++ {
+		angle := rand.Float64() * math.Pi * 2
+		speed := rand.Float64() * float64(spread)
+		blood := BloodParticle{
+			X: x,
+			Y: y,
+			VX: float32(math.Cos(angle) * speed),
+			VY: float32(math.Sin(angle) * speed) - 2, // Начальный импульс вверх
+			Life:    15 + rand.Intn(10),
+			MaxLife: 25,
+			Size:    2 + rand.Float32()*3,
+			Gravity: 0.2,
+			Color:   color.RGBA{180, 0, 0, 255}, // Тёмно-красный
+		}
+		es.BloodParticles = append(es.BloodParticles, blood)
+	}
 }
 
 // Draw отрисовывает все частицы
 func (es *EffectSystem) Draw(screen *ebiten.Image) {
+	// Отрисовка пятен крови
+	for _, bs := range es.BloodStains {
+		alpha := uint8(float32(bs.Color.A) * float32(bs.Life) / float32(bs.MaxLife))
+		c := color.RGBA{bs.Color.R, bs.Color.G, bs.Color.B, alpha}
+		vector.DrawFilledCircle(screen, bs.X, bs.Y, bs.Size, c, false)
+	}
+
+	// Отрисовка частиц крови
+	for _, bp := range es.BloodParticles {
+		alpha := uint8(float32(bp.Color.A) * float32(bp.Life) / float32(bp.MaxLife))
+		c := color.RGBA{bp.Color.R, bp.Color.G, bp.Color.B, alpha}
+		vector.DrawFilledCircle(screen, bp.X, bp.Y, bp.Size, c, false)
+	}
+
+	// Отрисовка обычных частиц
 	for _, p := range es.Particles {
 		alpha := uint8(float32(p.Color.A) * float32(p.Life) / float32(p.MaxLife))
 		c := color.RGBA{p.Color.R, p.Color.G, p.Color.B, alpha}

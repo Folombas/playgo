@@ -151,6 +151,7 @@ type Arrow struct {
 	Direction Direction
 	Active    bool
 	Speed     int
+	Damage    int // Урон стрелы
 }
 
 // Config содержит конфигурацию игры
@@ -884,7 +885,7 @@ func (g *Game) updateArrows() (events []GameEvent) {
 		}
 
 		arrow.Speed++
-		if arrow.Speed < 3 {
+		if arrow.Speed < 2 { // Увеличил скорость стрелы
 			continue
 		}
 		arrow.Speed = 0
@@ -902,7 +903,7 @@ func (g *Game) updateArrows() (events []GameEvent) {
 		}
 
 		gridX, gridY := g.config.GridSize()
-		
+
 		// Проверка границ
 		if arrow.Pos.X < 0 || arrow.Pos.X >= gridX || arrow.Pos.Y < 0 || arrow.Pos.Y >= gridY {
 			arrow.Active = false
@@ -913,10 +914,11 @@ func (g *Game) updateArrows() (events []GameEvent) {
 		for j := len(g.Enemies) - 1; j >= 0; j-- {
 			enemy := &g.Enemies[j]
 			if arrow.Pos.X == enemy.Pos.X && arrow.Pos.Y == enemy.Pos.Y {
+				// Создаём событие убийства с позицией врага
+				events = append(events, GameEvent{Type: EventEnemyKill, Pos: enemy.Pos})
 				g.Enemies = append(g.Enemies[:j], g.Enemies[j+1:]...)
 				arrow.Active = false
 				g.Score++
-				events = append(events, GameEvent{Type: EventEnemyKill, Pos: enemy.Pos})
 				break
 			}
 		}
@@ -929,13 +931,14 @@ func (g *Game) ShootArrow() {
 	if g.ArrowCount <= 0 {
 		return
 	}
-	
+
 	head := g.Snake[0]
 	arrow := Arrow{
 		Pos:       head,
 		Direction: g.Direction,
 		Active:    true,
 		Speed:     0,
+		Damage:    1, // Базовый урон
 	}
 	g.Arrows = append(g.Arrows, arrow)
 	g.ArrowCount--
