@@ -6,6 +6,39 @@ import (
 	"math/rand"
 )
 
+// ItemDatabase - база данных предметов
+var ItemDatabase = map[int]Item{
+	// Weapons
+	1: {id: 1, name: "Wooden Sword", description: "Simple wooden sword", itemType: Weapon, rarity: Common, damage: 5, value: 10, icon: "🗡️", stackSize: 1},
+	2: {id: 2, name: "Iron Sword", description: "Sharp iron sword", itemType: Weapon, rarity: Uncommon, damage: 12, value: 50, icon: "⚔️", stackSize: 1},
+	3: {id: 3, name: "Golden Sword", description: "Golden enchanted sword", itemType: Weapon, rarity: Rare, damage: 20, value: 150, icon: "✨", stackSize: 1},
+	4: {id: 4, name: "Diamond Blade", description: "Legendary diamond blade", itemType: Weapon, rarity: Epic, damage: 35, value: 500, icon: "💎", stackSize: 1},
+	5: {id: 5, name: "Dragon Slayer", description: "Mythical dragon slayer", itemType: Weapon, rarity: Legendary, damage: 50, luck: 10, value: 2000, icon: "🐉", stackSize: 1},
+	
+	// Armor
+	10: {id: 10, name: "Cloth Armor", description: "Simple cloth armor", itemType: Armor, rarity: Common, defense: 3, health: 10, value: 15, icon: "👕", stackSize: 1},
+	11: {id: 11, name: "Iron Armor", description: "Sturdy iron armor", itemType: Armor, rarity: Uncommon, defense: 8, health: 25, value: 75, icon: "🛡️", stackSize: 1},
+	12: {id: 12, name: "Knight Armor", description: "Knight's plate armor", itemType: Armor, rarity: Rare, defense: 15, health: 50, value: 200, icon: "🏰", stackSize: 1},
+	13: {id: 13, name: "Dragon Scale", description: "Dragon scale armor", itemType: Armor, rarity: Epic, defense: 25, health: 100, value: 750, icon: "🐲", stackSize: 1},
+	
+	// Potions
+	20: {id: 20, name: "Health Potion", description: "Restores 50 HP", itemType: Potion, rarity: Common, health: 50, value: 25, icon: "🧪", stackSize: 5},
+	21: {id: 21, name: "Super Potion", description: "Restores 100 HP", itemType: Potion, rarity: Uncommon, health: 100, value: 50, icon: "💊", stackSize: 5},
+	22: {id: 22, name: "Elixir", description: "Fully restores HP", itemType: Potion, rarity: Rare, health: 999, value: 200, icon: "✨", stackSize: 3},
+	
+	// Materials
+	30: {id: 30, name: "Ruby", description: "Precious red gem", itemType: Material, rarity: Rare, value: 100, icon: "❤️", stackSize: 20},
+	31: {id: 31, name: "Sapphire", description: "Precious blue gem", itemType: Material, rarity: Rare, value: 120, icon: "💙", stackSize: 20},
+	32: {id: 32, name: "Emerald", description: "Precious green gem", itemType: Material, rarity: Rare, value: 150, icon: "💚", stackSize: 20},
+	33: {id: 33, name: "Diamond", description: "Ultimate precious gem", itemType: Material, rarity: Epic, value: 300, icon: "💎", stackSize: 10},
+	
+	// Treasures
+	40: {id: 40, name: "Gold Coin", description: "Shiny gold coin", itemType: Treasure, rarity: Common, value: 10, icon: "🪙", stackSize: 100},
+	41: {id: 41, name: "Gold Bar", description: "Heavy gold bar", itemType: Treasure, rarity: Uncommon, value: 100, icon: "🧈", stackSize: 20},
+	42: {id: 42, name: "Crown", description: "Royal crown", itemType: Treasure, rarity: Epic, value: 500, icon: "👑", stackSize: 1},
+	43: {id: 43, name: "Ancient Artifact", description: "Mysterious ancient relic", itemType: Treasure, rarity: Legendary, value: 1000, icon: "🏺", stackSize: 1},
+}
+
 // NewWorld создаёт новый мир с процедурной генерацией
 func NewWorld(seed int64) *World {
 	rand.Seed(seed)
@@ -78,8 +111,227 @@ func NewWorld(seed int64) *World {
 	
 	// Generate caves
 	generateCaves(world)
-	
+
+	// Generate biomes
+	generateBiomes(world)
+
+	// Generate chests
+	generateChests(world)
+
 	return world
+}
+
+// generateBiomes создаёт биомы в мире
+func generateBiomes(world *World) {
+	world.biomes = []Biome{
+		{xStart: 0, xEnd: biomeWidth/blockSize, biomeType: Forest, name: "🌲 Enchanted Forest"},
+		{xStart: biomeWidth/blockSize, xEnd: 2*biomeWidth/blockSize, biomeType: Desert, name: "🏜️ Burning Desert"},
+		{xStart: 2*biomeWidth/blockSize, xEnd: 3*biomeWidth/blockSize, biomeType: Mountains, name: "⛰️ Dragon Mountains"},
+		{xStart: 3*biomeWidth/blockSize, xEnd: 4*biomeWidth/blockSize, biomeType: Snow, name: "❄️ Frozen Tundra"},
+		{xStart: 4*biomeWidth/blockSize, xEnd: 5*biomeWidth/blockSize, biomeType: Forest, name: "🌿 Ancient Woods"},
+		{xStart: 5*biomeWidth/blockSize, xEnd: world.width, biomeType: Caves, name: "💀 Dark Caves"},
+	}
+
+	// Apply biome-specific blocks
+	for _, biome := range world.biomes {
+		for x := biome.xStart; x < biome.xEnd && x < world.width; x++ {
+			for y := 0; y < world.height; y++ {
+				block := &world.blocks[x][y]
+				if block.typ == Air {
+					continue
+				}
+
+				switch biome.biomeType {
+				case Desert:
+					if block.typ == Grass {
+						block.typ = Sand
+					}
+					// Add cactus on surface
+					if block.typ == Sand && y > 0 && world.blocks[x][y-1].typ == Air {
+						if rand.Float32() < 0.02 {
+							world.blocks[x][y-1].typ = Cactus
+						}
+					}
+				case Snow:
+					if block.typ == Grass {
+						block.typ = Snow_Block
+					}
+					if block.typ == Stone && rand.Float32() < 0.3 {
+						block.typ = Ice
+					}
+				case Mountains:
+					if block.typ == Dirt {
+						block.typ = Stone
+					}
+					// More ores in mountains
+					if block.typ == Stone && rand.Float32() < 0.15 {
+						oreRoll := rand.Float32()
+						if oreRoll < 0.05 {
+							block.typ = Diamond_Ore
+						} else if oreRoll < 0.1 {
+							block.typ = Gold_Ore
+						} else if oreRoll < 0.2 {
+							block.typ = Iron_Ore
+						} else {
+							block.typ = Coal_Ore
+						}
+					}
+				case Caves:
+					// Ancient stone in caves
+					if block.typ == Stone && y > world.height/2 {
+						if rand.Float32() < 0.1 {
+							block.typ = Ancient_Stone
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+// generateChests генерирует сундуки по миру
+func generateChests(world *World) {
+	world.chests = make([]Chest, 0)
+
+	// Generate chests in different locations
+	numChests := 30
+	for i := 0; i < numChests; i++ {
+		x := rand.Intn(world.width - 10) + 5
+		y := rand.Intn(world.height/2) + 5
+
+		// Find ground level
+		groundY := y
+		for groundY < world.height-1 && world.blocks[x][groundY].typ == Air {
+			groundY++
+		}
+
+		if groundY < world.height-5 {
+			// Determine chest type based on depth and randomness
+			chestType := WoodenChest
+			roll := rand.Float32()
+			if groundY > world.height/2 {
+				// Deeper = better chests
+				if roll < 0.1 {
+					chestType = AncientChest
+				} else if roll < 0.3 {
+					chestType = DiamondChest
+				} else if roll < 0.6 {
+					chestType = GoldChest
+				} else {
+					chestType = IronChest
+				}
+			} else {
+				if roll < 0.7 {
+					chestType = WoodenChest
+				} else {
+					chestType = IronChest
+				}
+			}
+
+			chest := Chest{
+				x:         float32(x * blockSize),
+				y:         float32((groundY - 2) * blockSize),
+				width:     blockSize,
+				height:    blockSize,
+				opened:    false,
+				chestType: chestType,
+				loot:      generateChestLoot(chestType),
+			}
+			world.chests = append(world.chests, chest)
+		}
+	}
+}
+
+// generateChestLoot генерирует содержимое сундука
+func generateChestLoot(chestType ChestType) []Item {
+	loot := make([]Item, 0)
+
+	// Number of items based on chest type
+	numItems := 1
+	switch chestType {
+	case WoodenChest:
+		numItems = 1 + rand.Intn(2)
+	case IronChest:
+		numItems = 2 + rand.Intn(2)
+	case GoldChest:
+		numItems = 3 + rand.Intn(2)
+	case DiamondChest:
+		numItems = 4 + rand.Intn(2)
+	case AncientChest:
+		numItems = 5 + rand.Intn(2)
+	}
+
+	// Loot tables by chest type
+	for i := 0; i < numItems; i++ {
+		itemRoll := rand.Float32()
+		itemId := 0
+
+		switch chestType {
+		case WoodenChest:
+			if itemRoll < 0.3 {
+				itemId = 1 // Wooden Sword
+			} else if itemRoll < 0.6 {
+				itemId = 20 // Health Potion
+			} else if itemRoll < 0.8 {
+				itemId = 40 // Gold Coin
+			} else {
+				itemId = 10 // Cloth Armor
+			}
+		case IronChest:
+			if itemRoll < 0.25 {
+				itemId = 2 // Iron Sword
+			} else if itemRoll < 0.5 {
+				itemId = 21 // Super Potion
+			} else if itemRoll < 0.75 {
+				itemId = 41 // Gold Bar
+			} else {
+				itemId = 11 // Iron Armor
+			}
+		case GoldChest:
+			if itemRoll < 0.2 {
+				itemId = 3 // Golden Sword
+			} else if itemRoll < 0.4 {
+				itemId = 30 // Ruby
+			} else if itemRoll < 0.6 {
+				itemId = 31 // Sapphire
+			} else if itemRoll < 0.8 {
+				itemId = 22 // Elixir
+			} else {
+				itemId = 12 // Knight Armor
+			}
+		case DiamondChest:
+			if itemRoll < 0.15 {
+				itemId = 4 // Diamond Blade
+			} else if itemRoll < 0.35 {
+				itemId = 33 // Diamond
+			} else if itemRoll < 0.55 {
+				itemId = 32 // Emerald
+			} else if itemRoll < 0.75 {
+				itemId = 42 // Crown
+			} else {
+				itemId = 13 // Dragon Scale
+			}
+		case AncientChest:
+			if itemRoll < 0.1 {
+				itemId = 5 // Dragon Slayer
+			} else if itemRoll < 0.3 {
+				itemId = 43 // Ancient Artifact
+			} else if itemRoll < 0.5 {
+				itemId = 33 // Diamond
+			} else if itemRoll < 0.7 {
+				itemId = 22 // Elixir
+			} else {
+				itemId = 42 // Crown
+			}
+		}
+
+		if itemId != 0 {
+			item := ItemDatabase[itemId]
+			loot = append(loot, item)
+		}
+	}
+
+	return loot
 }
 
 // generateHeightmap создаёт карту высот с помощью шума

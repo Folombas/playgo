@@ -24,14 +24,28 @@ const (
 	moveSpeed    = 4
 
 	// World dimensions
-	worldWidth  = 4000
-	worldHeight = 800
+	worldWidth  = 6000
+	worldHeight = 1000
 
 	// Block size for terrain
 	blockSize = 40
 
 	// Inventory slots
-	inventorySize = 9
+	inventorySize = 12
+	
+	// Biome width
+	biomeWidth = 1000
+)
+
+// BiomeType - тип биома
+type BiomeType int
+
+const (
+	Forest BiomeType = iota
+	Desert
+	Mountains
+	Snow
+	Caves
 )
 
 // BlockType - тип блока
@@ -52,7 +66,106 @@ const (
 	Bricks
 	Plank
 	Crafting_Table
+	Snow_Block
+	Ice
+	Cactus
+	Clay
+	Ruby_Ore
+	Sapphire_Ore
+	Emerald_Ore
+	Ancient_Stone
 )
+
+// ItemRarity - редкость предмета
+type ItemRarity int
+
+const (
+	Common ItemRarity = iota
+	Uncommon
+	Rare
+	Epic
+	Legendary
+)
+
+// ItemType - тип предмета
+type ItemType int
+
+const (
+	Weapon ItemType = iota
+	Armor
+	Potion
+	Material
+	Treasure
+)
+
+// Item - предмет
+type Item struct {
+	id          int
+	name        string
+	description string
+	itemType    ItemType
+	rarity      ItemRarity
+	value       int
+	stackSize   int
+	icon        string
+	// Stats
+	damage    int
+	defense   int
+	health    int
+	speed     float32
+	luck      int
+}
+
+// Chest - сундук с сокровищами
+type Chest struct {
+	x, y      float32
+	width     float32
+	height    float32
+	loot      []Item
+	opened    bool
+	chestType ChestType
+}
+
+// ChestType - тип сундука
+type ChestType int
+
+const (
+	WoodenChest ChestType = iota
+	IronChest
+	GoldChest
+	DiamondChest
+	AncientChest
+)
+
+// PlayerStats - характеристики игрока
+type PlayerStats struct {
+	level       int
+	experience  int
+	maxExp      int
+	strength    int // Урон
+	defense     int // Защита
+	vitality    int // Здоровье
+	agility     int // Скорость
+	luck        int // Шанс крита/лута
+	statPoints  int // Очки для прокачки
+}
+
+// Equipment - экипировка игрока
+type Equipment struct {
+	weapon    *Item
+	armor     *Item
+	helmet    *Item
+	boots     *Item
+	ring      *Item
+}
+
+// Biome - биом мира
+type Biome struct {
+	xStart    int
+	xEnd      int
+	biomeType BiomeType
+	name      string
+}
 
 // Block - блок мира
 type Block struct {
@@ -93,6 +206,8 @@ type World struct {
 	width   int
 	height  int
 	seed    int64
+	biomes  []Biome
+	chests  []Chest
 }
 
 // Coin - монета для сбора
@@ -169,6 +284,12 @@ type Player struct {
 	facing    int
 	animFrame int
 	invincible int // кадры неуязвимости
+	
+	// New RPG stats
+	stats     PlayerStats
+	equipment Equipment
+	maxHealth int
+	currentHealth int
 }
 
 type GameState int
@@ -442,6 +563,10 @@ type Game struct {
 	quests      []Quest
 	checkpoints []Checkpoint
 	healthPacks []HealthPack
+	
+	// Exploration and loot
+	chests      []Chest
+	biomes      []Biome
 	
 	// Achievement album
 	album       *AchievementAlbum
@@ -888,6 +1013,21 @@ func NewGame() *Game {
 		facing:     1,
 		animFrame:  0,
 		invincible: 0,
+		
+		// RPG stats
+		stats: PlayerStats{
+			level:      1,
+			experience: 0,
+			maxExp:     100,
+			strength:   5,
+			defense:    2,
+			vitality:   10,
+			agility:    3,
+			luck:       1,
+			statPoints: 0,
+		},
+		maxHealth:     100,
+		currentHealth: 100,
 	}
 
 	// Initialize coins (scattered around the level)
@@ -1246,9 +1386,20 @@ func (g *Game) Update() error {
 	
 	// Update checkpoints
 	g.updateCheckpoints()
-	
+
 	// Update health packs
 	g.updateHealthPacks()
+	
+	// Update chests
+	for i := range g.world.chests {
+		g.openChest(i)
+	}
+	
+	// Handle stat upgrades
+	g.handleStatUpgrade()
+	
+	// Update quests
+	g.updateQuests(g.blocksMined, g.enemiesDefeated)
 
 	// Update invincibility
 	if g.player.invincible > 0 {
@@ -2925,6 +3076,18 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	
 	// Draw health packs
 	g.drawHealthPacks(screen)
+	
+	// Draw chests
+	g.drawChests(screen)
+	
+	// Draw biome indicator
+	g.drawBiomeIndicator(screen)
+	
+	// Draw player stats
+	g.drawPlayerStats(screen)
+	
+	// Draw stat upgrade hint
+	g.drawStatUpgradeHint(screen)
 	
 	// Draw current hint
 	g.drawCurrentHint(screen)
