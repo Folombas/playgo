@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"image/color"
 	"log"
 	"math"
@@ -19,6 +20,82 @@ const (
 	jumpForce    = -12
 	moveSpeed    = 4
 )
+
+// Coin - монета для сбора
+type Coin struct {
+	x        float32
+	y        float32
+	collected bool
+	animFrame int
+}
+
+// Enemy - враг (Goomba-style)
+type Enemy struct {
+	x         float32
+	y         float32
+	width     float32
+	height    float32
+	vx        float32
+	onGround  bool
+	animFrame int
+	alive     bool
+}
+
+// Platform - платформа для прыжков
+type Platform struct {
+	x      float32
+	y      float32
+	width  float32
+	height float32
+}
+
+// JumpParticle - частица прыжка
+type JumpParticle struct {
+	x       float32
+	y       float32
+	vx      float32
+	vy      float32
+	size    float32
+	life    int
+	maxLife int
+}
+
+// PowerupType - тип бонуса
+type PowerupType int
+
+const (
+	MushroomPower PowerupType = iota // Гриб - увеличивает размер
+	StarPower                        // Звезда - неуязвимость
+	ExtraLifePower                   // Дополнительная жизнь
+)
+
+// Powerup - бонусный предмет
+type Powerup struct {
+	x         float32
+	y         float32
+	vy        float32
+	px        float32 // для движения гриба
+	powerType PowerupType
+	collected bool
+	animFrame int
+	onGround  bool
+}
+
+// Player - расширенная структура игрока
+type Player struct {
+	x         float64
+	y         float64
+	vy        float64
+	width     float32
+	height    float32
+	onGround  bool
+	score     int
+	coins     int
+	lives     int
+	facing    int
+	animFrame int
+	invincible int // кадры неуязвимости
+}
 
 type GameState int
 
@@ -116,16 +193,29 @@ type Tree struct {
 	apples []Apple
 }
 
-type Player struct {
-	x         float64
-	y         float64
-	vy        float64 // vertical velocity
-	width     float32
-	height    float32
-	onGround  bool
-	score     int
-	facing    int // -1 = left, 1 = right
-	animFrame int
+type Game struct {
+	playerX       float64
+	playerY       float64
+	frameCount    int
+	clouds        []Cloud
+	trees         []Tree
+	player        Player
+	state         GameState
+	timeOfDay     TimeOfDay
+	weather       Weather
+	stars         []Star
+	moonX         float32
+	moonY         float32
+	raindrops     []Raindrop
+	lightning     Lightning
+	stormClouds   []Cloud
+	house         House
+	audio         *AudioSystem
+	coins         []Coin
+	enemies       []Enemy
+	platforms     []Platform
+	jumpParticles []JumpParticle
+	powerups      []Powerup
 }
 
 // AudioSystem - заглушка для системы звуков (отключена в среде без аудио)
@@ -150,25 +240,11 @@ func (as *AudioSystem) PlayEnter() {}
 // PlayThunder - заглушка
 func (as *AudioSystem) PlayThunder() {}
 
-type Game struct {
-	playerX    float64
-	playerY    float64
-	frameCount int
-	clouds     []Cloud
-	trees      []Tree
-	player     Player
-	state      GameState
-	timeOfDay  TimeOfDay
-	weather    Weather
-	stars      []Star
-	moonX      float32
-	moonY      float32
-	raindrops  []Raindrop
-	lightning  Lightning
-	stormClouds []Cloud
-	house      House
-	audio      *AudioSystem
-}
+// PlayHit - заглушка для получения урона
+func (as *AudioSystem) PlayHit() {}
+
+// PlayCoin - заглушка для сбора монет
+func (as *AudioSystem) PlayCoin() {}
 
 func NewGame() *Game {
 	// Initialize clouds with random positions and speeds
@@ -252,35 +328,92 @@ func NewGame() *Game {
 
 	// Initialize player (bunny)
 	player := Player{
-		x:         50,
-		y:         float64(screenHeight - groundHeight - 40),
-		vy:        0,
-		width:     30,
-		height:    40,
-		onGround:  true,
-		score:     0,
-		facing:    1,
-		animFrame: 0,
+		x:          50,
+		y:          float64(screenHeight - groundHeight - 40),
+		vy:         0,
+		width:      30,
+		height:     40,
+		onGround:   true,
+		score:      0,
+		coins:      0,
+		lives:      3,
+		facing:     1,
+		animFrame:  0,
+		invincible: 0,
+	}
+
+	// Initialize coins (scattered around the level)
+	coins := []Coin{
+		{x: 200, y: screenHeight - groundHeight - 80, collected: false},
+		{x: 350, y: screenHeight - groundHeight - 120, collected: false},
+		{x: 500, y: screenHeight - groundHeight - 60, collected: false},
+		{x: 100, y: screenHeight - groundHeight - 150, collected: false},
+		{x: 700, y: screenHeight - groundHeight - 100, collected: false},
+		{x: 250, y: screenHeight - groundHeight - 200, collected: false},
+		{x: 450, y: screenHeight - groundHeight - 180, collected: false},
+		{x: 600, y: screenHeight - groundHeight - 140, collected: false},
+	}
+
+	// Initialize enemies (patrolling Goomba-style)
+	enemies := []Enemy{
+		{x: 300, y: screenHeight - groundHeight - 30, width: 30, height: 30, vx: 1, alive: true},
+		{x: 550, y: screenHeight - groundHeight - 30, width: 30, height: 30, vx: -1, alive: true},
+		{x: 150, y: screenHeight - groundHeight - 30, width: 30, height: 30, vx: 1.5, alive: true},
+	}
+
+	// Initialize platforms (floating platforms for jumping)
+	platforms := []Platform{
+		{x: 180, y: screenHeight - groundHeight - 120, width: 80, height: 15},
+		{x: 350, y: screenHeight - groundHeight - 180, width: 100, height: 15},
+		{x: 520, y: screenHeight - groundHeight - 240, width: 80, height: 15},
+		{x: 100, y: screenHeight - groundHeight - 280, width: 120, height: 15},
+		{x: 650, y: screenHeight - groundHeight - 200, width: 90, height: 15},
+	}
+
+	// Initialize jump particles
+	jumpParticles := make([]JumpParticle, 20)
+	for i := range jumpParticles {
+		jumpParticles[i] = JumpParticle{
+			x:       0,
+			y:       0,
+			vx:      float32(i%5-2) * 0.5,
+			vy:      float32(i%3) * 0.5,
+			size:    float32(i%4+2),
+			life:    0,
+			maxLife: 20,
+		}
+	}
+
+	// Initialize powerups (bonus items)
+	powerups := []Powerup{
+		{x: 280, y: screenHeight - groundHeight - 150, powerType: MushroomPower, collected: false},
+		{x: 620, y: screenHeight - groundHeight - 200, powerType: StarPower, collected: false},
+		{x: 150, y: screenHeight - groundHeight - 250, powerType: ExtraLifePower, collected: false},
 	}
 
 	return &Game{
-		playerX:    100,
-		playerY:    screenHeight - groundHeight - 50,
-		frameCount: 0,
-		clouds:     clouds,
-		stormClouds: stormClouds,
-		trees:      trees,
-		player:     player,
-		state:      Menu,
-		timeOfDay:  Day,
-		weather:    Clear,
-		stars:      stars,
-		moonX:      100,
-		moonY:      80,
-		raindrops:  raindrops,
-		lightning:  Lightning{active: false, timer: 0, branches: []LightningBranch{}},
-		house:      house,
-		audio:      NewAudioSystem(),
+		playerX:       100,
+		playerY:       screenHeight - groundHeight - 50,
+		frameCount:    0,
+		clouds:        clouds,
+		stormClouds:   stormClouds,
+		trees:         trees,
+		player:        player,
+		state:         Menu,
+		timeOfDay:     Day,
+		weather:       Clear,
+		stars:         stars,
+		moonX:         100,
+		moonY:         80,
+		raindrops:     raindrops,
+		lightning:     Lightning{active: false, timer: 0, branches: []LightningBranch{}},
+		house:         house,
+		audio:         NewAudioSystem(),
+		coins:         coins,
+		enemies:       enemies,
+		platforms:     platforms,
+		jumpParticles: jumpParticles,
+		powerups:      powerups,
 	}
 }
 
@@ -416,6 +549,7 @@ func (g *Game) Update() error {
 		g.player.vy = jumpForce
 		g.player.onGround = false
 		g.audio.PlayJump()
+		g.spawnJumpParticles(float32(g.player.x)+g.player.width/2, float32(g.player.y)+g.player.height)
 	}
 
 	// Apply gravity
@@ -445,6 +579,26 @@ func (g *Game) Update() error {
 
 	// Apple collection
 	g.checkAppleCollection()
+
+	// Update platforms collision
+	g.updatePlatforms()
+
+	// Update enemies
+	g.updateEnemies()
+
+	// Update coins
+	g.updateCoins()
+
+	// Update powerups
+	g.updatePowerups()
+
+	// Update jump particles
+	g.updateJumpParticles()
+
+	// Update invincibility
+	if g.player.invincible > 0 {
+		g.player.invincible--
+	}
 
 	return nil
 }
@@ -571,6 +725,298 @@ func (g *Game) checkAppleCollection() {
 				g.player.score++
 				g.audio.PlayCollect()
 			}
+		}
+	}
+}
+
+// updatePlatforms - проверяет коллизию игрока с платформами
+func (g *Game) updatePlatforms() {
+	playerRect := struct {
+		x, y, w, h float32
+	}{
+		x: float32(g.player.x),
+		y: float32(g.player.y),
+		w: g.player.width,
+		h: g.player.height,
+	}
+
+	for _, platform := range g.platforms {
+		// Check if player is falling onto platform
+		if g.player.vy >= 0 { // Only when falling
+			// Check horizontal overlap
+			if playerRect.x < platform.x+platform.width &&
+				playerRect.x+playerRect.w > platform.x {
+				// Check if player feet are near platform top
+				platformTop := platform.y
+				feetY := playerRect.y + playerRect.h
+
+				// Allow some tolerance for collision
+				if feetY >= platformTop-5 && feetY <= platformTop+10 {
+					g.player.y = float64(platformTop - playerRect.h)
+					g.player.vy = 0
+					g.player.onGround = true
+				}
+			}
+		}
+	}
+}
+
+// updateEnemies - обновляет врагов (патрулирование, урон игроку)
+func (g *Game) updateEnemies() {
+	for i := range g.enemies {
+		enemy := &g.enemies[i]
+		if !enemy.alive {
+			continue
+		}
+
+		// Move enemy
+		enemy.x += enemy.vx
+		enemy.animFrame++
+
+		// Patrol boundaries (reverse direction at edges)
+		if enemy.x < 100 || enemy.x > 700 {
+			enemy.vx = -enemy.vx
+		}
+
+		// Check collision with player
+		if g.player.invincible <= 0 {
+			if checkRectCollision(
+				float32(g.player.x), float32(g.player.y), g.player.width, g.player.height,
+				enemy.x, enemy.y, enemy.width, enemy.height,
+			) {
+				// Player takes damage
+				g.player.lives--
+				g.player.invincible = 120 // 2 seconds at 60 FPS
+				g.audio.PlayHit()
+
+				// Knockback player
+				if enemy.x < float32(g.player.x) {
+					g.player.x += 50
+				} else {
+					g.player.x -= 50
+				}
+				g.player.vy = -5
+
+				// Check if player died
+				if g.player.lives <= 0 {
+					g.resetGame()
+				}
+			}
+		}
+
+		// Check if player jumped on enemy (Mario-style)
+		if g.player.vy > 0 {
+			playerBottom := float32(g.player.y) + g.player.height
+			if playerBottom > enemy.y && playerBottom < enemy.y+20 &&
+				float32(g.player.x)+g.player.width/2 > enemy.x &&
+				float32(g.player.x)+g.player.width/2 < enemy.x+enemy.width {
+				// Enemy defeated
+				enemy.alive = false
+				g.player.vy = -8 // Bounce
+				g.player.score += 100
+				g.audio.PlayCoin()
+			}
+		}
+	}
+}
+
+// updateCoins - обновляет монеты (сбор)
+func (g *Game) updateCoins() {
+	playerRect := struct {
+		x, y, w, h float32
+	}{
+		x: float32(g.player.x),
+		y: float32(g.player.y),
+		w: g.player.width,
+		h: g.player.height,
+	}
+
+	for i := range g.coins {
+		coin := &g.coins[i]
+		if coin.collected {
+			continue
+		}
+
+		coin.animFrame++
+
+		// Check collision with player
+		if checkRectCollision(
+			playerRect.x, playerRect.y, playerRect.w, playerRect.h,
+			coin.x, coin.y, 20, 20,
+		) {
+			coin.collected = true
+			g.player.coins++
+			g.player.score += 50
+			g.audio.PlayCoin()
+		}
+	}
+}
+
+// updateJumpParticles - обновляет частицы прыжка
+func (g *Game) updateJumpParticles() {
+	for i := range g.jumpParticles {
+		particle := &g.jumpParticles[i]
+		if particle.life <= 0 {
+			continue
+		}
+
+		particle.x += particle.vx
+		particle.y += particle.vy
+		particle.vy += 0.1 // gravity
+		particle.life--
+
+		if particle.life <= 0 {
+			// Reset particle for reuse
+			particle.size = 0
+		}
+	}
+}
+
+// updatePowerups - обновляет бонусы (сбор, движение грибов)
+func (g *Game) updatePowerups() {
+	playerRect := struct {
+		x, y, w, h float32
+	}{
+		x: float32(g.player.x),
+		y: float32(g.player.y),
+		w: g.player.width,
+		h: g.player.height,
+	}
+
+	for i := range g.powerups {
+		powerup := &g.powerups[i]
+		if powerup.collected {
+			continue
+		}
+
+		powerup.animFrame++
+
+		// Mushroom moves left and right
+		if powerup.powerType == MushroomPower && powerup.onGround {
+			powerup.x += powerup.px
+			// Change direction at boundaries
+			if powerup.x < 50 || powerup.x > 750 {
+				powerup.px = -powerup.px
+			}
+		}
+
+		// Apply gravity to powerups
+		if !powerup.onGround {
+			powerup.vy += gravity
+			powerup.y += powerup.vy
+		}
+
+		// Ground collision for powerups
+		groundY := float32(screenHeight - groundHeight - 20)
+		if powerup.y >= groundY {
+			powerup.y = groundY
+			powerup.vy = 0
+			powerup.onGround = true
+			if powerup.powerType == MushroomPower {
+				powerup.px = 2 // Start moving when hits ground
+			}
+		}
+
+		// Check collision with platforms
+		for _, platform := range g.platforms {
+			if powerup.vy >= 0 {
+				if powerup.x+15 > platform.x && powerup.x-15 < platform.x+platform.width {
+					platformTop := platform.y
+					if powerup.y+20 >= platformTop-5 && powerup.y+20 <= platformTop+10 {
+						powerup.y = platformTop - 20
+						powerup.vy = 0
+						powerup.onGround = true
+						if powerup.powerType == MushroomPower {
+							powerup.px = 2
+						}
+					}
+				}
+			}
+		}
+
+		// Check collision with player
+		if checkRectCollision(
+			playerRect.x, playerRect.y, playerRect.w, playerRect.h,
+			powerup.x-15, powerup.y-15, 30, 30,
+		) {
+			powerup.collected = true
+			g.applyPowerup(powerup)
+		}
+	}
+}
+
+// applyPowerup - применяет эффект бонуса
+func (g *Game) applyPowerup(powerup *Powerup) {
+	switch powerup.powerType {
+	case MushroomPower:
+		// Increase player size and score
+		g.player.width = 40
+		g.player.height = 50
+		g.player.score += 200
+		g.audio.PlayCollect()
+	case StarPower:
+		// Make player invincible for 10 seconds (600 frames)
+		g.player.invincible = 600
+		g.player.score += 500
+		g.audio.PlayCollect()
+	case ExtraLifePower:
+		// Add extra life
+		g.player.lives++
+		g.player.score += 1000
+		g.audio.PlayCollect()
+	}
+}
+
+// spawnJumpParticles - создаёт частицы при прыжке
+func (g *Game) spawnJumpParticles(x, y float32) {
+	for i := 0; i < 5; i++ {
+		// Find inactive particle
+		for j := range g.jumpParticles {
+			if g.jumpParticles[j].life <= 0 {
+				g.jumpParticles[j] = JumpParticle{
+					x:       x + float32(i)*3 - 7,
+					y:       y,
+					vx:      float32(i-2) * 0.8,
+					vy:      -float32(i%3+1) * 0.5,
+					size:    float32(i%4+2),
+					life:    20,
+					maxLife: 20,
+				}
+				break
+			}
+		}
+	}
+}
+
+// checkRectCollision - проверяет столкновение двух прямоугольников
+func checkRectCollision(x1, y1, w1, h1, x2, y2, w2, h2 float32) bool {
+	return x1 < x2+w2 && x1+w1 > x2 && y1 < y2+h2 && y1+h1 > y2
+}
+
+// resetGame - сбрасывает игру при смерти
+func (g *Game) resetGame() {
+	g.player.x = 50
+	g.player.y = float64(screenHeight - groundHeight - 40)
+	g.player.vy = 0
+	g.player.lives = 3
+	g.player.score = 0
+	g.player.coins = 0
+	g.player.invincible = 60
+
+	// Reset coins
+	for i := range g.coins {
+		g.coins[i].collected = false
+	}
+
+	// Reset enemies
+	for i := range g.enemies {
+		g.enemies[i].alive = true
+	}
+
+	// Reset apples
+	for i := range g.trees {
+		for j := range g.trees[i].apples {
+			g.trees[i].apples[j].collected = false
 		}
 	}
 }
@@ -1221,11 +1667,26 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	// Draw trees
 	g.drawTrees(screen)
 
+	// Draw platforms
+	g.drawPlatforms(screen)
+
+	// Draw coins
+	g.drawCoins(screen)
+
+	// Draw powerups
+	g.drawPowerups(screen)
+
+	// Draw enemies
+	g.drawEnemies(screen)
+
 	// Draw player (bunny)
 	g.drawPlayer(screen)
 
 	// Draw ground
 	g.drawGround(screen)
+
+	// Draw jump particles
+	g.drawJumpParticles(screen)
 
 	// Draw rain (stormy weather)
 	if g.weather == Stormy {
@@ -1233,7 +1694,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		g.drawLightning(screen)
 	}
 
-	// Draw UI (score)
+	// Draw UI (score, lives, coins)
 	g.drawUI(screen)
 }
 
@@ -1514,28 +1975,226 @@ func (g *Game) drawPlayer(screen *ebiten.Image) {
 	vector.DrawFilledCircle(screen, tailX, tailY, 5, color.RGBA{255, 255, 255, 255}, false)
 }
 
+// drawPlatforms - отрисовка платформ
+func (g *Game) drawPlatforms(screen *ebiten.Image) {
+	for _, platform := range g.platforms {
+		// Platform base (brown/gray stone)
+		platformColor := color.RGBA{139, 119, 101, 255}
+		vector.DrawFilledRect(screen, platform.x, platform.y, platform.width, platform.height, platformColor, false)
+
+		// Grass top on platform
+		grassColor := color.RGBA{34, 139, 34, 255}
+		vector.DrawFilledRect(screen, platform.x, platform.y, platform.width, 5, grassColor, false)
+
+		// Brick pattern
+		brickColor := color.RGBA{100, 80, 60, 255}
+		for bx := platform.x + 5; bx < platform.x+platform.width-5; bx += 20 {
+			vector.StrokeLine(screen, bx, platform.y+5, bx, platform.y+platform.height-2, 1, brickColor, false)
+		}
+		for by := platform.y + 10; by < platform.y+platform.height-2; by += 8 {
+			vector.StrokeLine(screen, platform.x+5, by, platform.x+platform.width-5, by, 1, brickColor, false)
+		}
+	}
+}
+
+// drawCoins - отрисовка монет
+func (g *Game) drawCoins(screen *ebiten.Image) {
+	for _, coin := range g.coins {
+		if coin.collected {
+			continue
+		}
+
+		// Animate coin (spinning effect)
+		animOffset := float32(math.Sin(float64(coin.animFrame)*0.1)) * 5
+		coinY := coin.y + animOffset
+
+		// Coin outer ring (gold)
+		coinColor := color.RGBA{255, 215, 0, 255}
+		vector.DrawFilledCircle(screen, coin.x+10, coinY+10, 10, coinColor, false)
+
+		// Coin inner circle (lighter gold)
+		innerColor := color.RGBA{255, 235, 100, 255}
+		vector.DrawFilledCircle(screen, coin.x+10, coinY+10, 7, innerColor, false)
+
+		// Dollar sign / star in center
+		centerColor := color.RGBA{200, 170, 0, 255}
+		vector.DrawFilledCircle(screen, coin.x+10, coinY+10, 3, centerColor, false)
+
+		// Glow effect
+		glowColor := color.RGBA{255, 215, 0, 100}
+		vector.DrawFilledCircle(screen, coin.x+10, coinY+10, 12, glowColor, false)
+	}
+}
+
+// drawEnemies - отрисовка врагов
+func (g *Game) drawEnemies(screen *ebiten.Image) {
+	for _, enemy := range g.enemies {
+		if !enemy.alive {
+			// Draw defeated enemy (squashed)
+			squashedColor := color.RGBA{139, 69, 19, 255}
+			vector.DrawFilledRect(screen, enemy.x, enemy.y+enemy.height-5, enemy.width, 5, squashedColor, false)
+			continue
+		}
+
+		// Enemy body (Goomba-style - brown mushroom)
+		bodyColor := color.RGBA{139, 69, 19, 255}
+		vector.DrawFilledCircle(screen, enemy.x+enemy.width/2, enemy.y+enemy.height/2, enemy.width/2, bodyColor, false)
+
+		// Enemy head (darker brown)
+		headColor := color.RGBA{100, 50, 20, 255}
+		vector.DrawFilledCircle(screen, enemy.x+enemy.width/2, enemy.y+enemy.height/3, enemy.width/2-3, headColor, false)
+
+		// Eyes (white with black pupils)
+		eyeOffset := enemy.vx * 2 // Look in movement direction
+		leftEyeX := enemy.x + enemy.width/3 + float32(eyeOffset)
+		rightEyeX := enemy.x + 2*enemy.width/3 + float32(eyeOffset)
+		eyeY := enemy.y + enemy.height/3
+
+		vector.DrawFilledCircle(screen, leftEyeX, eyeY, 5, color.RGBA{255, 255, 255, 255}, false)
+		vector.DrawFilledCircle(screen, rightEyeX, eyeY, 5, color.RGBA{255, 255, 255, 255}, false)
+		vector.DrawFilledCircle(screen, leftEyeX+float32(eyeOffset), eyeY, 2, color.RGBA{0, 0, 0, 255}, false)
+		vector.DrawFilledCircle(screen, rightEyeX+float32(eyeOffset), eyeY, 2, color.RGBA{0, 0, 0, 255}, false)
+
+		// Feet (animated)
+		footOffset := float32(math.Sin(float64(enemy.animFrame)*0.3)) * 3
+		footColor := color.RGBA{50, 30, 10, 255}
+		vector.DrawFilledCircle(screen, enemy.x+8-footOffset, enemy.y+enemy.height-5, 6, footColor, false)
+		vector.DrawFilledCircle(screen, enemy.x+enemy.width-8+footOffset, enemy.y+enemy.height-5, 6, footColor, false)
+	}
+}
+
+// drawPowerups - отрисовка бонусов
+func (g *Game) drawPowerups(screen *ebiten.Image) {
+	for _, powerup := range g.powerups {
+		if powerup.collected {
+			continue
+		}
+
+		// Animate powerup (bobbing effect)
+		bobOffset := float32(math.Sin(float64(powerup.animFrame)*0.1)) * 3
+
+		switch powerup.powerType {
+		case MushroomPower:
+			// Draw mushroom (red cap with white spots)
+			capY := powerup.y - 10 + bobOffset
+
+			// Mushroom cap (red semicircle)
+			capColor := color.RGBA{220, 20, 60, 255}
+			vector.DrawFilledCircle(screen, powerup.x, capY, 15, capColor, false)
+
+			// White spots on cap
+			spotColor := color.RGBA{255, 255, 255, 255}
+			vector.DrawFilledCircle(screen, powerup.x-5, capY-3, 4, spotColor, false)
+			vector.DrawFilledCircle(screen, powerup.x+5, capY-3, 4, spotColor, false)
+
+			// Mushroom stem (white)
+			stemColor := color.RGBA{255, 250, 240, 255}
+			vector.DrawFilledRect(screen, powerup.x-6, powerup.y+5, 12, 12, stemColor, false)
+
+		case StarPower:
+			// Draw star (yellow rotating star)
+			starY := powerup.y + bobOffset
+			starColor := color.RGBA{255, 215, 0, 255}
+
+			// Draw star as a circle with glow for simplicity
+			vector.DrawFilledCircle(screen, powerup.x, starY, 12, starColor, false)
+
+			// Star glow effect
+			glowColor := color.RGBA{255, 215, 0, 100}
+			vector.DrawFilledCircle(screen, powerup.x, starY, 18, glowColor, false)
+
+		case ExtraLifePower:
+			// Draw extra life (heart)
+			heartY := powerup.y + bobOffset
+			heartColor := color.RGBA{255, 20, 60, 255}
+
+			// Heart shape (two circles + triangle)
+			vector.DrawFilledCircle(screen, powerup.x-6, heartY-5, 8, heartColor, false)
+			vector.DrawFilledCircle(screen, powerup.x+6, heartY-5, 8, heartColor, false)
+			vector.DrawFilledRect(screen, powerup.x-8, heartY-5, 16, 12, heartColor, false)
+			vector.DrawFilledCircle(screen, powerup.x, heartY+2, 7, heartColor, false)
+
+			// Heart shine
+			shineColor := color.RGBA{255, 100, 150, 200}
+			vector.DrawFilledCircle(screen, powerup.x-4, heartY-6, 3, shineColor, false)
+		}
+	}
+}
+
+// drawJumpParticles - отрисовка частиц прыжка
+func (g *Game) drawJumpParticles(screen *ebiten.Image) {
+	for _, particle := range g.jumpParticles {
+		if particle.life <= 0 {
+			continue
+		}
+
+		// Calculate alpha based on life
+		alpha := uint8(255 * particle.life / particle.maxLife)
+		particleColor := color.RGBA{200, 200, 200, alpha}
+
+		vector.DrawFilledCircle(screen, particle.x, particle.y, particle.size, particleColor, false)
+	}
+}
+
 func (g *Game) drawUI(screen *ebiten.Image) {
-	// Score display
-	scoreText := "Apples: " + string(rune('0'+g.player.score))
-	ebitenutil.DebugPrintAt(screen, scoreText, 10, 10)
+	// Draw UI background panel (semi-transparent dark)
+	uiBgColor := color.RGBA{0, 0, 0, 180}
+	vector.DrawFilledRect(screen, 0, 0, screenWidth, 50, uiBgColor, false)
+
+	// Score display with icon
+	scoreText := fmt.Sprintf("🍎 %d", g.player.score)
+	ebitenutil.DebugPrintAt(screen, scoreText, 15, 12)
+
+	// Coins display
+	coinText := fmt.Sprintf("🪙 %d", g.player.coins)
+	ebitenutil.DebugPrintAt(screen, coinText, 120, 12)
+
+	// Lives display (hearts)
+	livesText := "❤️ "
+	for i := 0; i < g.player.lives; i++ {
+		livesText += "❤️ "
+	}
+	ebitenutil.DebugPrintAt(screen, livesText, 220, 12)
 
 	// Time of day indicator
-	timeText := "Time: Day"
+	timeIcon := "☀️"
 	if g.timeOfDay == Night {
-		timeText = "Time: Night"
+		timeIcon = "🌙"
 	}
-	ebitenutil.DebugPrintAt(screen, timeText, 10, 25)
+	timeText := fmt.Sprintf("%s", timeIcon)
+	ebitenutil.DebugPrintAt(screen, timeText, 350, 12)
 
 	// Weather indicator
-	weatherText := "Weather: Clear"
+	weatherIcon := "☀️"
 	if g.weather == Stormy {
-		weatherText = "Weather: Stormy"
+		weatherIcon = "⛈️"
 	}
-	ebitenutil.DebugPrintAt(screen, weatherText, 10, 40)
+	weatherText := fmt.Sprintf("%s", weatherIcon)
+	ebitenutil.DebugPrintAt(screen, weatherText, 390, 12)
 
-	// Controls hint
-	controlsText := "Arrow Keys/WASD: Move | Space/W/Up: Jump"
+	// Invincibility indicator (if player is invincible)
+	if g.player.invincible > 0 {
+		invText := "✨ PROTECTED ✨"
+		ebitenutil.DebugPrintAt(screen, invText, 500, 12)
+	}
+
+	// Controls hint (bottom of screen)
+	controlsBgColor := color.RGBA{0, 0, 0, 120}
+	vector.DrawFilledRect(screen, 0, screenHeight-30, screenWidth, 30, controlsBgColor, false)
+	
+	controlsText := "⬅️➡️/WASD: Move | ⬆️/Space: Jump | E: Enter/Use | ESC: Menu"
 	ebitenutil.DebugPrintAt(screen, controlsText, 10, screenHeight-25)
+
+	// Draw level progress (coins collected / total)
+	totalCoins := len(g.coins)
+	collectedCoins := 0
+	for _, coin := range g.coins {
+		if coin.collected {
+			collectedCoins++
+		}
+	}
+	progressText := fmt.Sprintf("🪙 %d/%d", collectedCoins, totalCoins)
+	ebitenutil.DebugPrintAt(screen, progressText, screenWidth-100, 12)
 }
 
 func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
