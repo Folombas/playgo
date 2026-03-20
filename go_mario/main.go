@@ -22,7 +22,78 @@ const (
 	gravity      = 0.5
 	jumpForce    = -12
 	moveSpeed    = 4
+
+	// World dimensions
+	worldWidth  = 4000
+	worldHeight = 800
+
+	// Block size for terrain
+	blockSize = 40
+
+	// Inventory slots
+	inventorySize = 9
 )
+
+// BlockType - тип блока
+type BlockType int
+
+const (
+	Air BlockType = iota
+	Dirt
+	Grass
+	Stone
+	Wood
+	Leaves
+	Sand
+	Coal_Ore
+	Iron_Ore
+	Gold_Ore
+	Diamond_Ore
+	Bricks
+	Plank
+	Crafting_Table
+)
+
+// Block - блок мира
+type Block struct {
+	x, y    int
+	typ     BlockType
+	solid   bool
+	minable bool
+}
+
+// Inventory - инвентарь игрока
+type Inventory struct {
+	slots []InventorySlot
+	selected int
+}
+
+// InventorySlot - слот инвентаря
+type InventorySlot struct {
+	item     BlockType
+	count    int
+	maxStack int
+}
+
+// Recipe - рецепт крафта
+type Recipe struct {
+	result   BlockType
+	count    int
+	ingredients map[BlockType]int
+}
+
+// Camera - камера для слежения за игроком
+type Camera struct {
+	x, y float64
+}
+
+// World - игровой мир
+type World struct {
+	blocks  [][]Block
+	width   int
+	height  int
+	seed    int64
+}
 
 // Coin - монета для сбора
 type Coin struct {
@@ -106,7 +177,8 @@ const (
 	Menu GameState = iota
 	Playing
 	InsideHouse
-	GameWon  // Экран победы
+	GameWon
+	Crafting  // Режим крафта
 )
 
 type TimeOfDay int
@@ -254,6 +326,12 @@ type Game struct {
 	sparkParticles []SparkParticle
 	floatingTexts []FloatingText
 	screenShake   ScreenShake
+	
+	// New fields for expanded world and crafting
+	world    *World
+	camera   *Camera
+	inventory *Inventory
+	recipes   []Recipe
 }
 
 // SoundEffect - структура звукового эффекта
@@ -724,6 +802,12 @@ func NewGame() *Game {
 		sparkParticles: sparkParticles,
 		floatingTexts: floatingTexts,
 		screenShake:   ScreenShake{active: false, intensity: 0, timer: 0},
+		
+		// Initialize world and crafting
+		world:     NewWorld(rand.Int63()),
+		camera:    NewCamera(),
+		inventory: NewInventory(),
+		recipes:   NewRecipes(),
 	}
 }
 
@@ -888,12 +972,12 @@ func (g *Game) Update() error {
 		g.player.onGround = true
 	}
 
-	// Screen boundaries
+	// Screen boundaries (world bounds)
 	if g.player.x < 0 {
 		g.player.x = 0
 	}
-	if g.player.x > float64(screenWidth)-float64(g.player.width) {
-		g.player.x = float64(screenWidth) - float64(g.player.width)
+	if g.player.x > float64(worldWidth)-float64(g.player.width) {
+		g.player.x = float64(worldWidth) - float64(g.player.width)
 	}
 
 	// House entry detection
@@ -931,12 +1015,78 @@ func (g *Game) Update() error {
 	// Check win condition
 	g.checkWinCondition()
 
+	// Update camera
+	if g.camera != nil && g.state == Playing {
+		g.camera.Update(g.player.x, g.player.y)
+	}
+
+	// Handle mining and placing blocks
+	g.handleBlockInteraction()
+
+	// Handle crafting mode
+	g.handleCrafting()
+
 	// Update invincibility
 	if g.player.invincible > 0 {
 		g.player.invincible--
 	}
 
 	return nil
+}
+
+// handleBlockInteraction - обработка добычи и размещения блоков
+func (g *Game) handleBlockInteraction() {
+	if g.state != Playing {
+		return
+	}
+
+	// Get mouse position
+	mx, my := ebiten.CursorPosition()
+
+	// Left click - mine block
+	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
+		g.mineBlock(mx, my)
+	}
+
+	// Right click - place block
+	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonRight) {
+		g.placeBlock(mx, my)
+	}
+
+	// Select slot with number keys
+	for i := 0; i < inventorySize; i++ {
+		if inpututil.IsKeyJustPressed(ebiten.Key(i + 49)) { // Key1=49, Key2=50, etc.
+			g.inventory.selected = i
+		}
+	}
+}
+
+// handleCrafting - обработка режима крафта
+func (g *Game) handleCrafting() {
+	if g.state != Crafting {
+		return
+	}
+
+	// Exit crafting mode with ESC
+	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
+		g.state = Playing
+		return
+	}
+
+	// Craft with number keys (1-5)
+	recipes := []BlockType{Plank, Bricks, Crafting_Table}
+	for i, recipe := range recipes {
+		if inpututil.IsKeyJustPressed(ebiten.Key(i + 49)) {
+			// Find and craft recipe
+			for _, r := range g.recipes {
+				if r.result == recipe && CanCraft(r, g.inventory) {
+					Craft(r, g.inventory)
+					g.audio.PlayPowerup()
+					break
+				}
+			}
+		}
+	}
 }
 
 // checkWinCondition - проверяет условие победы
@@ -2227,6 +2377,9 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		g.drawStormClouds(screen)
 	}
 
+	// Draw world (terrain blocks)
+	g.drawWorld(screen)
+
 	// Draw house
 	g.drawHouse(screen)
 
@@ -2248,9 +2401,6 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	// Draw player (bunny)
 	g.drawPlayer(screen)
 
-	// Draw ground
-	g.drawGround(screen)
-
 	// Draw jump particles
 	g.drawJumpParticles(screen)
 
@@ -2266,7 +2416,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		g.drawLightning(screen)
 	}
 
-	// Draw UI (score, lives, coins)
+	// Draw UI (score, lives, coins, inventory)
 	g.drawUI(screen)
 
 	// Draw screen shake flash effect
@@ -2750,6 +2900,9 @@ func (g *Game) drawFloatingTexts(screen *ebiten.Image) {
 }
 
 func (g *Game) drawUI(screen *ebiten.Image) {
+	// Draw inventory bar
+	g.drawInventory(screen)
+	
 	// Draw UI background panel (semi-transparent dark)
 	uiBgColor := color.RGBA{0, 0, 0, 180}
 	vector.DrawFilledRect(screen, 0, 0, screenWidth, 50, uiBgColor, false)
@@ -2794,8 +2947,8 @@ func (g *Game) drawUI(screen *ebiten.Image) {
 	// Controls hint (bottom of screen)
 	controlsBgColor := color.RGBA{0, 0, 0, 120}
 	vector.DrawFilledRect(screen, 0, screenHeight-30, screenWidth, 30, controlsBgColor, false)
-	
-	controlsText := "⬅️➡️/WASD: Move | ⬆️/Space: Jump | E: Enter/Use | ESC: Menu"
+
+	controlsText := "⬅️➡️/WASD: Move | ⬆️/Space: Jump | E: Enter/Use | ESC: Menu | 1-9: Select Block | LMB: Mine/Place"
 	ebitenutil.DebugPrintAt(screen, controlsText, 10, screenHeight-25)
 
 	// Draw level progress (coins collected / total)
@@ -2808,6 +2961,176 @@ func (g *Game) drawUI(screen *ebiten.Image) {
 	}
 	progressText := fmt.Sprintf("🪙 %d/%d", collectedCoins, totalCoins)
 	ebitenutil.DebugPrintAt(screen, progressText, screenWidth-100, 12)
+}
+
+// drawInventory - отрисовка инвентаря
+func (g *Game) drawInventory(screen *ebiten.Image) {
+	// Draw inventory bar at bottom
+	barY := screenHeight - 60
+	barHeight := 50
+	
+	// Background
+	vector.DrawFilledRect(screen, 10, float32(barY), float32(inventorySize*52+20), float32(barHeight), color.RGBA{0, 0, 0, 200}, false)
+	
+	// Draw slots
+	for i := 0; i < inventorySize; i++ {
+		slotX := 20 + i*52
+		slotY := barY + 5
+		
+		// Slot background
+		slotColor := color.RGBA{80, 80, 80, 255}
+		if i == g.inventory.selected {
+			slotColor = color.RGBA{255, 215, 0, 255} // Gold for selected slot
+		}
+		vector.DrawFilledRect(screen, float32(slotX), float32(slotY), 48, 48, slotColor, false)
+		vector.StrokeRect(screen, float32(slotX), float32(slotY), 48, 48, 2, color.RGBA{150, 150, 150, 255}, false)
+		
+		// Draw item
+		slot := g.inventory.slots[i]
+		if slot.count > 0 {
+			itemColor := getBlockColor(slot.item)
+			vector.DrawFilledRect(screen, float32(slotX+8), float32(slotY+8), 32, 32, itemColor, false)
+			
+			// Draw count
+			countText := fmt.Sprintf("%d", slot.count)
+			countX := slotX + 32
+			countY := slotY + 32
+			ebitenutil.DebugPrintAt(screen, countText, countX, countY)
+		}
+	}
+	
+	// Crafting hint
+	if g.state == Crafting {
+		craftHint := "Press 1-5 to craft | ESC to exit"
+		ebitenutil.DebugPrintAt(screen, craftHint, 20, barY-25)
+	}
+}
+
+// getBlockColor возвращает цвет блока
+func getBlockColor(block BlockType) color.RGBA {
+	switch block {
+	case Dirt:
+		return color.RGBA{139, 69, 19, 255}
+	case Grass:
+		return color.RGBA{34, 139, 34, 255}
+	case Stone:
+		return color.RGBA{128, 128, 128, 255}
+	case Wood:
+		return color.RGBA{101, 67, 33, 255}
+	case Leaves:
+		return color.RGBA{34, 100, 34, 255}
+	case Sand:
+		return color.RGBA{238, 214, 130, 255}
+	case Coal_Ore:
+		return color.RGBA{50, 50, 50, 255}
+	case Iron_Ore:
+		return color.RGBA{205, 127, 50, 255}
+	case Gold_Ore:
+		return color.RGBA{255, 215, 0, 255}
+	case Diamond_Ore:
+		return color.RGBA{0, 255, 255, 255}
+	case Bricks:
+		return color.RGBA{178, 34, 34, 255}
+	case Plank:
+		return color.RGBA{222, 184, 135, 255}
+	case Crafting_Table:
+		return color.RGBA{139, 90, 43, 255}
+	default:
+		return color.RGBA{255, 0, 255, 255} // Magenta for unknown
+	}
+}
+
+// drawWorld - отрисовка мира
+func (g *Game) drawWorld(screen *ebiten.Image) {
+	if g.world == nil {
+		return
+	}
+	
+	// Calculate visible area based on camera
+	startX := int(g.camera.x) / blockSize
+	startY := int(g.camera.y) / blockSize
+	endX := startX + screenWidth/blockSize + 2
+	endY := startY + screenHeight/blockSize + 2
+	
+	// Draw blocks
+	for x := startX; x < endX && x < g.world.width; x++ {
+		for y := startY; y < endY && y < g.world.height; y++ {
+			block := g.world.blocks[x][y]
+			if block.typ != Air {
+				drawX := float32(x*blockSize) - float32(g.camera.x)
+				drawY := float32(y*blockSize) - float32(g.camera.y)
+				
+				blockColor := getBlockColor(block.typ)
+				vector.DrawFilledRect(screen, drawX, drawY, blockSize, blockSize, blockColor, false)
+				
+				// Add some texture/detail
+				if block.typ == Stone || block.typ == Coal_Ore || block.typ == Iron_Ore {
+					// Add some noise
+					if (x+y)%3 == 0 {
+						darkerColor := color.RGBA{
+							R: blockColor.R - 20,
+							G: blockColor.G - 20,
+							B: blockColor.B - 20,
+							A: 255,
+						}
+						vector.DrawFilledRect(screen, drawX+5, drawY+5, 10, 10, darkerColor, false)
+					}
+				}
+			}
+		}
+	}
+}
+
+// mineBlock - добыча блока
+func (g *Game) mineBlock(screenX, screenY int) {
+	if g.world == nil {
+		return
+	}
+	
+	// Convert screen coordinates to world coordinates
+	worldX := int((float64(screenX) + g.camera.x) / blockSize)
+	worldY := int((float64(screenY) + g.camera.y) / blockSize)
+	
+	block := g.world.GetBlock(worldX, worldY)
+	if block != nil && block.minable && block.typ != Air {
+		// Add to inventory
+		g.inventory.AddItem(block.typ, 1)
+		g.audio.PlayCollect()
+		g.spawnSparkParticles(float32(screenX), float32(screenY), 10, getBlockColor(block.typ))
+		
+		// Remove block
+		block.typ = Air
+		block.solid = false
+	}
+}
+
+// placeBlock - размещение блока
+func (g *Game) placeBlock(screenX, screenY int) {
+	if g.world == nil {
+		return
+	}
+	
+	// Get selected block from inventory
+	selectedSlot := g.inventory.slots[g.inventory.selected]
+	if selectedSlot.count <= 0 {
+		return
+	}
+	
+	// Convert screen coordinates to world coordinates
+	worldX := int((float64(screenX) + g.camera.x) / blockSize)
+	worldY := int((float64(screenY) + g.camera.y) / blockSize)
+	
+	block := g.world.GetBlock(worldX, worldY)
+	if block != nil && block.typ == Air {
+		// Place block
+		block.typ = selectedSlot.item
+		block.solid = true
+		block.minable = true
+		
+		// Remove from inventory
+		g.inventory.RemoveItem(selectedSlot.item, 1)
+		g.audio.PlayJumpBump()
+	}
 }
 
 func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
