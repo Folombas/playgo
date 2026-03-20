@@ -319,6 +319,193 @@ func NewCamera() *Camera {
 	}
 }
 
+// NewTutorial создаёт систему обучения
+func NewTutorial() *Tutorial {
+	return &Tutorial{
+		steps: []TutorialStep{
+			{
+				id:          0,
+				title:       "Движение",
+				description: "Используйте WASD или Стрелки для движения",
+				completed:   false,
+			},
+			{
+				id:          1,
+				title:       "Прыжок",
+				description: "Нажмите SPACE или W или Стрелку ВВЕРХ для прыжка",
+				completed:   false,
+			},
+			{
+				id:          2,
+				title:       "Добыча блоков",
+				description: "ЛКМ по блоку чтобы добыть его",
+				completed:   false,
+			},
+			{
+				id:          3,
+				title:       "Размещение блоков",
+				description: "ПКМ чтобы разместить выбранный блок",
+				completed:   false,
+			},
+			{
+				id:          4,
+				title:       "Инвентарь",
+				description: "Клавиши 1-9 для выбора слота, колёсико для прокрутки",
+				completed:   false,
+			},
+			{
+				id:          5,
+				title:       "Сбор монет",
+				description: "Собирайте монеты для увеличения счёта",
+				completed:   false,
+			},
+			{
+				id:          6,
+				title:       "Победа над врагами",
+				description: "Прыгайте на врагов сверху чтобы победить их",
+				completed:   false,
+			},
+		},
+		currentStep: 0,
+		visible:     true,
+		showHint:    true,
+		hintTimer:   300, // 5 seconds at 60 FPS
+	}
+}
+
+// NewQuests создаёт список квестов
+func NewQuests() []Quest {
+	return []Quest{
+		{
+			id:          0,
+			title:       "Первые шаги",
+			description: "Добудьте 5 блоков",
+			objective:   "0/5 блоков",
+			completed:   false,
+			reward:      50,
+		},
+		{
+			id:          1,
+			title:       "Коллекционер",
+			description: "Соберите 10 монет",
+			objective:   "0/10 монет",
+			completed:   false,
+			reward:      100,
+		},
+		{
+			id:          2,
+			title:       "Охотник на врагов",
+			description: "Победите 3 врагов",
+			objective:   "0/3 врагов",
+			completed:   false,
+			reward:      150,
+		},
+		{
+			id:          3,
+			title:       "Шахтёр",
+			description: "Найдите и добудьте алмазную руду",
+			objective:   "Алмаз не найден",
+			completed:   false,
+			reward:      500,
+		},
+	}
+}
+
+// NewCheckpoints создаёт контрольные точки
+func NewCheckpoints() []Checkpoint {
+	return []Checkpoint{
+		{x: 200, y: 500, activated: false},
+		{x: 800, y: 500, activated: false},
+		{x: 1500, y: 500, activated: false},
+		{x: 2200, y: 500, activated: false},
+		{x: 3000, y: 500, activated: false},
+	}
+}
+
+// NewHealthPacks создаёт аптечки
+func NewHealthPacks() []HealthPack {
+	packs := make([]HealthPack, 10)
+	for i := range packs {
+		packs[i] = HealthPack{
+			x:          float32(400 + i*350),
+			y:          400,
+			vy:         0,
+			healAmount: 1,
+			collected:  false,
+		}
+	}
+	return packs
+}
+
+// UpdateTutorial обновляет состояние туториала
+func (t *Tutorial) Update(g *Game) {
+	if !t.visible || t.currentStep >= len(t.steps) {
+		return
+	}
+
+	// Check if current step is completed
+	if t.currentStep < len(t.steps) {
+		step := &t.steps[t.currentStep]
+		
+		// Check completion based on step ID
+		switch step.id {
+		case 0: // Movement
+			if g.player.animFrame > 10 {
+				step.completed = true
+				t.currentStep++
+			}
+		case 1: // Jump
+			// Will be checked in Update
+		case 2: // Mining
+			// Will be checked in handleBlockInteraction
+		case 3: // Placing
+			// Will be checked in handleBlockInteraction
+		case 4: // Inventory
+			// Auto-complete after mining
+			if t.steps[2].completed {
+				step.completed = true
+				t.currentStep++
+			}
+		case 5: // Coins
+			if g.player.coins > 0 {
+				step.completed = true
+				t.currentStep++
+			}
+		case 6: // Enemies
+			// Will be checked in updateEnemies
+		}
+	}
+
+	// Update hint timer
+	t.hintTimer--
+	if t.hintTimer <= 0 {
+		t.hintTimer = 300
+		t.showHint = !t.showHint
+	}
+}
+
+// CompleteStep завершает шаг туториала
+func (t *Tutorial) CompleteStep(id int) {
+	if id >= 0 && id < len(t.steps) {
+		t.steps[id].completed = true
+		if id == t.currentStep && t.currentStep < len(t.steps)-1 {
+			t.currentStep++
+		}
+	}
+}
+
+// GetCurrentHint возвращает текущую подсказку
+func (t *Tutorial) GetCurrentHint() string {
+	if t.currentStep >= len(t.steps) {
+		return ""
+	}
+	step := t.steps[t.currentStep]
+	if step.completed {
+		return ""
+	}
+	return step.title + ": " + step.description
+}
+
 // Update обновляет позицию камеры
 func (c *Camera) Update(playerX, playerY float64) {
 	// Center camera on player

@@ -223,6 +223,51 @@ type SmokeParticle struct {
 	maxLife int
 }
 
+// TutorialStep - шаг обучения
+type TutorialStep struct {
+	id          int
+	title       string
+	description string
+	completed   bool
+	triggerFunc func(*Game) bool // Условие выполнения
+}
+
+// Tutorial - система обучения
+type Tutorial struct {
+	steps       []TutorialStep
+	currentStep int
+	visible     bool
+	showHint    bool
+	hintText    string
+	hintTimer   int
+}
+
+// Quest - задание/квест
+type Quest struct {
+	id          int
+	title       string
+	description string
+	objective   string
+	completed   bool
+	reward      int
+}
+
+// Checkpoint - контрольная точка возрождения
+type Checkpoint struct {
+	x        float32
+	y        float32
+	activated bool
+}
+
+// HealthPack - аптечка для лечения
+type HealthPack struct {
+	x        float32
+	y        float32
+	vy       float32
+	healAmount int
+	collected bool
+}
+
 type House struct {
 	x         float32
 	y         float32
@@ -332,6 +377,16 @@ type Game struct {
 	camera   *Camera
 	inventory *Inventory
 	recipes   []Recipe
+	
+	// Tutorial and quests
+	tutorial    *Tutorial
+	quests      []Quest
+	checkpoints []Checkpoint
+	healthPacks []HealthPack
+	
+	// Tutorial hints
+	showControls bool
+	controlsTimer int
 }
 
 // SoundEffect - структура звукового эффекта
@@ -808,6 +863,12 @@ func NewGame() *Game {
 		camera:    NewCamera(),
 		inventory: NewInventory(),
 		recipes:   NewRecipes(),
+		
+		// Tutorial and quests
+		tutorial:    NewTutorial(),
+		quests:      NewQuests(),
+		checkpoints: NewCheckpoints(),
+		healthPacks: NewHealthPacks(),
 	}
 }
 
@@ -958,6 +1019,7 @@ func (g *Game) Update() error {
 		g.player.onGround = false
 		g.audio.PlayJump()
 		g.spawnJumpParticles(float32(g.player.x)+g.player.width/2, float32(g.player.y)+g.player.height)
+		g.tutorial.CompleteStep(1) // Complete jump step
 	}
 
 	// Apply gravity
@@ -1026,6 +1088,17 @@ func (g *Game) Update() error {
 	// Handle crafting mode
 	g.handleCrafting()
 
+	// Update tutorial
+	if g.tutorial != nil {
+		g.tutorial.Update(g)
+	}
+	
+	// Update checkpoints
+	g.updateCheckpoints()
+	
+	// Update health packs
+	g.updateHealthPacks()
+
 	// Update invincibility
 	if g.player.invincible > 0 {
 		g.player.invincible--
@@ -1046,18 +1119,42 @@ func (g *Game) handleBlockInteraction() {
 	// Left click - mine block
 	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
 		g.mineBlock(mx, my)
+		g.tutorial.CompleteStep(2) // Complete mining step
 	}
 
 	// Right click - place block
 	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonRight) {
 		g.placeBlock(mx, my)
+		g.tutorial.CompleteStep(3) // Complete placing step
 	}
 
 	// Select slot with number keys
 	for i := 0; i < inventorySize; i++ {
 		if inpututil.IsKeyJustPressed(ebiten.Key(i + 49)) { // Key1=49, Key2=50, etc.
 			g.inventory.selected = i
+			g.tutorial.CompleteStep(4) // Complete inventory step
 		}
+	}
+	
+	// Select slot with mouse wheel
+	_, wheelY := ebiten.Wheel()
+	if wheelY > 0 {
+		g.inventory.selected--
+		if g.inventory.selected < 0 {
+			g.inventory.selected = inventorySize - 1
+		}
+		g.tutorial.CompleteStep(4)
+	} else if wheelY < 0 {
+		g.inventory.selected++
+		if g.inventory.selected >= inventorySize {
+			g.inventory.selected = 0
+		}
+		g.tutorial.CompleteStep(4)
+	}
+	
+	// Toggle controls hint with H key
+	if inpututil.IsKeyJustPressed(ebiten.KeyH) {
+		g.showControls = !g.showControls
 	}
 }
 
@@ -1085,6 +1182,88 @@ func (g *Game) handleCrafting() {
 					break
 				}
 			}
+		}
+	}
+}
+
+// updateCheckpoints - обновляет чекпоинты
+func (g *Game) updateCheckpoints() {
+	for i := range g.checkpoints {
+		cp := &g.checkpoints[i]
+		
+		// Check collision with player
+		if checkRectCollision(
+			float32(g.player.x), float32(g.player.y), g.player.width, g.player.height,
+			cp.x, cp.y-40, 40, 40,
+		) {
+			if !cp.activated {
+				cp.activated = true
+				g.audio.PlayCollect()
+				g.spawnFloatingText(cp.x, cp.y-60, "CHECKPOINT!", color.RGBA{0, 255, 255, 255})
+				g.spawnSparkParticles(cp.x+20, cp.y-20, 20, color.RGBA{0, 255, 255, 255})
+			}
+		}
+	}
+}
+
+// updateHealthPacks - обновляет аптечки
+func (g *Game) updateHealthPacks() {
+	for i := range g.healthPacks {
+		pack := &g.healthPacks[i]
+		if pack.collected {
+			continue
+		}
+		
+		// Apply gravity
+		pack.vy += gravity
+		pack.y += pack.vy
+		
+		// Ground collision
+		groundY := float32(screenHeight - groundHeight - 20)
+		if pack.y >= groundY {
+			pack.y = groundY
+			pack.vy = 0
+		}
+		
+		// Check collision with player
+		if checkRectCollision(
+			float32(g.player.x), float32(g.player.y), g.player.width, g.player.height,
+			pack.x, pack.y-15, 20, 20,
+		) {
+			pack.collected = true
+			g.player.lives++
+			g.audio.PlayExtraLife()
+			g.spawnFloatingText(pack.x, pack.y, "+1 LIFE", color.RGBA{255, 100, 100, 255})
+			g.spawnSparkParticles(pack.x+10, pack.y-10, 15, color.RGBA{255, 100, 100, 255})
+		}
+	}
+}
+
+// updateQuests - обновляет квесты
+func (g *Game) updateQuests(blocksMined int, enemiesDefeated int) {
+	for i := range g.quests {
+		quest := &g.quests[i]
+		if quest.completed {
+			continue
+		}
+		
+		switch quest.id {
+		case 0: // First steps - mine 5 blocks
+			// This would need a counter, simplified for now
+		case 1: // Collector - 10 coins
+			if g.player.coins >= 10 {
+				quest.completed = true
+				quest.objective = "✓ Выполнено"
+				g.player.score += quest.reward
+				g.audio.PlayPowerup()
+				g.spawnFloatingText(float32(g.player.x), float32(g.player.y), "QUEST COMPLETE!", color.RGBA{255, 215, 0, 255})
+			} else {
+				quest.objective = fmt.Sprintf("%d/10 монет", g.player.coins)
+			}
+		case 2: // Enemy hunter - 3 enemies
+			// This would need a counter
+		case 3: // Miner - diamond ore
+			// This would need tracking
 		}
 	}
 }
@@ -1337,6 +1516,7 @@ func (g *Game) updateEnemies() {
 				g.player.vy = -8 // Bounce
 				g.player.score += 100
 				g.audio.PlayEnemyDefeat()
+				g.tutorial.CompleteStep(6) // Complete enemy step
 				// Spark effect
 				g.spawnSparkParticles(enemy.x+enemy.width/2, enemy.y+enemy.height/2, 20, color.RGBA{139, 69, 19, 255})
 				g.spawnFloatingText(enemy.x, enemy.y, "+100", color.RGBA{255, 255, 0, 255})
@@ -2419,6 +2599,24 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	// Draw UI (score, lives, coins, inventory)
 	g.drawUI(screen)
 
+	// Draw tutorial
+	g.drawTutorial(screen)
+	
+	// Draw quests
+	g.drawQuests(screen)
+	
+	// Draw checkpoints
+	g.drawCheckpoints(screen)
+	
+	// Draw health packs
+	g.drawHealthPacks(screen)
+	
+	// Draw current hint
+	g.drawCurrentHint(screen)
+	
+	// Draw controls hint
+	g.drawControlsHint(screen)
+
 	// Draw screen shake flash effect
 	if g.screenShake.active {
 		// Draw red flash overlay
@@ -3004,6 +3202,187 @@ func (g *Game) drawInventory(screen *ebiten.Image) {
 		craftHint := "Press 1-5 to craft | ESC to exit"
 		ebitenutil.DebugPrintAt(screen, craftHint, 20, barY-25)
 	}
+}
+
+// drawTutorial - отрисовка туториала
+func (g *Game) drawTutorial(screen *ebiten.Image) {
+	if g.tutorial == nil || !g.tutorial.visible {
+		return
+	}
+	
+	// Draw tutorial panel on left side
+	panelX := 10
+	panelY := 60
+	panelW := 280
+	panelH := 200
+	
+	// Background
+	vector.DrawFilledRect(screen, float32(panelX), float32(panelY), float32(panelW), float32(panelH), color.RGBA{0, 0, 0, 180}, false)
+	vector.StrokeRect(screen, float32(panelX), float32(panelY), float32(panelW), float32(panelH), 2, color.RGBA{255, 215, 0, 255}, false)
+	
+	// Title
+	title := "📖 TUTORIAL"
+	ebitenutil.DebugPrintAt(screen, title, panelX+10, panelY+10)
+	
+	// Draw steps
+	for i, step := range g.tutorial.steps {
+		y := panelY + 35 + i*25
+		marker := "⬜"
+
+		if step.completed {
+			marker = "✅"
+		} else if i == g.tutorial.currentStep {
+			marker = "➡️"
+		}
+
+		text := fmt.Sprintf("%s %s", marker, step.title)
+		ebitenutil.DebugPrintAt(screen, text, panelX+10, y)
+	}
+}
+
+// drawQuests - отрисовка квестов
+func (g *Game) drawQuests(screen *ebiten.Image) {
+	// Draw quests panel on right side
+	panelX := screenWidth - 250
+	panelY := 60
+	panelW := 240
+	panelH := 180
+	
+	// Background
+	vector.DrawFilledRect(screen, float32(panelX), float32(panelY), float32(panelW), float32(panelH), color.RGBA{0, 0, 0, 180}, false)
+	vector.StrokeRect(screen, float32(panelX), float32(panelY), float32(panelW), float32(panelH), 2, color.RGBA{255, 100, 100, 255}, false)
+	
+	// Title
+	title := "📜 QUESTS"
+	ebitenutil.DebugPrintAt(screen, title, panelX+10, panelY+10)
+	
+	// Draw quests
+	for i, quest := range g.quests {
+		y := panelY + 35 + i*30
+		marker := "⬜"
+		
+		if quest.completed {
+			marker = "✅"
+		}
+		
+		// Quest title
+		text := fmt.Sprintf("%s %s", marker, quest.title)
+		ebitenutil.DebugPrintAt(screen, text, panelX+10, y)
+		
+		// Quest objective
+		objText := fmt.Sprintf("   %s", quest.objective)
+		ebitenutil.DebugPrintAt(screen, objText, panelX+10, y+15)
+	}
+}
+
+// drawCheckpoints - отрисовка чекпоинтов
+func (g *Game) drawCheckpoints(screen *ebiten.Image) {
+	for _, cp := range g.checkpoints {
+		// Only draw if on screen
+		drawX := float32(cp.x) - float32(g.camera.x)
+		drawY := float32(cp.y) - float32(g.camera.y)
+		
+		if drawX < -50 || drawX > screenWidth+50 || drawY < -50 || drawY > screenHeight+50 {
+			continue
+		}
+		
+		if cp.activated {
+			// Activated checkpoint (blue flag)
+			vector.StrokeLine(screen, drawX+20, drawY-40, drawX+20, drawY, 3, color.RGBA{0, 255, 255, 255}, false)
+			vector.DrawFilledRect(screen, drawX+20, drawY-40, 25, 15, color.RGBA{0, 255, 255, 200}, false)
+		} else {
+			// Inactive checkpoint (gray flag)
+			vector.StrokeLine(screen, drawX+20, drawY-40, drawX+20, drawY, 3, color.RGBA{128, 128, 128, 255}, false)
+			vector.DrawFilledRect(screen, drawX+20, drawY-40, 25, 15, color.RGBA{128, 128, 128, 200}, false)
+		}
+	}
+}
+
+// drawHealthPacks - отрисовка аптечек
+func (g *Game) drawHealthPacks(screen *ebiten.Image) {
+	for _, pack := range g.healthPacks {
+		if pack.collected {
+			continue
+		}
+		
+		// Only draw if on screen
+		drawX := float32(pack.x) - float32(g.camera.x)
+		drawY := float32(pack.y) - float32(g.camera.y)
+		
+		if drawX < -50 || drawX > screenWidth+50 || drawY < -50 || drawY > screenHeight+50 {
+			continue
+		}
+		
+		// Draw health pack (red cross)
+		vector.DrawFilledRect(screen, drawX+5, drawY-15, 10, 30, color.RGBA{255, 255, 255, 255}, false)
+		vector.DrawFilledRect(screen, drawX, drawY-5, 20, 10, color.RGBA{255, 0, 0, 255}, false)
+		
+		// Glow effect
+		vector.DrawFilledCircle(screen, drawX+10, drawY, 20, color.RGBA{255, 0, 0, 50}, false)
+	}
+}
+
+// drawControlsHint - отрисовка подсказок управления
+func (g *Game) drawControlsHint(screen *ebiten.Image) {
+	if !g.showControls {
+		return
+	}
+	
+	// Draw controls panel
+	panelX := screenWidth/2 - 200
+	panelY := screenHeight/2 - 150
+	panelW := 400
+	panelH := 300
+	
+	// Background
+	vector.DrawFilledRect(screen, float32(panelX), float32(panelY), float32(panelW), float32(panelH), color.RGBA{0, 0, 0, 220}, false)
+	vector.StrokeRect(screen, float32(panelX), float32(panelY), float32(panelW), float32(panelH), 3, color.RGBA{255, 215, 0, 255}, false)
+	
+	// Title
+	title := "🎮 CONTROLS"
+	ebitenutil.DebugPrintAt(screen, title, panelX+150, panelY+15)
+	
+	// Controls list
+	controls := []string{
+		"",
+		"⬅️➡️ / AD - Движение",
+		"⬆️ / W / SPACE - Прыжок",
+		"",
+		"🖱️ ЛКМ - Добыча блока",
+		"🖱️ ПКМ - Размещение блока",
+		"",
+		"1-9 - Выбор слота",
+		"Колёсико - Прокрутка",
+		"",
+		"H - Скрыть/Показать подсказки",
+		"ESC - Меню",
+	}
+	
+	for i, line := range controls {
+		ebitenutil.DebugPrintAt(screen, line, panelX+20, panelY+45+i*22)
+	}
+}
+
+// drawCurrentHint - отрисовка текущей подсказки туториала
+func (g *Game) drawCurrentHint(screen *ebiten.Image) {
+	if g.tutorial == nil || !g.tutorial.visible {
+		return
+	}
+	
+	hint := g.tutorial.GetCurrentHint()
+	if hint == "" || !g.tutorial.showHint {
+		return
+	}
+	
+	// Draw hint at top center
+	hintX := screenWidth/2 - len(hint)*6
+	hintY := 55
+	
+	// Background
+	vector.DrawFilledRect(screen, float32(hintX-10), float32(hintY-5), float32(len(hint)*12+20), 25, color.RGBA{0, 0, 0, 180}, false)
+	
+	// Text
+	ebitenutil.DebugPrintAt(screen, hint, hintX, hintY)
 }
 
 // getBlockColor возвращает цвет блока
