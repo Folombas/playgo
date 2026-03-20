@@ -5,6 +5,7 @@ import (
 	"image/color"
 	"log"
 	"math"
+	"math/rand"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
@@ -193,6 +194,37 @@ type Tree struct {
 	apples []Apple
 }
 
+// SparkParticle - частица-искра для эффектов
+type SparkParticle struct {
+	x       float32
+	y       float32
+	vx      float32
+	vy      float32
+	size    float32
+	life    int
+	maxLife int
+	color   color.RGBA
+}
+
+// FloatingText - всплывающий текст
+type FloatingText struct {
+	x       float32
+	y       float32
+	text    string
+	life    int
+	maxLife int
+	vy      float32
+	color   color.RGBA
+	scale   float32
+}
+
+// ScreenShake - тряска экрана
+type ScreenShake struct {
+	active  bool
+	intensity float32
+	timer   int
+}
+
 type Game struct {
 	playerX       float64
 	playerY       float64
@@ -216,35 +248,211 @@ type Game struct {
 	platforms     []Platform
 	jumpParticles []JumpParticle
 	powerups      []Powerup
+	sparkParticles []SparkParticle
+	floatingTexts []FloatingText
+	screenShake   ScreenShake
 }
 
-// AudioSystem - заглушка для системы звуков (отключена в среде без аудио)
+// SoundEffect - структура звукового эффекта
+type SoundEffect struct {
+	frequency float64
+	duration  int
+	volume    float64
+	waveform  int // 0=sine, 1=square, 2=sawtooth, 3=noise
+	sliding   bool
+}
+
+// AudioSystem - система воспроизведения звуков
 type AudioSystem struct {
-	enabled bool
+	enabled    bool
+	soundQueue []SoundEffect
 }
 
-// NewAudioSystem создаёт заглушку аудио системы
+// NewAudioSystem создаёт аудиосистему
 func NewAudioSystem() *AudioSystem {
-	return &AudioSystem{enabled: false}
+	return &AudioSystem{
+		enabled:    true,
+		soundQueue: make([]SoundEffect, 0),
+	}
 }
 
-// PlayJump - заглушка
-func (as *AudioSystem) PlayJump() {}
+// generateSamples генерирует сэмплы для звука
+func (as *AudioSystem) generateSamples(effect SoundEffect) []float64 {
+	samples := make([]float64, effect.duration)
+	phase := 0.0
+	freq := effect.frequency
 
-// PlayCollect - заглушка
-func (as *AudioSystem) PlayCollect() {}
+	for i := range samples {
+		if effect.sliding {
+			// Скользящая частота (для прыжков)
+			freq = effect.frequency * (1.0 - float64(i)/float64(effect.duration)*0.5)
+		}
 
-// PlayEnter - заглушка
-func (as *AudioSystem) PlayEnter() {}
+		var sample float64
+		switch effect.waveform {
+		case 0: // Sine
+			sample = math.Sin(phase)
+		case 1: // Square
+			if math.Sin(phase) >= 0 {
+				sample = 1.0
+			} else {
+				sample = -1.0
+			}
+		case 2: // Sawtooth
+			sample = 2*(phase/(2*math.Pi)-math.Floor(phase/(2*math.Pi)+0.5))
+		case 3: // Noise
+			sample = (rand.Float64() - 0.5) * 2
+		default:
+			sample = math.Sin(phase)
+		}
 
-// PlayThunder - заглушка
-func (as *AudioSystem) PlayThunder() {}
+		// Envelope (ADSR-like)
+		envelope := 1.0
+		if i < effect.duration/10 {
+			envelope = float64(i) / float64(effect.duration/10)
+		} else if i > effect.duration*7/10 {
+			envelope = float64(effect.duration-i) / float64(effect.duration*3/10)
+		}
 
-// PlayHit - заглушка для получения урона
-func (as *AudioSystem) PlayHit() {}
+		samples[i] = sample * envelope * effect.volume
+		phase += 2 * math.Pi * freq / 44100
+	}
 
-// PlayCoin - заглушка для сбора монет
-func (as *AudioSystem) PlayCoin() {}
+	return samples
+}
+
+// playSound воспроизводит звук
+func (as *AudioSystem) playSound(effect SoundEffect) {
+	if !as.enabled {
+		return
+	}
+	as.soundQueue = append(as.soundQueue, effect)
+}
+
+// PlayJump - звук прыжка
+func (as *AudioSystem) PlayJump() {
+	as.playSound(SoundEffect{
+		frequency: 400,
+		duration:  200,
+		volume:    0.3,
+		waveform:  0,
+		sliding:   true,
+	})
+}
+
+// PlayCollect - звук сбора предмета
+func (as *AudioSystem) PlayCollect() {
+	as.playSound(SoundEffect{
+		frequency: 880,
+		duration:  150,
+		volume:    0.25,
+		waveform:  0,
+		sliding:   false,
+	})
+}
+
+// PlayEnter - звук входа в дом
+func (as *AudioSystem) PlayEnter() {
+	as.playSound(SoundEffect{
+		frequency: 330,
+		duration:  300,
+		volume:    0.2,
+		waveform:  1,
+		sliding:   false,
+	})
+}
+
+// PlayThunder - звук грома
+func (as *AudioSystem) PlayThunder() {
+	as.playSound(SoundEffect{
+		frequency: 80,
+		duration:  500,
+		volume:    0.4,
+		waveform:  3,
+		sliding:   true,
+	})
+}
+
+// PlayHit - звук получения урона
+func (as *AudioSystem) PlayHit() {
+	as.playSound(SoundEffect{
+		frequency: 200,
+		duration:  250,
+		volume:    0.35,
+		waveform:  2,
+		sliding:   true,
+	})
+}
+
+// PlayCoin - звук сбора монеты (высокий звонкий)
+func (as *AudioSystem) PlayCoin() {
+	as.playSound(SoundEffect{
+		frequency: 1200,
+		duration:  180,
+		volume:    0.3,
+		waveform:  0,
+		sliding:   false,
+	})
+	// Второй тон для аккорда
+	as.playSound(SoundEffect{
+		frequency: 1600,
+		duration:  180,
+		volume:    0.2,
+		waveform:  0,
+		sliding:   false,
+	})
+}
+
+// PlayPowerup - звук бонуса
+func (as *AudioSystem) PlayPowerup() {
+	// Восходящая арпеджио
+	as.playSound(SoundEffect{frequency: 523, duration: 100, volume: 0.3, waveform: 0, sliding: false})
+	as.playSound(SoundEffect{frequency: 659, duration: 100, volume: 0.3, waveform: 0, sliding: false})
+	as.playSound(SoundEffect{frequency: 784, duration: 100, volume: 0.3, waveform: 0, sliding: false})
+	as.playSound(SoundEffect{frequency: 1047, duration: 150, volume: 0.3, waveform: 0, sliding: false})
+}
+
+// PlayStar - звук звезды (неуязвимость)
+func (as *AudioSystem) PlayStar() {
+	for i := 0; i < 5; i++ {
+		as.playSound(SoundEffect{
+			frequency: 880 + float64(i)*100,
+			duration:  80,
+			volume:    0.25,
+			waveform:  0,
+			sliding:   false,
+		})
+	}
+}
+
+// PlayExtraLife - звук дополнительной жизни
+func (as *AudioSystem) PlayExtraLife() {
+	as.playSound(SoundEffect{frequency: 659, duration: 120, volume: 0.3, waveform: 0, sliding: false})
+	as.playSound(SoundEffect{frequency: 988, duration: 120, volume: 0.3, waveform: 0, sliding: false})
+	as.playSound(SoundEffect{frequency: 1319, duration: 200, volume: 0.3, waveform: 0, sliding: false})
+}
+
+// PlayJumpBump - звук при приземлении
+func (as *AudioSystem) PlayJumpBump() {
+	as.playSound(SoundEffect{
+		frequency: 150,
+		duration:  80,
+		volume:    0.2,
+		waveform:  3,
+		sliding:   false,
+	})
+}
+
+// PlayEnemyDefeat - звук победы над врагом
+func (as *AudioSystem) PlayEnemyDefeat() {
+	as.playSound(SoundEffect{
+		frequency: 440,
+		duration:  100,
+		volume:    0.3,
+		waveform:  1,
+		sliding:   true,
+	})
+}
 
 func NewGame() *Game {
 	// Initialize clouds with random positions and speeds
@@ -391,6 +599,36 @@ func NewGame() *Game {
 		{x: 150, y: screenHeight - groundHeight - 250, powerType: ExtraLifePower, collected: false},
 	}
 
+	// Initialize spark particles
+	sparkParticles := make([]SparkParticle, 50)
+	for i := range sparkParticles {
+		sparkParticles[i] = SparkParticle{
+			x:       0,
+			y:       0,
+			vx:      float32(rand.Intn(10)-5) * 0.8,
+			vy:      float32(rand.Intn(10)-5) * 0.8,
+			size:    float32(rand.Intn(4)+2),
+			life:    0,
+			maxLife: 30,
+			color:   color.RGBA{255, 215, 0, 255},
+		}
+	}
+
+	// Initialize floating texts
+	floatingTexts := make([]FloatingText, 20)
+	for i := range floatingTexts {
+		floatingTexts[i] = FloatingText{
+			x:       0,
+			y:       0,
+			text:    "",
+			life:    0,
+			maxLife: 60,
+			vy:      -1,
+			color:   color.RGBA{255, 255, 255, 255},
+			scale:   1.0,
+		}
+	}
+
 	return &Game{
 		playerX:       100,
 		playerY:       screenHeight - groundHeight - 50,
@@ -414,6 +652,9 @@ func NewGame() *Game {
 		platforms:     platforms,
 		jumpParticles: jumpParticles,
 		powerups:      powerups,
+		sparkParticles: sparkParticles,
+		floatingTexts: floatingTexts,
+		screenShake:   ScreenShake{active: false, intensity: 0, timer: 0},
 	}
 }
 
@@ -595,6 +836,15 @@ func (g *Game) Update() error {
 	// Update jump particles
 	g.updateJumpParticles()
 
+	// Update spark particles
+	g.updateSparkParticles()
+
+	// Update floating texts
+	g.updateFloatingTexts()
+
+	// Update screen shake
+	g.updateScreenShake()
+
 	// Update invincibility
 	if g.player.invincible > 0 {
 		g.player.invincible--
@@ -724,6 +974,9 @@ func (g *Game) checkAppleCollection() {
 				apple.collected = true
 				g.player.score++
 				g.audio.PlayCollect()
+				// Small sparkle effect
+				g.spawnSparkParticles(appleCX, appleCY, 5, color.RGBA{220, 20, 60, 255})
+				g.spawnFloatingText(appleCX, appleCY, "+1", color.RGBA{220, 20, 60, 255})
 			}
 		}
 	}
@@ -788,6 +1041,10 @@ func (g *Game) updateEnemies() {
 				g.player.lives--
 				g.player.invincible = 120 // 2 seconds at 60 FPS
 				g.audio.PlayHit()
+				g.triggerScreenShake(5, 15)
+				// Red flash effect
+				g.spawnSparkParticles(float32(g.player.x)+g.player.width/2, float32(g.player.y)+g.player.height/2, 15, color.RGBA{255, 0, 0, 255})
+				g.spawnFloatingText(float32(g.player.x), float32(g.player.y), "OUCH!", color.RGBA{255, 0, 0, 255})
 
 				// Knockback player
 				if enemy.x < float32(g.player.x) {
@@ -814,7 +1071,10 @@ func (g *Game) updateEnemies() {
 				enemy.alive = false
 				g.player.vy = -8 // Bounce
 				g.player.score += 100
-				g.audio.PlayCoin()
+				g.audio.PlayEnemyDefeat()
+				// Spark effect
+				g.spawnSparkParticles(enemy.x+enemy.width/2, enemy.y+enemy.height/2, 20, color.RGBA{139, 69, 19, 255})
+				g.spawnFloatingText(enemy.x, enemy.y, "+100", color.RGBA{255, 255, 0, 255})
 			}
 		}
 	}
@@ -848,6 +1108,10 @@ func (g *Game) updateCoins() {
 			g.player.coins++
 			g.player.score += 50
 			g.audio.PlayCoin()
+			// Spark effect
+			g.spawnSparkParticles(coin.x+10, coin.y+10, 10, color.RGBA{255, 215, 0, 255})
+			// Floating text
+			g.spawnFloatingText(coin.x, coin.y, "+50", color.RGBA{255, 215, 0, 255})
 		}
 	}
 }
@@ -868,6 +1132,55 @@ func (g *Game) updateJumpParticles() {
 		if particle.life <= 0 {
 			// Reset particle for reuse
 			particle.size = 0
+		}
+	}
+}
+
+// updateSparkParticles - обновляет частицы искр
+func (g *Game) updateSparkParticles() {
+	for i := range g.sparkParticles {
+		particle := &g.sparkParticles[i]
+		if particle.life <= 0 {
+			continue
+		}
+
+		particle.x += particle.vx
+		particle.y += particle.vy
+		particle.vy += 0.05 // gravity
+		particle.life--
+		particle.size *= 0.95 // shrink
+
+		if particle.life <= 0 {
+			particle.size = 0
+		}
+	}
+}
+
+// updateFloatingTexts - обновляет всплывающий текст
+func (g *Game) updateFloatingTexts() {
+	for i := range g.floatingTexts {
+		text := &g.floatingTexts[i]
+		if text.life <= 0 {
+			continue
+		}
+
+		text.y += text.vy
+		text.life--
+		text.scale *= 0.98
+
+		if text.life <= 0 {
+			text.text = ""
+		}
+	}
+}
+
+// updateScreenShake - обновляет тряску экрана
+func (g *Game) updateScreenShake() {
+	if g.screenShake.active {
+		g.screenShake.timer--
+		if g.screenShake.timer <= 0 {
+			g.screenShake.active = false
+			g.screenShake.intensity = 0
 		}
 	}
 }
@@ -953,17 +1266,25 @@ func (g *Game) applyPowerup(powerup *Powerup) {
 		g.player.width = 40
 		g.player.height = 50
 		g.player.score += 200
-		g.audio.PlayCollect()
+		g.audio.PlayPowerup()
+		g.spawnSparkParticles(powerup.x, powerup.y, 25, color.RGBA{220, 20, 60, 255})
+		g.spawnFloatingText(powerup.x, powerup.y, "MUSHROOM!", color.RGBA{220, 20, 60, 255})
+		g.triggerScreenShake(3, 10)
 	case StarPower:
 		// Make player invincible for 10 seconds (600 frames)
 		g.player.invincible = 600
 		g.player.score += 500
-		g.audio.PlayCollect()
+		g.audio.PlayStar()
+		g.spawnSparkParticles(powerup.x, powerup.y, 30, color.RGBA{255, 215, 0, 255})
+		g.spawnFloatingText(powerup.x, powerup.y, "STAR POWER!", color.RGBA{255, 215, 0, 255})
+		g.triggerScreenShake(4, 15)
 	case ExtraLifePower:
 		// Add extra life
 		g.player.lives++
 		g.player.score += 1000
-		g.audio.PlayCollect()
+		g.audio.PlayExtraLife()
+		g.spawnSparkParticles(powerup.x, powerup.y, 25, color.RGBA{255, 20, 60, 255})
+		g.spawnFloatingText(powerup.x, powerup.y, "1UP!", color.RGBA{255, 100, 100, 255})
 	}
 }
 
@@ -985,6 +1306,55 @@ func (g *Game) spawnJumpParticles(x, y float32) {
 				break
 			}
 		}
+	}
+}
+
+// spawnSparkParticles - создаёт искры в точке
+func (g *Game) spawnSparkParticles(x, y float32, count int, c color.RGBA) {
+	for i := 0; i < count; i++ {
+		for j := range g.sparkParticles {
+			if g.sparkParticles[j].life <= 0 {
+				g.sparkParticles[j] = SparkParticle{
+					x:       x,
+					y:       y,
+					vx:      float32(rand.Intn(10)-5) * 1.5,
+					vy:      float32(rand.Intn(10)-5) * 1.5,
+					size:    float32(rand.Intn(4)+3),
+					life:    30,
+					maxLife: 30,
+					color:   c,
+				}
+				break
+			}
+		}
+	}
+}
+
+// spawnFloatingText - создаёт всплывающий текст
+func (g *Game) spawnFloatingText(x, y float32, text string, c color.RGBA) {
+	for i := range g.floatingTexts {
+		if g.floatingTexts[i].life <= 0 {
+			g.floatingTexts[i] = FloatingText{
+				x:       x,
+				y:       y,
+				text:    text,
+				life:    60,
+				maxLife: 60,
+				vy:      -1.5,
+				color:   c,
+				scale:   1.2,
+			}
+			break
+		}
+	}
+}
+
+// triggerScreenShake - запускает тряску экрана
+func (g *Game) triggerScreenShake(intensity float32, duration int) {
+	g.screenShake = ScreenShake{
+		active:    true,
+		intensity: intensity,
+		timer:     duration,
 	}
 }
 
@@ -1688,6 +2058,12 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	// Draw jump particles
 	g.drawJumpParticles(screen)
 
+	// Draw spark particles
+	g.drawSparkParticles(screen)
+
+	// Draw floating texts
+	g.drawFloatingTexts(screen)
+
 	// Draw rain (stormy weather)
 	if g.weather == Stormy {
 		g.drawRain(screen)
@@ -1696,6 +2072,17 @@ func (g *Game) Draw(screen *ebiten.Image) {
 
 	// Draw UI (score, lives, coins)
 	g.drawUI(screen)
+
+	// Draw screen shake flash effect
+	if g.screenShake.active {
+		// Draw red flash overlay
+		alpha := uint8(g.screenShake.intensity * 10)
+		if alpha > 100 {
+			alpha = 100
+		}
+		flashColor := color.RGBA{255, 0, 0, alpha}
+		vector.DrawFilledRect(screen, 0, 0, screenWidth, screenHeight, flashColor, false)
+	}
 }
 
 func (g *Game) drawSun(screen *ebiten.Image) {
@@ -2133,6 +2520,36 @@ func (g *Game) drawJumpParticles(screen *ebiten.Image) {
 		particleColor := color.RGBA{200, 200, 200, alpha}
 
 		vector.DrawFilledCircle(screen, particle.x, particle.y, particle.size, particleColor, false)
+	}
+}
+
+// drawSparkParticles - отрисовка частиц искр
+func (g *Game) drawSparkParticles(screen *ebiten.Image) {
+	for _, particle := range g.sparkParticles {
+		if particle.life <= 0 {
+			continue
+		}
+
+		// Calculate alpha based on life
+		alpha := uint8(255 * particle.life / particle.maxLife)
+		particleColor := color.RGBA{particle.color.R, particle.color.G, particle.color.B, alpha}
+
+		vector.DrawFilledCircle(screen, particle.x, particle.y, particle.size, particleColor, false)
+	}
+}
+
+// drawFloatingTexts - отрисовка всплывающего текста
+func (g *Game) drawFloatingTexts(screen *ebiten.Image) {
+	for _, textData := range g.floatingTexts {
+		if textData.life <= 0 || textData.text == "" {
+			continue
+		}
+
+		// Draw shadow
+		ebitenutil.DebugPrintAt(screen, textData.text, int(textData.x)+1, int(textData.y)+1)
+		
+		// Draw main text
+		ebitenutil.DebugPrintAt(screen, textData.text, int(textData.x), int(textData.y))
 	}
 }
 
