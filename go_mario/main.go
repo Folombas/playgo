@@ -106,6 +106,7 @@ const (
 	Menu GameState = iota
 	Playing
 	InsideHouse
+	GameWon  // Экран победы
 )
 
 type TimeOfDay int
@@ -772,6 +773,20 @@ func (g *Game) Update() error {
 		return nil
 	}
 
+	// Handle game won state
+	if g.state == GameWon {
+		// Play again with Enter
+		if inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
+			g.resetGame()
+			g.state = Playing
+		}
+		// Return to menu with ESC
+		if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
+			g.state = Menu
+		}
+		return nil
+	}
+
 	// Handle inside house state
 	if g.state == InsideHouse {
 		// Exit house with ESC or inside door
@@ -913,12 +928,52 @@ func (g *Game) Update() error {
 	// Update screen shake
 	g.updateScreenShake()
 
+	// Check win condition
+	g.checkWinCondition()
+
 	// Update invincibility
 	if g.player.invincible > 0 {
 		g.player.invincible--
 	}
 
 	return nil
+}
+
+// checkWinCondition - проверяет условие победы
+func (g *Game) checkWinCondition() {
+	// Check if all coins collected and all enemies defeated
+	allCoinsCollected := true
+	for _, coin := range g.coins {
+		if !coin.collected {
+			allCoinsCollected = false
+			break
+		}
+	}
+
+	allEnemiesDefeated := true
+	for _, enemy := range g.enemies {
+		if enemy.alive {
+			allEnemiesDefeated = false
+			break
+		}
+	}
+
+	// Check if all powerups collected
+	allPowerupsCollected := true
+	for _, powerup := range g.powerups {
+		if !powerup.collected {
+			allPowerupsCollected = false
+			break
+		}
+	}
+
+	// Win if all coins, enemies, and powerups are collected/defeated
+	if allCoinsCollected && allEnemiesDefeated && allPowerupsCollected {
+		g.state = GameWon
+		g.audio.PlayExtraLife() // Play victory sound
+		g.triggerScreenShake(10, 30)
+		g.spawnSparkParticles(screenWidth/2, screenHeight/2, 100, color.RGBA{255, 215, 0, 255})
+	}
 }
 
 func (g *Game) checkHouseEntry() {
@@ -1440,6 +1495,8 @@ func (g *Game) resetGame() {
 	g.player.score = 0
 	g.player.coins = 0
 	g.player.invincible = 60
+	g.player.width = 30
+	g.player.height = 40
 
 	// Reset coins
 	for i := range g.coins {
@@ -1456,6 +1513,11 @@ func (g *Game) resetGame() {
 		for j := range g.trees[i].apples {
 			g.trees[i].apples[j].collected = false
 		}
+	}
+
+	// Reset powerups
+	for i := range g.powerups {
+		g.powerups[i].collected = false
 	}
 }
 
@@ -1948,6 +2010,75 @@ func (g *Game) drawMenu(screen *ebiten.Image) {
 	}
 }
 
+// drawGameWon - отрисовка экрана победы
+func (g *Game) drawGameWon(screen *ebiten.Image) {
+	// Animated background (gradient cycling through colors)
+	r := uint8(128 + 127*math.Sin(float64(g.frameCount)*0.02))
+	green := uint8(128 + 127*math.Sin(float64(g.frameCount)*0.02+2))
+	blue := uint8(128 + 127*math.Sin(float64(g.frameCount)*0.02+4))
+	screen.Fill(color.RGBA{r, green, blue, 255})
+
+	// Draw victory stars
+	for i := 0; i < 50; i++ {
+		x := float32((i*73 + g.frameCount) % screenWidth)
+		y := float32((i*47) % (screenHeight - 200))
+		size := float32((i % 3) + 1)
+		alpha := uint8(150 + 105*math.Sin(float64(g.frameCount)*0.1+float64(i)))
+		vector.DrawFilledCircle(screen, x, y, size, color.RGBA{255, 255, 200, alpha}, false)
+	}
+
+	// Victory message with shadow
+	victoryTitle := "🎉 VICTORY! 🎉"
+	titleX := screenWidth/2 - len(victoryTitle)*12
+	titleY := 100
+	
+	// Shadow
+	ebitenutil.DebugPrintAt(screen, victoryTitle, titleX+3, titleY+3)
+	// Main text (yellow)
+	ebitenutil.DebugPrintAt(screen, victoryTitle, titleX, titleY)
+
+	// Congratulations message
+	congrats := "Congratulations, Hero!"
+	congratsX := screenWidth/2 - len(congrats)*8
+	ebitenutil.DebugPrintAt(screen, congrats, congratsX, 160)
+
+	// Final stats box
+	statsBoxX := screenWidth/2 - 150
+	statsBoxY := 220
+	statsBoxW := 300
+	statsBoxH := 200
+	
+	// Box background (semi-transparent dark)
+	vector.DrawFilledRect(screen, float32(statsBoxX), float32(statsBoxY), float32(statsBoxW), float32(statsBoxH), color.RGBA{0, 0, 0, 200}, false)
+	// Box border
+	vector.StrokeRect(screen, float32(statsBoxX), float32(statsBoxY), float32(statsBoxW), float32(statsBoxH), 3, color.RGBA{255, 215, 0, 255}, false)
+
+	// Stats
+	stats := []string{
+		fmt.Sprintf("Final Score: %d", g.player.score),
+		fmt.Sprintf("Coins: %d/%d", g.player.coins, len(g.coins)),
+		fmt.Sprintf("Lives Remaining: %d", g.player.lives),
+		"",
+		"🌟 All objectives completed! 🌟",
+	}
+	
+	for i, line := range stats {
+		ebitenutil.DebugPrintAt(screen, line, statsBoxX+20, statsBoxY+30+i*30)
+	}
+
+	// Play again prompt (blinking)
+	if g.frameCount%60 < 30 {
+		playAgain := "Press ENTER to Play Again"
+		playAgainX := screenWidth/2 - len(playAgain)*8
+		ebitenutil.DebugPrintAt(screen, playAgain, playAgainX, 500)
+	}
+
+	// Or return to menu
+	menuHint := "Press ESC for Main Menu"
+	menuHintX := screenWidth/2 - len(menuHint)*6
+	ebitenutil.DebugPrintAt(screen, menuHint, menuHintX, 540)
+}
+
 func (g *Game) drawStormCloud(screen *ebiten.Image, cloud Cloud) {
 	xFloat := cloud.x
 	yFloat := cloud.y
@@ -2072,6 +2203,11 @@ func (g *Game) Draw(screen *ebiten.Image) {
 
 	if g.state == InsideHouse {
 		g.drawInsideHouse(screen)
+		return
+	}
+
+	if g.state == GameWon {
+		g.drawGameWon(screen)
 		return
 	}
 
