@@ -3,11 +3,13 @@ package main
 import (
 	"fmt"
 	"image/color"
+	"io"
 	"log"
 	"math"
 	"math/rand"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/hajimehoshi/ebiten/v2/audio"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"github.com/hajimehoshi/ebiten/v2/vector"
@@ -262,16 +264,68 @@ type SoundEffect struct {
 	sliding   bool
 }
 
+// AudioStream - поток для воспроизведения звука
+type AudioStream struct {
+	buffer []float64
+	pos    int
+}
+
+func (a *AudioStream) Read(b []byte) (int, error) {
+	if a.pos >= len(a.buffer) {
+		return 0, io.EOF
+	}
+
+	n := 0
+	for i := 0; i < len(b); i += 4 {
+		if a.pos >= len(a.buffer) {
+			break
+		}
+		sample := a.buffer[a.pos]
+		a.pos++
+
+		// Convert float64 [-1,1] to int16
+		val := int16(sample * 32767)
+		b[i] = byte(val)
+		b[i+1] = byte(val >> 8)
+		b[i+2] = 0
+		b[i+3] = 0
+		n += 4
+	}
+
+	return n, nil
+}
+
+func (a *AudioStream) Seek(offset int64, whence int) (int64, error) {
+	switch whence {
+	case io.SeekStart:
+		a.pos = int(offset)
+	case io.SeekCurrent:
+		a.pos += int(offset)
+	case io.SeekEnd:
+		a.pos = len(a.buffer) + int(offset)
+	}
+	if a.pos < 0 {
+		a.pos = 0
+	}
+	if a.pos > len(a.buffer) {
+		a.pos = len(a.buffer)
+	}
+	return int64(a.pos), nil
+}
+
 // AudioSystem - система воспроизведения звуков
 type AudioSystem struct {
 	enabled    bool
+	audioCtx   *audio.Context
 	soundQueue []SoundEffect
 }
 
 // NewAudioSystem создаёт аудиосистему
 func NewAudioSystem() *AudioSystem {
+	audioCtx := audio.NewContext(44100)
 	return &AudioSystem{
 		enabled:    true,
+		audioCtx:   audioCtx,
 		soundQueue: make([]SoundEffect, 0),
 	}
 }
@@ -326,7 +380,21 @@ func (as *AudioSystem) playSound(effect SoundEffect) {
 	if !as.enabled {
 		return
 	}
-	as.soundQueue = append(as.soundQueue, effect)
+
+	// Generate samples
+	samples := as.generateSamples(effect)
+
+	// Create audio stream
+	stream := &AudioStream{buffer: samples, pos: 0}
+
+	// Create player and play
+	player, err := as.audioCtx.NewPlayer(stream)
+	if err != nil {
+		log.Printf("Error creating player: %v", err)
+		return
+	}
+
+	player.Play()
 }
 
 // PlayJump - звук прыжка
