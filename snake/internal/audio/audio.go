@@ -24,6 +24,7 @@ const (
 
 // AudioSystem управляет звуковыми эффектами
 type AudioSystem struct {
+	context    *audio.Context
 	players    map[SoundType][]byte // Храним данные, создаём плееры при воспроизведении
 	volume     float64
 	enabled    bool
@@ -32,6 +33,7 @@ type AudioSystem struct {
 // NewAudioSystem создаёт новую аудиосистему
 func NewAudioSystem() *AudioSystem {
 	as := &AudioSystem{
+		context: audio.NewContext(44100),
 		players: make(map[SoundType][]byte),
 		volume:  0.3,
 		enabled: true,
@@ -56,13 +58,13 @@ func (as *AudioSystem) Play(soundType SoundType) {
 	if !as.enabled {
 		return
 	}
-	
+
 	data, ok := as.players[soundType]
 	if !ok {
 		return
 	}
-	
-	player := audio.NewPlayerFromBytes(nil, data)
+
+	player := as.context.NewPlayerFromBytes(data)
 	player.SetVolume(as.volume)
 	player.Rewind()
 	player.Play()
