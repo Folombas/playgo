@@ -941,7 +941,7 @@ func (g *Game) Update() error {
 
 // checkWinCondition - проверяет условие победы
 func (g *Game) checkWinCondition() {
-	// Check if all coins collected and all enemies defeated
+	// Check if all coins collected
 	allCoinsCollected := true
 	for _, coin := range g.coins {
 		if !coin.collected {
@@ -958,17 +958,9 @@ func (g *Game) checkWinCondition() {
 		}
 	}
 
-	// Check if all powerups collected
-	allPowerupsCollected := true
-	for _, powerup := range g.powerups {
-		if !powerup.collected {
-			allPowerupsCollected = false
-			break
-		}
-	}
-
-	// Win if all coins, enemies, and powerups are collected/defeated
-	if allCoinsCollected && allEnemiesDefeated && allPowerupsCollected {
+	// Win if all coins collected and all enemies defeated
+	// (powerups and apples are optional bonuses)
+	if allCoinsCollected && allEnemiesDefeated {
 		g.state = GameWon
 		g.audio.PlayExtraLife() // Play victory sound
 		g.triggerScreenShake(10, 30)
