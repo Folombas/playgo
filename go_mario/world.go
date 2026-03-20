@@ -615,9 +615,21 @@ func (a *AchievementAlbum) UpdateAchievement(achType AchievementType, progress i
 			if progress >= a.achievements[i].maxProgress {
 				a.achievements[i].completed = true
 				a.totalUnlocked++
+				// Add to pending notifications
+				a.pendingNotifications = append(a.pendingNotifications, a.achievements[i])
 			}
 		}
 	}
+}
+
+// GetNextNotification возвращает следующее уведомление и удаляет его из очереди
+func (a *AchievementAlbum) GetNextNotification() *Achievement {
+	if len(a.pendingNotifications) > 0 {
+		ach := a.pendingNotifications[0]
+		a.pendingNotifications = a.pendingNotifications[1:]
+		return &ach
+	}
+	return nil
 }
 
 // GetMedalColor возвращает цвет медали

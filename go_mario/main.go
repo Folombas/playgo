@@ -298,6 +298,17 @@ type AchievementAlbum struct {
 	achievements []Achievement
 	totalUnlocked int
 	showAlbum    bool
+	pendingNotifications []Achievement
+}
+
+// AchievementNotification - активное уведомление ачивки
+type AchievementNotification struct {
+	achievement Achievement
+	life        int
+	maxLife     int
+	scale       float32
+	y           float32
+	targetY     float32
 }
 
 // Checkpoint - контрольная точка возрождения
@@ -434,6 +445,7 @@ type Game struct {
 	
 	// Achievement album
 	album       *AchievementAlbum
+	activeNotifications []AchievementNotification
 	blocksMined int
 	enemiesDefeated int
 	
@@ -687,6 +699,79 @@ func (as *AudioSystem) PlayExtraLife() {
 	as.playSound(SoundEffect{frequency: 1319, duration: 200, volume: 0.3, waveform: 0, sliding: false})
 }
 
+// PlayAchievementBronze - звук для бронзовой ачивки
+func (as *AudioSystem) PlayAchievementBronze() {
+	// Short triumphant fanfare
+	as.playSound(SoundEffect{frequency: 523, duration: 100, volume: 0.35, waveform: 0, sliding: false})
+	as.playSound(SoundEffect{frequency: 659, duration: 100, volume: 0.35, waveform: 0, sliding: false})
+	as.playSound(SoundEffect{frequency: 784, duration: 150, volume: 0.35, waveform: 0, sliding: false})
+}
+
+// PlayAchievementSilver - звук для серебряной ачивки
+func (as *AudioSystem) PlayAchievementSilver() {
+	// Medium fanfare with more notes
+	as.playSound(SoundEffect{frequency: 523, duration: 80, volume: 0.35, waveform: 0, sliding: false})
+	as.playSound(SoundEffect{frequency: 659, duration: 80, volume: 0.35, waveform: 0, sliding: false})
+	as.playSound(SoundEffect{frequency: 784, duration: 80, volume: 0.35, waveform: 0, sliding: false})
+	as.playSound(SoundEffect{frequency: 1047, duration: 150, volume: 0.35, waveform: 0, sliding: false})
+}
+
+// PlayAchievementGold - звук для золотой ачивки
+func (as *AudioSystem) PlayAchievementGold() {
+	// Grand fanfare
+	as.playSound(SoundEffect{frequency: 523, duration: 80, volume: 0.4, waveform: 1, sliding: false})
+	as.playSound(SoundEffect{frequency: 659, duration: 80, volume: 0.4, waveform: 1, sliding: false})
+	as.playSound(SoundEffect{frequency: 784, duration: 80, volume: 0.4, waveform: 1, sliding: false})
+	as.playSound(SoundEffect{frequency: 1047, duration: 80, volume: 0.4, waveform: 1, sliding: false})
+	as.playSound(SoundEffect{frequency: 1319, duration: 100, volume: 0.4, waveform: 0, sliding: false})
+	as.playSound(SoundEffect{frequency: 1568, duration: 200, volume: 0.4, waveform: 0, sliding: false})
+}
+
+// PlayAchievementPlatinum - звук для платиновой ачивки
+func (as *AudioSystem) PlayAchievementPlatinum() {
+	// Epic ascending arpeggio
+	for i := 0; i < 8; i++ {
+		as.playSound(SoundEffect{
+			frequency: 523 * math.Pow(1.05946, float64(i)),
+			duration:  60,
+			volume:    0.4,
+			waveform:  0,
+			sliding:   false,
+		})
+	}
+	as.playSound(SoundEffect{frequency: 1047, duration: 300, volume: 0.4, waveform: 0, sliding: false})
+}
+
+// PlayAchievementDiamond - звук для алмазной ачивки (самый эпичный)
+func (as *AudioSystem) PlayAchievementDiamond() {
+	// Ultra epic multi-layered fanfare
+	// First arpeggio up
+	for i := 0; i < 12; i++ {
+		as.playSound(SoundEffect{
+			frequency: 523 * math.Pow(1.05946, float64(i)),
+			duration:  50,
+			volume:    0.4,
+			waveform:  0,
+			sliding:   false,
+		})
+	}
+	// Second arpeggio even higher
+	for i := 0; i < 8; i++ {
+		as.playSound(SoundEffect{
+			frequency: 1047 * math.Pow(1.05946, float64(i)),
+			duration:  40,
+			volume:    0.4,
+			waveform:  0,
+			sliding:   false,
+		})
+	}
+	// Final triumphant chord
+	as.playSound(SoundEffect{frequency: 1047, duration: 400, volume: 0.45, waveform: 1, sliding: false})
+	as.playSound(SoundEffect{frequency: 1319, duration: 400, volume: 0.45, waveform: 0, sliding: false})
+	as.playSound(SoundEffect{frequency: 1568, duration: 400, volume: 0.45, waveform: 0, sliding: false})
+	as.playSound(SoundEffect{frequency: 2093, duration: 500, volume: 0.5, waveform: 0, sliding: true})
+}
+
 // PlayJumpBump - звук при приземлении
 func (as *AudioSystem) PlayJumpBump() {
 	as.playSound(SoundEffect{
@@ -925,6 +1010,7 @@ func NewGame() *Game {
 		
 		// Achievement album
 		album:       NewAchievementAlbum(),
+		activeNotifications: make([]AchievementNotification, 0),
 		blocksMined: 0,
 		enemiesDefeated: 0,
 		
@@ -1155,6 +1241,9 @@ func (g *Game) Update() error {
 		g.tutorial.Update(g)
 	}
 	
+	// Update achievement notifications
+	g.updateAchievementNotifications()
+	
 	// Update checkpoints
 	g.updateCheckpoints()
 	
@@ -1253,6 +1342,157 @@ func (g *Game) handleCrafting() {
 					g.audio.PlayPowerup()
 					break
 				}
+			}
+		}
+	}
+}
+
+// updateAchievementNotifications - обновляет активные уведомления ачивок
+func (g *Game) updateAchievementNotifications() {
+	// Check for new notifications
+	if g.album != nil {
+		ach := g.album.GetNextNotification()
+		if ach != nil {
+			// Play sound based on tier
+			switch ach.medalTier {
+			case Bronze:
+				g.audio.PlayAchievementBronze()
+			case Silver:
+				g.audio.PlayAchievementSilver()
+			case Gold:
+				g.audio.PlayAchievementGold()
+			case Platinum:
+				g.audio.PlayAchievementPlatinum()
+			case Diamond:
+				g.audio.PlayAchievementDiamond()
+			}
+			
+			// Create notification
+			notification := AchievementNotification{
+				achievement: *ach,
+				life:        0,
+				maxLife:     300, // 5 seconds at 60 FPS
+				scale:       0,
+				y:           screenHeight + 100,
+				targetY:     screenHeight - 120,
+			}
+			
+			// Add to active notifications (max 3 at a time)
+			if len(g.activeNotifications) < 3 {
+				g.activeNotifications = append(g.activeNotifications, notification)
+			} else {
+				// Queue for later
+				g.album.pendingNotifications = append(g.album.pendingNotifications, *ach)
+			}
+			
+			// Trigger screen shake and particles
+			g.triggerScreenShake(8, 20)
+			g.spawnSparkParticles(screenWidth/2, screenHeight/2, 50, GetMedalColor(ach.medalTier))
+		}
+	}
+	
+	// Update active notifications
+	for i := range g.activeNotifications {
+		notif := &g.activeNotifications[i]
+		if notif.life <= 0 {
+			continue
+		}
+		
+		notif.life++
+		
+		// Animate in
+		if notif.life < 30 {
+			notif.scale += 0.03
+			notif.y += (notif.targetY - notif.y) * 0.1
+		}
+		
+		// Animate out
+		if notif.life > notif.maxLife-30 {
+			notif.scale -= 0.03
+			notif.y += 3
+		}
+		
+		if notif.life >= notif.maxLife {
+			notif.life = 0
+		}
+	}
+	
+	// Remove finished notifications
+	cleaned := make([]AchievementNotification, 0)
+	for _, notif := range g.activeNotifications {
+		if notif.life > 0 && notif.life < notif.maxLife {
+			cleaned = append(cleaned, notif)
+		}
+	}
+	g.activeNotifications = cleaned
+}
+
+// drawAchievementNotifications - отрисовка активных уведомлений ачивок
+func (g *Game) drawAchievementNotifications(screen *ebiten.Image) {
+	for _, notif := range g.activeNotifications {
+		if notif.life <= 0 {
+			continue
+		}
+		
+		ach := notif.achievement
+		tierColor := GetMedalColor(ach.medalTier)
+		
+		// Background panel with gradient
+		panelW := 500
+		panelH := 100
+		panelX := screenWidth/2 - panelW/2
+		panelY := int(notif.y)
+		
+		// Outer glow
+		vector.DrawFilledRect(screen, float32(panelX-5), float32(panelY-5), float32(panelW+10), float32(panelH+10), color.RGBA{tierColor.R, tierColor.G, tierColor.B, 100}, false)
+		
+		// Main background
+		vector.DrawFilledRect(screen, float32(panelX), float32(panelY), float32(panelW), float32(panelH), color.RGBA{0, 0, 0, 200}, false)
+		
+		// Border
+		vector.StrokeRect(screen, float32(panelX), float32(panelY), float32(panelW), float32(panelH), 4, tierColor, false)
+		
+		// Icon/Medal (large, animated)
+		iconScale := notif.scale
+		if iconScale > 1 {
+			iconScale = 1
+		}
+		iconSize := int(60 * iconScale)
+		iconX := panelX + 35
+		iconY := panelY + 50 - iconSize/2
+
+		// Medal glow
+		vector.DrawFilledCircle(screen, float32(iconX), float32(iconY), float32(iconSize)/2+10, color.RGBA{tierColor.R, tierColor.G, tierColor.B, 100}, false)
+
+		// Medal background
+		vector.DrawFilledCircle(screen, float32(iconX), float32(iconY), float32(iconSize)/2, tierColor, false)
+
+		// Icon emoji
+		ebitenutil.DebugPrintAt(screen, ach.icon, iconX-15, iconY-15)
+		
+		// Text
+		textX := panelX + 90
+		
+		// "ACHIEVEMENT UNLOCKED!" title
+		titleText := "🏆 ACHIEVEMENT UNLOCKED!"
+		titleY := panelY + 20
+		ebitenutil.DebugPrintAt(screen, titleText, textX, titleY)
+		
+		// Achievement name
+		nameY := panelY + 45
+		ebitenutil.DebugPrintAt(screen, ach.title, textX, nameY)
+		
+		// Tier name
+		tierY := panelY + 70
+		tierText := GetTierName(ach.medalTier)
+		ebitenutil.DebugPrintAt(screen, tierText, textX, tierY)
+		
+		// Animated sparkles around notification
+		if notif.life < 60 {
+			for i := 0; i < 5; i++ {
+				sparkleX := float32(panelX + (i % 3) * 170 + (notif.life % 20))
+				sparkleY := float32(panelY + (i / 3) * 50 + (notif.life % 15))
+				vector.DrawFilledCircle(screen, sparkleX, sparkleY, 3, color.RGBA{255, 255, 255, 200}, false)
 			}
 		}
 	}
@@ -2694,6 +2934,9 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	
 	// Draw achievement album (overlay)
 	g.drawAchievementAlbum(screen)
+	
+	// Draw achievement notifications (on top)
+	g.drawAchievementNotifications(screen)
 
 	// Draw screen shake flash effect
 	if g.screenShake.active {
