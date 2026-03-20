@@ -252,6 +252,54 @@ type Quest struct {
 	reward      int
 }
 
+// AchievementType - тип достижения
+type AchievementType int
+
+const (
+	FirstSteps AchievementType = iota
+	BlockMiner
+	CoinCollector
+	EnemySlayer
+	DiamondFinder
+	WorldExplorer
+	Builder
+	SpeedRunner
+	Survivor
+	Champion
+)
+
+// MedalTier - уровень медали
+type MedalTier int
+
+const (
+	Bronze MedalTier = iota
+	Silver
+	Gold
+	Platinum
+	Diamond
+)
+
+// Achievement - достижение/ачивка
+type Achievement struct {
+	id            int
+	achType       AchievementType
+	title         string
+	description   string
+	medalTier     MedalTier
+	completed     bool
+	unlockedAt    int
+	progress      int
+	maxProgress   int
+	icon          string
+}
+
+// AchievementAlbum - альбом достижений
+type AchievementAlbum struct {
+	achievements []Achievement
+	totalUnlocked int
+	showAlbum    bool
+}
+
 // Checkpoint - контрольная точка возрождения
 type Checkpoint struct {
 	x        float32
@@ -384,9 +432,14 @@ type Game struct {
 	checkpoints []Checkpoint
 	healthPacks []HealthPack
 	
+	// Achievement album
+	album       *AchievementAlbum
+	blocksMined int
+	enemiesDefeated int
+	
 	// Tutorial hints
-	showControls bool
-	controlsTimer int
+	showControls    bool
+	controlsTimer   int
 }
 
 // SoundEffect - структура звукового эффекта
@@ -869,6 +922,15 @@ func NewGame() *Game {
 		quests:      NewQuests(),
 		checkpoints: NewCheckpoints(),
 		healthPacks: NewHealthPacks(),
+		
+		// Achievement album
+		album:       NewAchievementAlbum(),
+		blocksMined: 0,
+		enemiesDefeated: 0,
+		
+		// Tutorial hints
+		showControls:    false,
+		controlsTimer:   0,
 	}
 }
 
@@ -1120,12 +1182,15 @@ func (g *Game) handleBlockInteraction() {
 	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
 		g.mineBlock(mx, my)
 		g.tutorial.CompleteStep(2) // Complete mining step
+		g.blocksMined++
+		g.album.UpdateAchievement(BlockMiner, g.blocksMined)
 	}
 
 	// Right click - place block
 	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonRight) {
 		g.placeBlock(mx, my)
 		g.tutorial.CompleteStep(3) // Complete placing step
+		g.album.UpdateAchievement(Builder, g.blocksMined) // Reuse blocksMined for builder
 	}
 
 	// Select slot with number keys
@@ -1155,6 +1220,13 @@ func (g *Game) handleBlockInteraction() {
 	// Toggle controls hint with H key
 	if inpututil.IsKeyJustPressed(ebiten.KeyH) {
 		g.showControls = !g.showControls
+	}
+	
+	// Toggle achievement album with B key
+	if inpututil.IsKeyJustPressed(ebiten.KeyB) {
+		if g.album != nil {
+			g.album.showAlbum = !g.album.showAlbum
+		}
 	}
 }
 
@@ -1517,6 +1589,8 @@ func (g *Game) updateEnemies() {
 				g.player.score += 100
 				g.audio.PlayEnemyDefeat()
 				g.tutorial.CompleteStep(6) // Complete enemy step
+				g.enemiesDefeated++
+				g.album.UpdateAchievement(EnemySlayer, g.enemiesDefeated)
 				// Spark effect
 				g.spawnSparkParticles(enemy.x+enemy.width/2, enemy.y+enemy.height/2, 20, color.RGBA{139, 69, 19, 255})
 				g.spawnFloatingText(enemy.x, enemy.y, "+100", color.RGBA{255, 255, 0, 255})
@@ -1553,6 +1627,7 @@ func (g *Game) updateCoins() {
 			g.player.coins++
 			g.player.score += 50
 			g.audio.PlayCoin()
+			g.album.UpdateAchievement(CoinCollector, g.player.coins)
 			// Spark effect
 			g.spawnSparkParticles(coin.x+10, coin.y+10, 10, color.RGBA{255, 215, 0, 255})
 			// Floating text
@@ -2616,6 +2691,9 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	
 	// Draw controls hint
 	g.drawControlsHint(screen)
+	
+	// Draw achievement album (overlay)
+	g.drawAchievementAlbum(screen)
 
 	// Draw screen shake flash effect
 	if g.screenShake.active {
@@ -3355,12 +3433,139 @@ func (g *Game) drawControlsHint(screen *ebiten.Image) {
 		"Колёсико - Прокрутка",
 		"",
 		"H - Скрыть/Показать подсказки",
+		"B - Открыть альбом достижений",
 		"ESC - Меню",
 	}
 	
 	for i, line := range controls {
 		ebitenutil.DebugPrintAt(screen, line, panelX+20, panelY+45+i*22)
 	}
+}
+
+// drawAchievementAlbum - отрисовка альбома достижений
+func (g *Game) drawAchievementAlbum(screen *ebiten.Image) {
+	if g.album == nil || !g.album.showAlbum {
+		return
+	}
+	
+	// Draw album background (full screen overlay)
+	vector.DrawFilledRect(screen, 0, 0, screenWidth, screenHeight, color.RGBA{0, 0, 0, 230}, false)
+	
+	// Album title
+	title := "🏆 ACHIEVEMENT ALBUM"
+	titleX := screenWidth/2 - len(title)*8
+	ebitenutil.DebugPrintAt(screen, title, titleX, 20)
+	
+	// Stats
+	statsText := fmt.Sprintf("Unlocked: %d / %d", g.album.totalUnlocked, len(g.album.achievements))
+	ebitenutil.DebugPrintAt(screen, statsText, 20, 55)
+	
+	// Draw achievements grid (3 columns)
+	startX := 50
+	startY := 90
+	cellW := 220
+	cellH := 100
+	
+	for i, ach := range g.album.achievements {
+		x := startX + (i%3)*cellW
+		y := startY + (i/3)*cellH
+		
+		// Card background
+		cardColor := color.RGBA{50, 50, 50, 200}
+		if ach.completed {
+			cardColor = GetMedalColor(ach.medalTier)
+			cardColor.A = 80
+		}
+		vector.DrawFilledRect(screen, float32(x), float32(y), float32(cellW), float32(cellH), cardColor, false)
+		
+		// Border
+		borderColor := color.RGBA{100, 100, 100, 255}
+		if ach.completed {
+			borderColor = GetMedalColor(ach.medalTier)
+		}
+		vector.StrokeRect(screen, float32(x), float32(y), float32(cellW), float32(cellH), 2, borderColor, false)
+		
+		// Icon/Medal
+		icon := "🔒"
+		if ach.completed {
+			icon = ach.icon
+		}
+		ebitenutil.DebugPrintAt(screen, icon, x+10, y+10)
+		
+		// Title
+		titleColor := color.RGBA{200, 200, 200, 255}
+		if ach.completed {
+			titleColor = GetMedalColor(ach.medalTier)
+		}
+		_ = titleColor
+		ebitenutil.DebugPrintAt(screen, ach.title, x+40, y+12)
+		
+		// Description
+		descY := y + 35
+		ebitenutil.DebugPrintAt(screen, ach.description, x+10, descY)
+		
+		// Tier
+		tierY := y + 60
+		tierText := GetTierName(ach.medalTier)
+		ebitenutil.DebugPrintAt(screen, tierText, x+10, tierY)
+		
+		// Progress bar
+		if !ach.completed {
+			barY := y + 80
+			barW := cellW - 20
+			barH := 10
+			
+			// Background
+			vector.DrawFilledRect(screen, float32(x+10), float32(barY), float32(barW), float32(barH), color.RGBA{80, 80, 80, 255}, false)
+			
+			// Progress
+			progressW := int(float32(barW) * float32(ach.progress) / float32(ach.maxProgress))
+			if progressW > 0 {
+				vector.DrawFilledRect(screen, float32(x+10), float32(barY), float32(progressW), float32(barH), color.RGBA{100, 200, 100, 255}, false)
+			}
+			
+			// Progress text
+			progressText := fmt.Sprintf("%d/%d", ach.progress, ach.maxProgress)
+			ebitenutil.DebugPrintAt(screen, progressText, x+10, barY+15)
+		} else {
+			// Unlocked text
+			ebitenutil.DebugPrintAt(screen, "✓ UNLOCKED", x+10, y+80)
+		}
+	}
+	
+	// Close hint
+	closeHint := "Press B to close"
+	ebitenutil.DebugPrintAt(screen, closeHint, screenWidth/2-80, screenHeight-40)
+}
+
+// drawAchievementNotification - уведомление о получении ачивки
+func (g *Game) drawAchievementNotification(screen *ebiten.Image, ach Achievement) {
+	if !ach.completed {
+		return
+	}
+	
+	// Draw notification at bottom center
+	panelX := screenWidth/2 - 150
+	panelY := screenHeight - 100
+	panelW := 300
+	panelH := 80
+	
+	// Background gradient (gold for achievement)
+	vector.DrawFilledRect(screen, float32(panelX), float32(panelY), float32(panelW), float32(panelH), color.RGBA{255, 215, 0, 200}, false)
+	vector.StrokeRect(screen, float32(panelX), float32(panelY), float32(panelW), float32(panelH), 3, color.RGBA{255, 255, 255, 255}, false)
+	
+	// Icon
+	ebitenutil.DebugPrintAt(screen, ach.icon, panelX+10, panelY+20)
+	
+	// Title
+	ebitenutil.DebugPrintAt(screen, "ACHIEVEMENT UNLOCKED!", panelX+50, panelY+15)
+	
+	// Achievement name
+	ebitenutil.DebugPrintAt(screen, ach.title, panelX+50, panelY+35)
+	
+	// Tier
+	tierText := GetTierName(ach.medalTier)
+	ebitenutil.DebugPrintAt(screen, tierText, panelX+50, panelY+55)
 }
 
 // drawCurrentHint - отрисовка текущей подсказки туториала

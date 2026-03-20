@@ -1,6 +1,7 @@
 package main
 
 import (
+	"image/color"
 	"math"
 	"math/rand"
 )
@@ -504,6 +505,155 @@ func (t *Tutorial) GetCurrentHint() string {
 		return ""
 	}
 	return step.title + ": " + step.description
+}
+
+// NewAchievementAlbum создаёт альбом достижений
+func NewAchievementAlbum() *AchievementAlbum {
+	return &AchievementAlbum{
+		achievements: []Achievement{
+			{
+				id: 0, achType: FirstSteps, title: "Первые шаги",
+				description: "Сделайте первый шаг в игре",
+				medalTier: Bronze, completed: false, progress: 0, maxProgress: 1,
+				icon: "🥉",
+			},
+			{
+				id: 1, achType: BlockMiner, title: "Шахтёр-новичок",
+				description: "Добудьте 10 блоков",
+				medalTier: Bronze, completed: false, progress: 0, maxProgress: 10,
+				icon: "⛏️",
+			},
+			{
+				id: 2, achType: BlockMiner, title: "Опытный шахтёр",
+				description: "Добудьте 50 блоков",
+				medalTier: Silver, completed: false, progress: 0, maxProgress: 50,
+				icon: "🥈",
+			},
+			{
+				id: 3, achType: BlockMiner, title: "Мастер шахты",
+				description: "Добудьте 100 блоков",
+				medalTier: Gold, completed: false, progress: 0, maxProgress: 100,
+				icon: "🥇",
+			},
+			{
+				id: 4, achType: CoinCollector, title: "Коллекционер",
+				description: "Соберите 10 монет",
+				medalTier: Bronze, completed: false, progress: 0, maxProgress: 10,
+				icon: "🪙",
+			},
+			{
+				id: 5, achType: CoinCollector, title: "Богач",
+				description: "Соберите 50 монет",
+				medalTier: Silver, completed: false, progress: 0, maxProgress: 50,
+				icon: "💰",
+			},
+			{
+				id: 6, achType: CoinCollector, title: "Магнат",
+				description: "Соберите 100 монет",
+				medalTier: Gold, completed: false, progress: 0, maxProgress: 100,
+				icon: "👑",
+			},
+			{
+				id: 7, achType: EnemySlayer, title: "Охотник",
+				description: "Победите 5 врагов",
+				medalTier: Bronze, completed: false, progress: 0, maxProgress: 5,
+				icon: "⚔️",
+			},
+			{
+				id: 8, achType: EnemySlayer, title: "Воин",
+				description: "Победите 20 врагов",
+				medalTier: Silver, completed: false, progress: 0, maxProgress: 20,
+				icon: "🗡️",
+			},
+			{
+				id: 9, achType: EnemySlayer, title: "Легенда",
+				description: "Победите 50 врагов",
+				medalTier: Gold, completed: false, progress: 0, maxProgress: 50,
+				icon: "🏆",
+			},
+			{
+				id: 10, achType: DiamondFinder, title: "Ценитель",
+				description: "Найдите алмазную руду",
+				medalTier: Platinum, completed: false, progress: 0, maxProgress: 1,
+				icon: "💎",
+			},
+			{
+				id: 11, achType: WorldExplorer, title: "Путешественник",
+				description: "Пройдите 1000 блоков",
+				medalTier: Silver, completed: false, progress: 0, maxProgress: 1000,
+				icon: "🗺️",
+			},
+			{
+				id: 12, achType: Builder, title: "Строитель",
+				description: "Разместите 50 блоков",
+				medalTier: Silver, completed: false, progress: 0, maxProgress: 50,
+				icon: "🏗️",
+			},
+			{
+				id: 13, achType: Survivor, title: "Выживший",
+				description: "Достигните 10 жизней",
+				medalTier: Gold, completed: false, progress: 0, maxProgress: 10,
+				icon: "❤️",
+			},
+			{
+				id: 14, achType: Champion, title: "Чемпион",
+				description: "Завершите все квесты",
+				medalTier: Diamond, completed: false, progress: 0, maxProgress: 1,
+				icon: "👑",
+			},
+		},
+		totalUnlocked: 0,
+		showAlbum:     false,
+	}
+}
+
+// UpdateAchievement обновляет прогресс достижения
+func (a *AchievementAlbum) UpdateAchievement(achType AchievementType, progress int) {
+	for i := range a.achievements {
+		if a.achievements[i].achType == achType && !a.achievements[i].completed {
+			a.achievements[i].progress = progress
+			if progress >= a.achievements[i].maxProgress {
+				a.achievements[i].completed = true
+				a.totalUnlocked++
+			}
+		}
+	}
+}
+
+// GetMedalColor возвращает цвет медали
+func GetMedalColor(tier MedalTier) color.RGBA {
+	switch tier {
+	case Bronze:
+		return color.RGBA{205, 127, 50, 255}
+	case Silver:
+		return color.RGBA{192, 192, 192, 255}
+	case Gold:
+		return color.RGBA{255, 215, 0, 255}
+	case Platinum:
+		return color.RGBA{224, 224, 224, 255}
+	case Diamond:
+		return color.RGBA{185, 252, 255, 255}
+	default:
+		return color.RGBA{128, 128, 128, 255}
+	}
+}
+
+// GetTierName возвращает название уровня медали
+func GetTierName(tier MedalTier) string {
+	switch tier {
+	case Bronze:
+		return "Бронза"
+	case Silver:
+		return "Серебро"
+	case Gold:
+		return "Золото"
+	case Platinum:
+		return "Платина"
+	case Diamond:
+		return "Алмаз"
+	default:
+		return "Обычная"
+	}
 }
 
 // Update обновляет позицию камеры
