@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"image"
 	"image/color"
 	"io"
 	"log"
@@ -69,12 +68,12 @@ func InitTileset() *Tileset {
 // loadSprites пытается загрузить PNG спрайты
 func (ts *Tileset) loadSprites() bool {
 	// Check if assets directory exists
-	if _, err := os.Stat("assets/tiles/grass.png"); err == nil {
-		ts.tiles[Grass] = ts.loadTile("assets/tiles/grass.png")
-		ts.tiles[Dirt] = ts.loadTile("assets/tiles/dirt.png")
-		ts.tiles[Stone] = ts.loadTile("assets/tiles/stone.png")
-		ts.tiles[Wood] = ts.loadTile("assets/tiles/wood.png")
-		ts.tiles[Bricks] = ts.loadTile("assets/tiles/brick.png")
+	if _, err := os.Stat("internal/assets/tiles/grass.png"); err == nil {
+		ts.tiles[Grass] = ts.loadTile("internal/assets/tiles/grass.png")
+		ts.tiles[Dirt] = ts.loadTile("internal/assets/tiles/dirt.png")
+		ts.tiles[Stone] = ts.loadTile("internal/assets/tiles/rock.png")
+		ts.tiles[Wood] = ts.loadTile("internal/assets/tiles/brickBrown.png")
+		ts.tiles[Bricks] = ts.loadTile("internal/assets/tiles/brickGrey.png")
 		return true
 	}
 	return false
@@ -4383,33 +4382,29 @@ func (g *Game) drawPlayer(screen *ebiten.Image) {
 
 // loadPlayerSprite загружает спрайт игрока если есть
 func (g *Game) loadPlayerSprite() []*ebiten.Image {
-	// Try to load from assets
-	img, _, err := ebitenutil.NewImageFromFile("assets/sprites/player.png")
-	if err != nil {
-		return nil
-	}
-	// Split into frames (assuming 8 frames horizontally)
-	bounds := img.Bounds()
-	frameW := bounds.Dx() / 8
+	// Create frames from different animations
 	frames := make([]*ebiten.Image, 8)
-	for i := 0; i < 8; i++ {
-		frame := ebiten.NewImage(frameW, bounds.Dy())
-		subImage := img.SubImage(image.Rect(i*frameW, 0, (i+1)*frameW, bounds.Dy()))
-		if ebitenImg, ok := subImage.(*ebiten.Image); ok {
-			frame.DrawImage(ebitenImg, nil)
-		} else {
-			// Fallback: draw using WritePixels
-			for py := 0; py < bounds.Dy(); py++ {
-				for px := 0; px < frameW; px++ {
-					r, g, b, a := subImage.At(i*frameW+px, py).RGBA()
-					if a > 0 {
-						frame.Set(px, py, color.RGBA{uint8(r >> 8), uint8(g >> 8), uint8(b >> 8), uint8(a >> 8)})
-					}
-				}
-			}
-		}
-		frames[i] = frame
+	
+	// Load different frames for animation
+	frameFiles := []string{
+		"internal/assets/sprites/alienBlue_stand.png",
+		"internal/assets/sprites/alienBlue_walk1.png",
+		"internal/assets/sprites/alienBlue_walk2.png",
+		"internal/assets/sprites/alienBlue_jump.png",
+		"internal/assets/sprites/alienBlue_walk1.png",
+		"internal/assets/sprites/alienBlue_walk2.png",
+		"internal/assets/sprites/alienBlue_hit.png",
+		"internal/assets/sprites/alienBlue_front.png",
 	}
+	
+	for i, file := range frameFiles {
+		frameImg, _, err := ebitenutil.NewImageFromFile(file)
+		if err != nil {
+			continue
+		}
+		frames[i] = frameImg
+	}
+	
 	return frames
 }
 
