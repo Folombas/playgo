@@ -1348,19 +1348,27 @@ func (g *Game) Update() error {
 		}
 	}
 
-	// Player movement
+	// Player movement with improved controls
+	isMoving := false
 	if ebiten.IsKeyPressed(ebiten.KeyArrowLeft) || ebiten.IsKeyPressed(ebiten.KeyA) {
 		g.player.x -= moveSpeed
 		g.player.facing = -1
 		g.player.animFrame++
+		isMoving = true
 	}
 	if ebiten.IsKeyPressed(ebiten.KeyArrowRight) || ebiten.IsKeyPressed(ebiten.KeyD) {
 		g.player.x += moveSpeed
 		g.player.facing = 1
 		g.player.animFrame++
+		isMoving = true
 	}
 
-	// Jumping
+	// Spawn dust particles when moving on ground
+	if isMoving && g.player.onGround && g.player.animFrame%8 == 0 {
+		g.spawnDustParticles(float32(g.player.x)+g.player.width/2, float32(g.player.y)+g.player.height, 2)
+	}
+
+	// Jumping with variable height
 	if (ebiten.IsKeyPressed(ebiten.KeyArrowUp) || ebiten.IsKeyPressed(ebiten.KeyW) || ebiten.IsKeyPressed(ebiten.KeySpace)) && g.player.onGround {
 		g.player.vy = jumpForce
 		g.player.onGround = false
@@ -1369,8 +1377,16 @@ func (g *Game) Update() error {
 		g.tutorial.CompleteStep(1) // Complete jump step
 	}
 
-	// Apply gravity
+	// Variable jump height - release key to fall faster
+	if !(ebiten.IsKeyPressed(ebiten.KeyArrowUp) || ebiten.IsKeyPressed(ebiten.KeyW) || ebiten.IsKeyPressed(ebiten.KeySpace)) && g.player.vy < -jumpForce/2 {
+		g.player.vy *= 0.5
+	}
+
+	// Apply gravity with terminal velocity
 	g.player.vy += gravity
+	if g.player.vy > 15 {
+		g.player.vy = 15 // Terminal velocity
+	}
 	g.player.y += g.player.vy
 
 	// Ground collision - check against world blocks
@@ -2042,9 +2058,12 @@ func (g *Game) updateEnemies() {
 				g.tutorial.CompleteStep(6) // Complete enemy step
 				g.enemiesDefeated++
 				g.album.UpdateAchievement(EnemySlayer, g.enemiesDefeated)
-				// Spark effect
-				g.spawnSparkParticles(enemy.x+enemy.width/2, enemy.y+enemy.height/2, 20, color.RGBA{139, 69, 19, 255})
+				// Explosion effect
+				g.spawnExplosionParticles(enemy.x+enemy.width/2, enemy.y+enemy.height/2, 25, color.RGBA{139, 69, 19, 255})
+				g.spawnExplosionParticles(enemy.x+enemy.width/2, enemy.y+enemy.height/2, 15, color.RGBA{255, 100, 100, 255})
 				g.spawnFloatingText(enemy.x, enemy.y, "+100", color.RGBA{255, 255, 0, 255})
+				// Screen shake
+				g.triggerScreenShake(3, 10)
 			}
 		}
 	}
@@ -2079,8 +2098,9 @@ func (g *Game) updateCoins() {
 			g.player.score += 50
 			g.audio.PlayCoin()
 			g.album.UpdateAchievement(CoinCollector, g.player.coins)
-			// Spark effect
-			g.spawnSparkParticles(coin.x+10, coin.y+10, 10, color.RGBA{255, 215, 0, 255})
+			// Spark effect with rotation
+			g.spawnSparkParticles(coin.x+10, coin.y+10, 15, color.RGBA{255, 215, 0, 255})
+			g.spawnSparkParticles(coin.x+10, coin.y+10, 8, color.RGBA{255, 255, 200, 255})
 			// Floating text
 			g.spawnFloatingText(coin.x, coin.y, "+50", color.RGBA{255, 215, 0, 255})
 		}
@@ -2293,6 +2313,71 @@ func (g *Game) spawnSparkParticles(x, y float32, count int, c color.RGBA) {
 					size:    float32(rand.Intn(4)+3),
 					life:    30,
 					maxLife: 30,
+					color:   c,
+				}
+				break
+			}
+		}
+	}
+}
+
+// spawnDustParticles - создаёт частицы пыли при движении
+func (g *Game) spawnDustParticles(x, y float32, count int) {
+	for i := 0; i < count; i++ {
+		for j := range g.sparkParticles {
+			if g.sparkParticles[j].life <= 0 {
+				g.sparkParticles[j] = SparkParticle{
+					x:       x + float32(rand.Intn(20)-10),
+					y:       y,
+					vx:      float32(rand.Intn(3)-1) * 0.5,
+					vy:      -float32(rand.Intn(3)+1) * 0.3,
+					size:    float32(rand.Intn(3)+2),
+					life:    20,
+					maxLife: 20,
+					color:   color.RGBA{180, 160, 140, 150},
+				}
+				break
+			}
+		}
+	}
+}
+
+// spawnLeafParticles - создаёт падающие листья
+func (g *Game) spawnLeafParticles(x, y float32, count int) {
+	for i := 0; i < count; i++ {
+		for j := range g.sparkParticles {
+			if g.sparkParticles[j].life <= 0 {
+				g.sparkParticles[j] = SparkParticle{
+					x:       x + float32(rand.Intn(100)-50),
+					y:       y - float32(rand.Intn(50)+50),
+					vx:      float32(rand.Intn(4)-2) * 0.8,
+					vy:      float32(rand.Intn(2)+1) * 0.5,
+					size:    float32(rand.Intn(4)+3),
+					life:    120,
+					maxLife: 120,
+					color:   color.RGBA{34, 139, 34, 200},
+				}
+				break
+			}
+		}
+	}
+}
+
+// spawnExplosionParticles - создаёт частицы взрыва
+func (g *Game) spawnExplosionParticles(x, y float32, count int, c color.RGBA) {
+	for i := 0; i < count; i++ {
+		for j := range g.sparkParticles {
+			if g.sparkParticles[j].life <= 0 {
+				angle := float32(i) * 360 / float32(count)
+				speed := float32(rand.Intn(5)+3)
+				g.sparkParticles[j] = SparkParticle{
+					x:       x,
+					y:       y,
+					vx:      float32(math.Cos(float64(angle))) * speed,
+					vy:      float32(math.Sin(float64(angle))) * speed,
+					size:    float32(rand.Intn(5)+4),
+					life:    40,
+					maxLife: 40,
 					color:   c,
 				}
 				break
@@ -4283,18 +4368,19 @@ func (g *Game) mineBlock(screenX, screenY int) {
 	if g.world == nil {
 		return
 	}
-	
+
 	// Convert screen coordinates to world coordinates
 	worldX := int((float64(screenX) + g.camera.x) / blockSize)
 	worldY := int((float64(screenY) + g.camera.y) / blockSize)
-	
+
 	block := g.world.GetBlock(worldX, worldY)
 	if block != nil && block.minable && block.typ != Air {
 		// Add to inventory
 		g.inventory.AddItem(block.typ, 1)
-		g.audio.PlayCollect()
-		g.spawnSparkParticles(float32(screenX), float32(screenY), 10, getBlockColor(block.typ))
-		
+		g.audio.PlayBlockMine()
+		g.spawnSparkParticles(float32(screenX), float32(screenY), 12, getBlockColor(block.typ))
+		g.spawnSparkParticles(float32(screenX), float32(screenY), 6, color.RGBA{255, 255, 255, 200})
+
 		// Remove block
 		block.typ = Air
 		block.solid = false
@@ -4306,27 +4392,28 @@ func (g *Game) placeBlock(screenX, screenY int) {
 	if g.world == nil {
 		return
 	}
-	
+
 	// Get selected block from inventory
 	selectedSlot := g.inventory.slots[g.inventory.selected]
 	if selectedSlot.count <= 0 {
 		return
 	}
-	
+
 	// Convert screen coordinates to world coordinates
 	worldX := int((float64(screenX) + g.camera.x) / blockSize)
 	worldY := int((float64(screenY) + g.camera.y) / blockSize)
-	
+
 	block := g.world.GetBlock(worldX, worldY)
 	if block != nil && block.typ == Air {
 		// Place block
 		block.typ = selectedSlot.item
 		block.solid = true
 		block.minable = true
-		
+
 		// Remove from inventory
 		g.inventory.RemoveItem(selectedSlot.item, 1)
-		g.audio.PlayJumpBump()
+		g.audio.PlayBlockPlace()
+		g.spawnSparkParticles(float32(screenX), float32(screenY), 8, getBlockColor(selectedSlot.item))
 	}
 }
 
