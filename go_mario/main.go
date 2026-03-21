@@ -1,12 +1,14 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"image/color"
 	"io"
 	"log"
 	"math"
 	"math/rand"
+	"os"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/audio"
@@ -575,6 +577,29 @@ type Game struct {
 	// Tutorial hints
 	showControls    bool
 	controlsTimer   int
+	
+	// Save system
+	saveAvailable bool
+	lastSaveTime  int
+}
+
+// SaveData - структура для сохранения прогресса
+type SaveData struct {
+	PlayerX         float64
+	PlayerY         float64
+	PlayerVY        float64
+	Score           int
+	Coins           int
+	Lives           int
+	Stats           PlayerStats
+	MaxHealth       int
+	CurrentHealth   int
+	Inventory       []InventorySlot
+	CollectedCoins  []bool
+	DefeatedEnemies []bool
+	OpenedChests    []bool
+	BlocksMined     int
+	EnemiesDefeated int
 }
 
 // SoundEffect - структура звукового эффекта
@@ -1449,6 +1474,9 @@ func (g *Game) Update() error {
 	// Handle mining and placing blocks
 	g.handleBlockInteraction()
 
+	// Handle save/load
+	g.handleSaveLoad()
+
 	// Handle crafting mode
 	g.handleCrafting()
 
@@ -1516,7 +1544,7 @@ func (g *Game) handleBlockInteraction() {
 			g.tutorial.CompleteStep(4) // Complete inventory step
 		}
 	}
-	
+
 	// Select slot with mouse wheel
 	_, wheelY := ebiten.Wheel()
 	if wheelY > 0 {
@@ -1532,17 +1560,34 @@ func (g *Game) handleBlockInteraction() {
 		}
 		g.tutorial.CompleteStep(4)
 	}
-	
+
 	// Toggle controls hint with H key
 	if inpututil.IsKeyJustPressed(ebiten.KeyH) {
 		g.showControls = !g.showControls
 	}
-	
+
 	// Toggle achievement album with B key
 	if inpututil.IsKeyJustPressed(ebiten.KeyB) {
 		if g.album != nil {
 			g.album.showAlbum = !g.album.showAlbum
 		}
+	}
+}
+
+// handleSaveLoad - обработка сохранения и загрузки
+func (g *Game) handleSaveLoad() {
+	if g.state != Playing {
+		return
+	}
+
+	// Save with F5
+	if inpututil.IsKeyJustPressed(ebiten.KeyF5) {
+		g.saveGame()
+	}
+
+	// Load with F9
+	if inpututil.IsKeyJustPressed(ebiten.KeyF9) {
+		g.loadGame()
 	}
 }
 
@@ -3908,6 +3953,23 @@ func (g *Game) drawUI(screen *ebiten.Image) {
 		// Border
 		vector.StrokeRect(screen, float32(progressX), 16, float32(progressW), float32(progressH), 1, color.RGBA{150, 150, 150, 255}, false)
 	}
+
+	// Save indicator - show if save is available
+	if g.saveAvailable {
+		saveIcon := "💾"
+		// Blink effect
+		if (g.frameCount/30)%2 == 0 {
+			drawTextWithShadow(screen, saveIcon, screenWidth-30, 12, color.RGBA{100, 255, 100, 255})
+		} else {
+			drawTextWithShadow(screen, saveIcon, screenWidth-30, 12, color.RGBA{50, 200, 50, 255})
+		}
+	}
+
+	// Save/Load hints - show briefly after action
+	if g.frameCount-g.lastSaveTime < 120 {
+		hintText := "F5: Save | F9: Load"
+		drawTextWithShadow(screen, hintText, screenWidth/2-len(hintText)*6, screenHeight-50, color.RGBA{255, 255, 255, 200})
+	}
 }
 
 // drawTextWithShadow - отрисовка текста с тенью
@@ -4415,6 +4477,124 @@ func (g *Game) placeBlock(screenX, screenY int) {
 		g.audio.PlayBlockPlace()
 		g.spawnSparkParticles(float32(screenX), float32(screenY), 8, getBlockColor(selectedSlot.item))
 	}
+}
+
+// saveGame - сохраняет прогресс игры
+func (g *Game) saveGame() {
+	// Collect collected coins state
+	collectedCoins := make([]bool, len(g.coins))
+	for i, coin := range g.coins {
+		collectedCoins[i] = coin.collected
+	}
+
+	// Collect defeated enemies state
+	defeatedEnemies := make([]bool, len(g.enemies))
+	for i, enemy := range g.enemies {
+		defeatedEnemies[i] = !enemy.alive
+	}
+
+	// Collect opened chests state
+	openedChests := make([]bool, len(g.world.chests))
+	for i, chest := range g.world.chests {
+		openedChests[i] = chest.opened
+	}
+
+	saveData := SaveData{
+		PlayerX:         g.player.x,
+		PlayerY:         g.player.y,
+		PlayerVY:        g.player.vy,
+		Score:           g.player.score,
+		Coins:           g.player.coins,
+		Lives:           g.player.lives,
+		Stats:           g.player.stats,
+		MaxHealth:       g.player.maxHealth,
+		CurrentHealth:   g.player.currentHealth,
+		Inventory:       g.inventory.slots,
+		CollectedCoins:  collectedCoins,
+		DefeatedEnemies: defeatedEnemies,
+		OpenedChests:    openedChests,
+		BlocksMined:     g.blocksMined,
+		EnemiesDefeated: g.enemiesDefeated,
+	}
+
+	// Serialize to JSON
+	data, err := json.MarshalIndent(saveData, "", "  ")
+	if err != nil {
+		log.Printf("Save error: %v", err)
+		return
+	}
+
+	// Write to file
+	err = os.WriteFile("savegame.json", data, 0644)
+	if err != nil {
+		log.Printf("Save write error: %v", err)
+		return
+	}
+
+	g.saveAvailable = true
+	g.lastSaveTime = g.frameCount
+	g.audio.PlayCollect()
+	g.spawnFloatingText(float32(g.player.x), float32(g.player.y), "GAME SAVED!", color.RGBA{0, 255, 0, 255})
+}
+
+// loadGame - загружает сохранение
+func (g *Game) loadGame() bool {
+	// Read from file
+	data, err := os.ReadFile("savegame.json")
+	if err != nil {
+		log.Printf("No save file found")
+		return false
+	}
+
+	var saveData SaveData
+	err = json.Unmarshal(data, &saveData)
+	if err != nil {
+		log.Printf("Load error: %v", err)
+		return false
+	}
+
+	// Restore player state
+	g.player.x = saveData.PlayerX
+	g.player.y = saveData.PlayerY
+	g.player.vy = saveData.PlayerVY
+	g.player.score = saveData.Score
+	g.player.coins = saveData.Coins
+	g.player.lives = saveData.Lives
+	g.player.stats = saveData.Stats
+	g.player.maxHealth = saveData.MaxHealth
+	g.player.currentHealth = saveData.CurrentHealth
+
+	// Restore inventory
+	g.inventory.slots = saveData.Inventory
+
+	// Restore coins
+	for i, collected := range saveData.CollectedCoins {
+		if i < len(g.coins) {
+			g.coins[i].collected = collected
+		}
+	}
+
+	// Restore enemies
+	for i, defeated := range saveData.DefeatedEnemies {
+		if i < len(g.enemies) {
+			g.enemies[i].alive = !defeated
+		}
+	}
+
+	// Restore chests
+	for i, opened := range saveData.OpenedChests {
+		if i < len(g.world.chests) {
+			g.world.chests[i].opened = opened
+		}
+	}
+
+	g.blocksMined = saveData.BlocksMined
+	g.enemiesDefeated = saveData.EnemiesDefeated
+	g.saveAvailable = true
+
+	g.audio.PlayPowerup()
+	g.spawnFloatingText(float32(g.player.x), float32(g.player.y), "GAME LOADED!", color.RGBA{0, 255, 255, 255})
+	return true
 }
 
 func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
