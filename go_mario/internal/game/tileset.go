@@ -4,6 +4,7 @@ import (
 	"image/color"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"github.com/hajimehoshi/ebiten/v2/vector"
 )
 
@@ -16,18 +17,63 @@ type Sprite struct {
 
 // Tileset - набор тайлов
 type Tileset struct {
-	tiles    map[BlockType]*Sprite
-	tileSize int
+	tiles      map[BlockType]*Sprite
+	tileSize   int
+	assetMgr   *AssetManager
+	useSprites bool
 }
 
 // InitTileset инициализирует набор тайлов
-func InitTileset() *Tileset {
+func InitTileset(assetMgr *AssetManager) *Tileset {
 	ts := &Tileset{
-		tiles:    make(map[BlockType]*Sprite),
-		tileSize: blockSize,
+		tiles:      make(map[BlockType]*Sprite),
+		tileSize:   blockSize,
+		assetMgr:   assetMgr,
+		useSprites: assetMgr != nil && assetMgr.IsLoaded(),
 	}
+
+	// Try to use loaded sprites first
+	if ts.useSprites {
+		ts.loadSpriteTiles()
+	}
+
+	// Fallback to procedural for missing tiles
 	ts.generateProceduralTiles()
+
 	return ts
+}
+
+// loadSpriteTiles загружает тайлы из ассетов
+func (ts *Tileset) loadSpriteTiles() {
+	tileMap := map[BlockType]string{
+		Grass:    "grass",
+		Dirt:     "rock", // Use rock for dirt
+		Stone:    "rock",
+		Snow_Block: "snow",
+		Bricks:   "brickBrown",
+		Wood:     "boxCrate",
+		Leaves:   "bush",
+		Sand:     "snow", // Fallback
+		Coal_Ore: "bomb",
+		Iron_Ore: "weight",
+		Gold_Ore: "boxCoin",
+		Diamond_Ore: "lockBlue",
+		Plank:    "bridgeA",
+		Crafting_Table: "boxItem",
+		Ice:      "water",
+		Cactus:   "cactus",
+	}
+
+	for blockType, tileName := range tileMap {
+		if img := ts.assetMgr.GetTile(tileName); img != nil {
+			bounds := img.Bounds()
+			ts.tiles[blockType] = &Sprite{
+				image:  img,
+				width:  bounds.Dx(),
+				height: bounds.Dy(),
+			}
+		}
+	}
 }
 
 // generateProceduralTiles генерирует текстуры процедурно
