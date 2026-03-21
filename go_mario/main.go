@@ -526,8 +526,6 @@ type ScreenShake struct {
 }
 
 type Game struct {
-	playerX       float64
-	playerY       float64
 	frameCount    int
 	clouds        []Cloud
 	trees         []Tree
@@ -951,21 +949,21 @@ func NewGame() *Game {
 		}
 	}
 
-	// Initialize house
+	// Initialize house - place it in world coordinates
 	house := House{
-		x:        520,
+		x:        2000,  // World X position
 		y:        screenHeight - groundHeight,
 		width:    120,
 		height:   100,
-		doorX:    560,
+		doorX:    2040,  // Aligned with x + 40
 		doorY:    screenHeight - groundHeight,
 		doorW:    40,
 		doorH:    50,
-		windowX:  590,
+		windowX:  2070,
 		windowY:  screenHeight - groundHeight - 50,
 		windowW:  30,
 		windowH:  40,
-		chimneyX: 600,
+		chimneyX: 2080,
 		chimneyY: screenHeight - groundHeight - 100 - 40, // На крыше дома
 		smoke:    smoke,
 	}
@@ -981,11 +979,13 @@ func NewGame() *Game {
 		}
 	}
 
-	// Initialize apple trees
+	// Initialize apple trees - place them in world coordinates
 	trees := []Tree{
-		createTree(150, screenHeight-groundHeight, 120),
-		createTree(400, screenHeight-groundHeight, 140),
-		createTree(650, screenHeight-groundHeight, 130),
+		createTree(300, screenHeight-groundHeight, 120),
+		createTree(600, screenHeight-groundHeight, 140),
+		createTree(900, screenHeight-groundHeight, 130),
+		createTree(1200, screenHeight-groundHeight, 150),
+		createTree(1500, screenHeight-groundHeight, 140),
 	}
 
 	// Initialize stars for night sky
@@ -1030,32 +1030,40 @@ func NewGame() *Game {
 		currentHealth: 100,
 	}
 
-	// Initialize coins (scattered around the level)
+	// Initialize coins (scattered around the world)
 	coins := []Coin{
 		{x: 200, y: screenHeight - groundHeight - 80, collected: false},
-		{x: 350, y: screenHeight - groundHeight - 120, collected: false},
-		{x: 500, y: screenHeight - groundHeight - 60, collected: false},
-		{x: 100, y: screenHeight - groundHeight - 150, collected: false},
-		{x: 700, y: screenHeight - groundHeight - 100, collected: false},
-		{x: 250, y: screenHeight - groundHeight - 200, collected: false},
-		{x: 450, y: screenHeight - groundHeight - 180, collected: false},
-		{x: 600, y: screenHeight - groundHeight - 140, collected: false},
+		{x: 400, y: screenHeight - groundHeight - 120, collected: false},
+		{x: 600, y: screenHeight - groundHeight - 60, collected: false},
+		{x: 800, y: screenHeight - groundHeight - 150, collected: false},
+		{x: 1000, y: screenHeight - groundHeight - 100, collected: false},
+		{x: 1200, y: screenHeight - groundHeight - 200, collected: false},
+		{x: 1400, y: screenHeight - groundHeight - 180, collected: false},
+		{x: 1600, y: screenHeight - groundHeight - 140, collected: false},
+		{x: 1800, y: screenHeight - groundHeight - 120, collected: false},
+		{x: 2100, y: screenHeight - groundHeight - 100, collected: false},
+		{x: 2300, y: screenHeight - groundHeight - 150, collected: false},
+		{x: 2500, y: screenHeight - groundHeight - 80, collected: false},
 	}
 
-	// Initialize enemies (patrolling Goomba-style)
+	// Initialize enemies (patrolling Goomba-style) - spread across world
 	enemies := []Enemy{
-		{x: 300, y: screenHeight - groundHeight - 30, width: 30, height: 30, vx: 1, alive: true},
-		{x: 550, y: screenHeight - groundHeight - 30, width: 30, height: 30, vx: -1, alive: true},
-		{x: 150, y: screenHeight - groundHeight - 30, width: 30, height: 30, vx: 1.5, alive: true},
+		{x: 350, y: screenHeight - groundHeight - 30, width: 30, height: 30, vx: 1, alive: true},
+		{x: 700, y: screenHeight - groundHeight - 30, width: 30, height: 30, vx: -1, alive: true},
+		{x: 1100, y: screenHeight - groundHeight - 30, width: 30, height: 30, vx: 1.5, alive: true},
+		{x: 1500, y: screenHeight - groundHeight - 30, width: 30, height: 30, vx: -1, alive: true},
+		{x: 2200, y: screenHeight - groundHeight - 30, width: 30, height: 30, vx: 1, alive: true},
 	}
 
-	// Initialize platforms (floating platforms for jumping)
+	// Initialize platforms (floating platforms for jumping) - spread across world
 	platforms := []Platform{
-		{x: 180, y: screenHeight - groundHeight - 120, width: 80, height: 15},
-		{x: 350, y: screenHeight - groundHeight - 180, width: 100, height: 15},
-		{x: 520, y: screenHeight - groundHeight - 240, width: 80, height: 15},
-		{x: 100, y: screenHeight - groundHeight - 280, width: 120, height: 15},
-		{x: 650, y: screenHeight - groundHeight - 200, width: 90, height: 15},
+		{x: 300, y: screenHeight - groundHeight - 120, width: 80, height: 15},
+		{x: 500, y: screenHeight - groundHeight - 180, width: 100, height: 15},
+		{x: 800, y: screenHeight - groundHeight - 150, width: 80, height: 15},
+		{x: 1100, y: screenHeight - groundHeight - 200, width: 120, height: 15},
+		{x: 1400, y: screenHeight - groundHeight - 170, width: 90, height: 15},
+		{x: 1700, y: screenHeight - groundHeight - 140, width: 100, height: 15},
+		{x: 2000, y: screenHeight - groundHeight - 180, width: 80, height: 15},
 	}
 
 	// Initialize jump particles
@@ -1072,11 +1080,13 @@ func NewGame() *Game {
 		}
 	}
 
-	// Initialize powerups (bonus items)
+	// Initialize powerups (bonus items) - spread across world
 	powerups := []Powerup{
-		{x: 280, y: screenHeight - groundHeight - 150, powerType: MushroomPower, collected: false},
-		{x: 620, y: screenHeight - groundHeight - 200, powerType: StarPower, collected: false},
-		{x: 150, y: screenHeight - groundHeight - 250, powerType: ExtraLifePower, collected: false},
+		{x: 450, y: screenHeight - groundHeight - 150, powerType: MushroomPower, collected: false},
+		{x: 900, y: screenHeight - groundHeight - 200, powerType: StarPower, collected: false},
+		{x: 1350, y: screenHeight - groundHeight - 170, powerType: ExtraLifePower, collected: false},
+		{x: 1800, y: screenHeight - groundHeight - 150, powerType: MushroomPower, collected: false},
+		{x: 2400, y: screenHeight - groundHeight - 180, powerType: StarPower, collected: false},
 	}
 
 	// Initialize spark particles
@@ -1110,8 +1120,6 @@ func NewGame() *Game {
 	}
 
 	return &Game{
-		playerX:       100,
-		playerY:       screenHeight - groundHeight - 50,
 		frameCount:    0,
 		clouds:        clouds,
 		stormClouds:   stormClouds,
@@ -1225,9 +1233,9 @@ func (g *Game) Update() error {
 		// Exit house with ESC or inside door
 		if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
 			g.state = Playing
-			// Position player outside near door
-			g.player.x = 580
-			g.player.y = float64(screenHeight - groundHeight - 40)
+			// Position player outside near door (world coordinates)
+			g.player.x = 1980
+			g.player.y = 0  // Will fall to ground
 		}
 		
 		// Player movement inside house
@@ -1314,8 +1322,9 @@ func (g *Game) Update() error {
 	g.player.vy += gravity
 	g.player.y += g.player.vy
 
-	// Ground collision
-	groundY := float64(screenHeight - groundHeight - int(g.player.height))
+	// Ground collision - check against world blocks
+	g.player.onGround = false
+	groundY := g.getGroundLevel(g.player.x, g.player.y)
 	if g.player.y >= groundY {
 		g.player.y = groundY
 		g.player.vy = 0
@@ -1805,9 +1814,9 @@ func (g *Game) checkInsideDoorExit() {
 		// Player is near inside door - check for exit key
 		if inpututil.IsKeyJustPressed(ebiten.KeyE) || inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
 			g.state = Playing
-			// Position player outside near door
-			g.player.x = 580
-			g.player.y = float64(screenHeight - groundHeight - 40)
+			// Position player outside near door (world coordinates)
+			g.player.x = 1980
+			g.player.y = 0  // Will fall to ground
 		}
 	}
 }
@@ -1933,8 +1942,8 @@ func (g *Game) updateEnemies() {
 		enemy.x += enemy.vx
 		enemy.animFrame++
 
-		// Patrol boundaries (reverse direction at edges)
-		if enemy.x < 100 || enemy.x > 700 {
+		// Patrol boundaries (reverse direction at edges) - use world coordinates
+		if enemy.x < 0 || enemy.x > float32(worldWidth)-enemy.width {
 			enemy.vx = -enemy.vx
 		}
 
@@ -2269,6 +2278,45 @@ func (g *Game) triggerScreenShake(intensity float32, duration int) {
 	}
 }
 
+// getGroundLevel возвращает Y уровень земли для данной X позиции игрока
+func (g *Game) getGroundLevel(x, y float64) float64 {
+	// Check world blocks for ground level
+	if g.world != nil {
+		// Check at both feet positions
+		leftFoot := x + 5
+		rightFoot := x + float64(g.player.width) - 5
+		
+		maxGroundY := float64(screenHeight + groundHeight) // Default below screen
+		
+		for _, footX := range []float64{leftFoot, rightFoot} {
+			blockX := int(footX / blockSize)
+			if blockX < 0 || blockX >= g.world.width {
+				continue
+			}
+			
+			// Find the highest solid block below player
+			startY := int(y / blockSize)
+			for by := startY; by < g.world.height; by++ {
+				block := g.world.blocks[blockX][by]
+				if block.solid && block.typ != Air {
+					groundY := float64(by*blockSize) - float64(g.player.height)
+					if groundY < maxGroundY {
+						maxGroundY = groundY
+					}
+					break
+				}
+			}
+		}
+		
+		if maxGroundY < float64(screenHeight+groundHeight) {
+			return maxGroundY
+		}
+	}
+	
+	// Fallback to default ground
+	return float64(screenHeight - groundHeight - int(g.player.height))
+}
+
 // checkRectCollision - проверяет столкновение двух прямоугольников
 func checkRectCollision(x1, y1, w1, h1, x2, y2, w2, h2 float32) bool {
 	return x1 < x2+w2 && x1+w1 > x2 && y1 < y2+h2 && y1+h1 > y2
@@ -2277,7 +2325,7 @@ func checkRectCollision(x1, y1, w1, h1, x2, y2, w2, h2 float32) bool {
 // resetGame - сбрасывает игру при смерти
 func (g *Game) resetGame() {
 	g.player.x = 50
-	g.player.y = float64(screenHeight - groundHeight - 40)
+	g.player.y = 0  // Will fall to ground level
 	g.player.vy = 0
 	g.player.lives = 3
 	g.player.score = 0
@@ -2329,52 +2377,66 @@ func (g *Game) drawStormClouds(screen *ebiten.Image) {
 func (g *Game) drawHouse(screen *ebiten.Image) {
 	h := g.house
 
+	// Apply camera offset
+	drawX := h.x - float32(g.camera.x)
+	drawY := h.y - float32(g.camera.y)
+
+	// Don't draw if off-screen
+	if drawX < -150 || drawX > screenWidth+50 {
+		return
+	}
+
 	// Draw house walls (light beige)
 	wallColor := color.RGBA{245, 230, 200, 255}
-	vector.DrawFilledRect(screen, h.x, h.y-h.height, h.width, h.height, wallColor, false)
+	vector.DrawFilledRect(screen, drawX, drawY-h.height, h.width, h.height, wallColor, false)
 
 	// Draw gabled roof (red-brown) - triangle with peak at top
 	roofColor := color.RGBA{139, 69, 50, 255}
-	roofBaseY := h.y - h.height  // Top of walls
+	roofBaseY := drawY - h.height  // Top of walls
 	roofPeakY := roofBaseY - 50  // Peak is 50 pixels above base
-	
+
 	// Draw filled triangle for roof
 	for y := roofPeakY; y <= roofBaseY; y++ {
 		progress := (y - roofPeakY) / 50.0
-		xLeft := h.x + (h.width/2) - (h.width/2+10)*progress
-		xRight := h.x + (h.width/2) + (h.width/2+10)*progress
+		xLeft := drawX + (h.width/2) - (h.width/2+10)*progress
+		xRight := drawX + (h.width/2) + (h.width/2+10)*progress
 		vector.StrokeLine(screen, xLeft, y, xRight, y, 1, roofColor, false)
 	}
 
 	// Draw chimney (dark gray) - on the roof
 	chimneyColor := color.RGBA{80, 80, 80, 255}
-	chimneyBaseY := h.y - h.height - 20 // На крыше, чуть ниже пика
-	vector.DrawFilledRect(screen, h.chimneyX, chimneyBaseY-40, 20, 40, chimneyColor, false)
+	chimneyDrawX := h.chimneyX - float32(g.camera.x)
+	chimneyBaseY := drawY - h.height - 20 // На крыше, чуть ниже пика
+	vector.DrawFilledRect(screen, chimneyDrawX, chimneyBaseY-40, 20, 40, chimneyColor, false)
 	// Chimney top cap (wider)
-	vector.DrawFilledRect(screen, h.chimneyX-5, chimneyBaseY-40, 30, 10, chimneyColor, false)
+	vector.DrawFilledRect(screen, chimneyDrawX-5, chimneyBaseY-40, 30, 10, chimneyColor, false)
 	// Chimney base (where it meets roof)
-	vector.DrawFilledRect(screen, h.chimneyX-8, chimneyBaseY-5, 36, 10, chimneyColor, false)
+	vector.DrawFilledRect(screen, chimneyDrawX-8, chimneyBaseY-5, 36, 10, chimneyColor, false)
 
 	// Update chimneyY for smoke particles
 	h.chimneyY = chimneyBaseY - 40
 
 	// Draw smoke particles
-	g.updateAndDrawSmoke(screen)
+	g.updateAndDrawSmoke(screen, chimneyDrawX, chimneyBaseY-40)
 
 	// Draw door (dark brown)
+	doorDrawX := h.doorX - float32(g.camera.x)
+	doorDrawY := h.doorY - float32(g.camera.y)
 	doorColor := color.RGBA{101, 67, 33, 255}
-	vector.DrawFilledRect(screen, h.doorX, h.doorY-h.doorH, h.doorW, h.doorH, doorColor, false)
+	vector.DrawFilledRect(screen, doorDrawX, doorDrawY-h.doorH, h.doorW, h.doorH, doorColor, false)
 	// Door frame
-	vector.StrokeRect(screen, h.doorX-2, h.doorY-h.doorH-2, h.doorW+4, h.doorH+4, 2, color.RGBA{60, 40, 20, 255}, false)
+	vector.StrokeRect(screen, doorDrawX-2, doorDrawY-h.doorH-2, h.doorW+4, h.doorH+4, 2, color.RGBA{60, 40, 20, 255}, false)
 	// Doorknob (gold)
-	vector.DrawFilledCircle(screen, h.doorX+h.doorW-8, h.doorY-h.doorH/2, 3, color.RGBA{255, 215, 0, 255}, false)
+	vector.DrawFilledCircle(screen, doorDrawX+h.doorW-8, doorDrawY-h.doorH/2, 3, color.RGBA{255, 215, 0, 255}, false)
 
 	// Draw window
-	g.drawHouseWindow(screen, h.windowX, h.windowY, h.windowW, h.windowH)
+	windowDrawX := h.windowX - float32(g.camera.x)
+	windowDrawY := h.windowY - float32(g.camera.y)
+	g.drawHouseWindow(screen, windowDrawX, windowDrawY, h.windowW, h.windowH)
 
 	// Draw house foundation (gray stone)
 	foundationColor := color.RGBA{120, 120, 120, 255}
-	vector.DrawFilledRect(screen, h.x-5, h.y, h.width+10, 10, foundationColor, false)
+	vector.DrawFilledRect(screen, drawX-5, drawY, h.width+10, 10, foundationColor, false)
 
 	// Draw "Press E" hint if player is near door
 	g.drawHouseEntryHint(screen)
@@ -2427,11 +2489,7 @@ func (g *Game) drawHouseWindow(screen *ebiten.Image, x, y, w, h float32) {
 	}
 }
 
-func (g *Game) updateAndDrawSmoke(screen *ebiten.Image) {
-	h := g.house
-	chimneyTopX := h.chimneyX + 10
-	chimneyTopY := h.chimneyY // Верх трубы
-	
+func (g *Game) updateAndDrawSmoke(screen *ebiten.Image, chimneyTopX, chimneyTopY float32) {
 	for i := range g.house.smoke {
 		particle := &g.house.smoke[i]
 
@@ -3205,15 +3263,26 @@ func (g *Game) drawTrees(screen *ebiten.Image) {
 }
 
 func (g *Game) drawTree(screen *ebiten.Image, tree Tree) {
+	// Apply camera offset
+	drawX := tree.x - float32(g.camera.x)
+	drawY := tree.y - float32(g.camera.y)
+
+	// Don't draw if off-screen
+	if drawX < -100 || drawX > screenWidth+100 || drawY < -100 || drawY > screenHeight+100 {
+		return
+	}
+
 	// Draw tree trunk
-	g.drawTreeTrunk(screen, tree.x, tree.y, tree.height)
-	
+	g.drawTreeTrunk(screen, drawX, drawY, tree.height)
+
 	// Draw tree canopy (foliage)
-	g.drawTreeCanopy(screen, tree.x, tree.y, tree.height)
-	
+	g.drawTreeCanopy(screen, drawX, drawY, tree.height)
+
 	// Draw apples
 	for _, apple := range tree.apples {
-		g.drawApple(screen, apple.x, apple.y, apple.offset, apple.collected)
+		appleDrawX := apple.x - float32(g.camera.x)
+		appleDrawY := apple.y - float32(g.camera.y)
+		g.drawApple(screen, appleDrawX, appleDrawY, apple.offset, apple.collected)
 	}
 }
 
@@ -3324,10 +3393,16 @@ func (g *Game) drawGround(screen *ebiten.Image) {
 }
 
 func (g *Game) drawPlayer(screen *ebiten.Image) {
-	x := float32(g.player.x)
-	y := float32(g.player.y)
+	// Apply camera offset
+	x := float32(g.player.x - g.camera.x)
+	y := float32(g.player.y - g.camera.y)
 	w := g.player.width
 	h := g.player.height
+
+	// Don't draw if off-screen
+	if x < -50 || x > screenWidth+50 || y < -50 || y > screenHeight+50 {
+		return
+	}
 
 	// Bunny body (light gray/white)
 	bodyColor := color.RGBA{240, 240, 240, 255}
@@ -3393,21 +3468,30 @@ func (g *Game) drawPlayer(screen *ebiten.Image) {
 // drawPlatforms - отрисовка платформ
 func (g *Game) drawPlatforms(screen *ebiten.Image) {
 	for _, platform := range g.platforms {
+		// Apply camera offset
+		drawX := platform.x - float32(g.camera.x)
+		drawY := platform.y - float32(g.camera.y)
+
+		// Don't draw if off-screen
+		if drawX < -50 || drawX > screenWidth+50 || drawY < -50 || drawY > screenHeight+50 {
+			continue
+		}
+
 		// Platform base (brown/gray stone)
 		platformColor := color.RGBA{139, 119, 101, 255}
-		vector.DrawFilledRect(screen, platform.x, platform.y, platform.width, platform.height, platformColor, false)
+		vector.DrawFilledRect(screen, drawX, drawY, platform.width, platform.height, platformColor, false)
 
 		// Grass top on platform
 		grassColor := color.RGBA{34, 139, 34, 255}
-		vector.DrawFilledRect(screen, platform.x, platform.y, platform.width, 5, grassColor, false)
+		vector.DrawFilledRect(screen, drawX, drawY, platform.width, 5, grassColor, false)
 
 		// Brick pattern
 		brickColor := color.RGBA{100, 80, 60, 255}
-		for bx := platform.x + 5; bx < platform.x+platform.width-5; bx += 20 {
-			vector.StrokeLine(screen, bx, platform.y+5, bx, platform.y+platform.height-2, 1, brickColor, false)
+		for bx := drawX + 5; bx < drawX+platform.width-5; bx += 20 {
+			vector.StrokeLine(screen, bx, drawY+5, bx, drawY+platform.height-2, 1, brickColor, false)
 		}
-		for by := platform.y + 10; by < platform.y+platform.height-2; by += 8 {
-			vector.StrokeLine(screen, platform.x+5, by, platform.x+platform.width-5, by, 1, brickColor, false)
+		for by := drawY + 10; by < drawY+platform.height-2; by += 8 {
+			vector.StrokeLine(screen, drawX+5, by, drawX+platform.width-5, by, 1, brickColor, false)
 		}
 	}
 }
@@ -3419,51 +3503,69 @@ func (g *Game) drawCoins(screen *ebiten.Image) {
 			continue
 		}
 
+		// Apply camera offset
+		drawX := coin.x - float32(g.camera.x)
+		drawY := coin.y - float32(g.camera.y)
+
+		// Don't draw if off-screen
+		if drawX < -50 || drawX > screenWidth+50 || drawY < -50 || drawY > screenHeight+50 {
+			continue
+		}
+
 		// Animate coin (spinning effect)
 		animOffset := float32(math.Sin(float64(coin.animFrame)*0.1)) * 5
-		coinY := coin.y + animOffset
+		coinY := drawY + animOffset
 
 		// Coin outer ring (gold)
 		coinColor := color.RGBA{255, 215, 0, 255}
-		vector.DrawFilledCircle(screen, coin.x+10, coinY+10, 10, coinColor, false)
+		vector.DrawFilledCircle(screen, drawX+10, coinY+10, 10, coinColor, false)
 
 		// Coin inner circle (lighter gold)
 		innerColor := color.RGBA{255, 235, 100, 255}
-		vector.DrawFilledCircle(screen, coin.x+10, coinY+10, 7, innerColor, false)
+		vector.DrawFilledCircle(screen, drawX+10, coinY+10, 7, innerColor, false)
 
 		// Dollar sign / star in center
 		centerColor := color.RGBA{200, 170, 0, 255}
-		vector.DrawFilledCircle(screen, coin.x+10, coinY+10, 3, centerColor, false)
+		vector.DrawFilledCircle(screen, drawX+10, coinY+10, 3, centerColor, false)
 
 		// Glow effect
 		glowColor := color.RGBA{255, 215, 0, 100}
-		vector.DrawFilledCircle(screen, coin.x+10, coinY+10, 12, glowColor, false)
+		vector.DrawFilledCircle(screen, drawX+10, coinY+10, 12, glowColor, false)
 	}
 }
 
 // drawEnemies - отрисовка врагов
 func (g *Game) drawEnemies(screen *ebiten.Image) {
 	for _, enemy := range g.enemies {
+		// Apply camera offset
+		drawX := enemy.x - float32(g.camera.x)
+		drawY := enemy.y - float32(g.camera.y)
+
+		// Don't draw if off-screen
+		if drawX < -50 || drawX > screenWidth+50 || drawY < -50 || drawY > screenHeight+50 {
+			continue
+		}
+
 		if !enemy.alive {
 			// Draw defeated enemy (squashed)
 			squashedColor := color.RGBA{139, 69, 19, 255}
-			vector.DrawFilledRect(screen, enemy.x, enemy.y+enemy.height-5, enemy.width, 5, squashedColor, false)
+			vector.DrawFilledRect(screen, drawX, drawY+enemy.height-5, enemy.width, 5, squashedColor, false)
 			continue
 		}
 
 		// Enemy body (Goomba-style - brown mushroom)
 		bodyColor := color.RGBA{139, 69, 19, 255}
-		vector.DrawFilledCircle(screen, enemy.x+enemy.width/2, enemy.y+enemy.height/2, enemy.width/2, bodyColor, false)
+		vector.DrawFilledCircle(screen, drawX+enemy.width/2, drawY+enemy.height/2, enemy.width/2, bodyColor, false)
 
 		// Enemy head (darker brown)
 		headColor := color.RGBA{100, 50, 20, 255}
-		vector.DrawFilledCircle(screen, enemy.x+enemy.width/2, enemy.y+enemy.height/3, enemy.width/2-3, headColor, false)
+		vector.DrawFilledCircle(screen, drawX+enemy.width/2, drawY+enemy.height/3, enemy.width/2-3, headColor, false)
 
 		// Eyes (white with black pupils)
 		eyeOffset := enemy.vx * 2 // Look in movement direction
-		leftEyeX := enemy.x + enemy.width/3 + float32(eyeOffset)
-		rightEyeX := enemy.x + 2*enemy.width/3 + float32(eyeOffset)
-		eyeY := enemy.y + enemy.height/3
+		leftEyeX := drawX + enemy.width/3 + float32(eyeOffset)
+		rightEyeX := drawX + 2*enemy.width/3 + float32(eyeOffset)
+		eyeY := drawY + enemy.height/3
 
 		vector.DrawFilledCircle(screen, leftEyeX, eyeY, 5, color.RGBA{255, 255, 255, 255}, false)
 		vector.DrawFilledCircle(screen, rightEyeX, eyeY, 5, color.RGBA{255, 255, 255, 255}, false)
@@ -3473,8 +3575,8 @@ func (g *Game) drawEnemies(screen *ebiten.Image) {
 		// Feet (animated)
 		footOffset := float32(math.Sin(float64(enemy.animFrame)*0.3)) * 3
 		footColor := color.RGBA{50, 30, 10, 255}
-		vector.DrawFilledCircle(screen, enemy.x+8-footOffset, enemy.y+enemy.height-5, 6, footColor, false)
-		vector.DrawFilledCircle(screen, enemy.x+enemy.width-8+footOffset, enemy.y+enemy.height-5, 6, footColor, false)
+		vector.DrawFilledCircle(screen, drawX+8-footOffset, drawY+enemy.height-5, 6, footColor, false)
+		vector.DrawFilledCircle(screen, drawX+enemy.width-8+footOffset, drawY+enemy.height-5, 6, footColor, false)
 	}
 }
 
@@ -3485,53 +3587,62 @@ func (g *Game) drawPowerups(screen *ebiten.Image) {
 			continue
 		}
 
+		// Apply camera offset
+		drawX := powerup.x - float32(g.camera.x)
+		drawY := powerup.y - float32(g.camera.y)
+
+		// Don't draw if off-screen
+		if drawX < -50 || drawX > screenWidth+50 || drawY < -50 || drawY > screenHeight+50 {
+			continue
+		}
+
 		// Animate powerup (bobbing effect)
 		bobOffset := float32(math.Sin(float64(powerup.animFrame)*0.1)) * 3
 
 		switch powerup.powerType {
 		case MushroomPower:
 			// Draw mushroom (red cap with white spots)
-			capY := powerup.y - 10 + bobOffset
+			capY := drawY - 10 + bobOffset
 
 			// Mushroom cap (red semicircle)
 			capColor := color.RGBA{220, 20, 60, 255}
-			vector.DrawFilledCircle(screen, powerup.x, capY, 15, capColor, false)
+			vector.DrawFilledCircle(screen, drawX, capY, 15, capColor, false)
 
 			// White spots on cap
 			spotColor := color.RGBA{255, 255, 255, 255}
-			vector.DrawFilledCircle(screen, powerup.x-5, capY-3, 4, spotColor, false)
-			vector.DrawFilledCircle(screen, powerup.x+5, capY-3, 4, spotColor, false)
+			vector.DrawFilledCircle(screen, drawX-5, capY-3, 4, spotColor, false)
+			vector.DrawFilledCircle(screen, drawX+5, capY-3, 4, spotColor, false)
 
 			// Mushroom stem (white)
 			stemColor := color.RGBA{255, 250, 240, 255}
-			vector.DrawFilledRect(screen, powerup.x-6, powerup.y+5, 12, 12, stemColor, false)
+			vector.DrawFilledRect(screen, drawX-6, drawY+5, 12, 12, stemColor, false)
 
 		case StarPower:
 			// Draw star (yellow rotating star)
-			starY := powerup.y + bobOffset
+			starY := drawY + bobOffset
 			starColor := color.RGBA{255, 215, 0, 255}
 
 			// Draw star as a circle with glow for simplicity
-			vector.DrawFilledCircle(screen, powerup.x, starY, 12, starColor, false)
+			vector.DrawFilledCircle(screen, drawX, starY, 12, starColor, false)
 
 			// Star glow effect
 			glowColor := color.RGBA{255, 215, 0, 100}
-			vector.DrawFilledCircle(screen, powerup.x, starY, 18, glowColor, false)
+			vector.DrawFilledCircle(screen, drawX, starY, 18, glowColor, false)
 
 		case ExtraLifePower:
 			// Draw extra life (heart)
-			heartY := powerup.y + bobOffset
+			heartY := drawY + bobOffset
 			heartColor := color.RGBA{255, 20, 60, 255}
 
 			// Heart shape (two circles + triangle)
-			vector.DrawFilledCircle(screen, powerup.x-6, heartY-5, 8, heartColor, false)
-			vector.DrawFilledCircle(screen, powerup.x+6, heartY-5, 8, heartColor, false)
-			vector.DrawFilledRect(screen, powerup.x-8, heartY-5, 16, 12, heartColor, false)
-			vector.DrawFilledCircle(screen, powerup.x, heartY+2, 7, heartColor, false)
+			vector.DrawFilledCircle(screen, drawX-6, heartY-5, 8, heartColor, false)
+			vector.DrawFilledCircle(screen, drawX+6, heartY-5, 8, heartColor, false)
+			vector.DrawFilledRect(screen, drawX-8, heartY-5, 16, 12, heartColor, false)
+			vector.DrawFilledCircle(screen, drawX, heartY+2, 7, heartColor, false)
 
 			// Heart shine
 			shineColor := color.RGBA{255, 100, 150, 200}
-			vector.DrawFilledCircle(screen, powerup.x-4, heartY-6, 3, shineColor, false)
+			vector.DrawFilledCircle(screen, drawX-4, heartY-6, 3, shineColor, false)
 		}
 	}
 }
