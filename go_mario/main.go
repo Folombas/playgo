@@ -719,23 +719,23 @@ func (as *AudioSystem) playSound(effect SoundEffect) {
 	player.Play()
 }
 
-// PlayJump - звук прыжка
+// PlayJump - звук прыжка (плавный восходящий)
 func (as *AudioSystem) PlayJump() {
 	as.playSound(SoundEffect{
-		frequency: 400,
-		duration:  200,
-		volume:    0.3,
+		frequency: 300,
+		duration:  250,
+		volume:    0.25,
 		waveform:  0,
 		sliding:   true,
 	})
 }
 
-// PlayCollect - звук сбора предмета
+// PlayCollect - звук сбора предмета (приятный звон)
 func (as *AudioSystem) PlayCollect() {
 	as.playSound(SoundEffect{
-		frequency: 880,
-		duration:  150,
-		volume:    0.25,
+		frequency: 1000,
+		duration:  120,
+		volume:    0.2,
 		waveform:  0,
 		sliding:   false,
 	})
@@ -744,49 +744,49 @@ func (as *AudioSystem) PlayCollect() {
 // PlayEnter - звук входа в дом
 func (as *AudioSystem) PlayEnter() {
 	as.playSound(SoundEffect{
-		frequency: 330,
-		duration:  300,
+		frequency: 400,
+		duration:  200,
 		volume:    0.2,
-		waveform:  1,
+		waveform:  0,
 		sliding:   false,
 	})
 }
 
-// PlayThunder - звук грома
+// PlayThunder - звук грома (глубокий раскат)
 func (as *AudioSystem) PlayThunder() {
 	as.playSound(SoundEffect{
-		frequency: 80,
-		duration:  500,
-		volume:    0.4,
+		frequency: 60,
+		duration:  600,
+		volume:    0.35,
 		waveform:  3,
 		sliding:   true,
 	})
 }
 
-// PlayHit - звук получения урона
+// PlayHit - звук получения урона (неприятный)
 func (as *AudioSystem) PlayHit() {
 	as.playSound(SoundEffect{
-		frequency: 200,
-		duration:  250,
-		volume:    0.35,
+		frequency: 150,
+		duration:  200,
+		volume:    0.3,
 		waveform:  2,
 		sliding:   true,
 	})
 }
 
-// PlayCoin - звук сбора монеты (высокий звонкий)
+// PlayCoin - звук сбора монеты (яркий звонкий)
 func (as *AudioSystem) PlayCoin() {
+	// Два тона для аккорда
 	as.playSound(SoundEffect{
-		frequency: 1200,
-		duration:  180,
-		volume:    0.3,
+		frequency: 1500,
+		duration:  150,
+		volume:    0.25,
 		waveform:  0,
 		sliding:   false,
 	})
-	// Второй тон для аккорда
 	as.playSound(SoundEffect{
-		frequency: 1600,
-		duration:  180,
+		frequency: 2000,
+		duration:  150,
 		volume:    0.2,
 		waveform:  0,
 		sliding:   false,
@@ -895,10 +895,32 @@ func (as *AudioSystem) PlayAchievementDiamond() {
 	as.playSound(SoundEffect{frequency: 2093, duration: 500, volume: 0.5, waveform: 0, sliding: true})
 }
 
-// PlayJumpBump - звук при приземлении
+// PlayJumpBump - звук при приземлении (мягкий)
 func (as *AudioSystem) PlayJumpBump() {
 	as.playSound(SoundEffect{
-		frequency: 150,
+		frequency: 100,
+		duration:  60,
+		volume:    0.15,
+		waveform:  3,
+		sliding:   false,
+	})
+}
+
+// PlayEnemyDefeat - звук победы над врагом (приятный)
+func (as *AudioSystem) PlayEnemyDefeat() {
+	as.playSound(SoundEffect{
+		frequency: 600,
+		duration:  150,
+		volume:    0.25,
+		waveform:  0,
+		sliding:   true,
+	})
+}
+
+// PlayBlockMine - звук добычи блока
+func (as *AudioSystem) PlayBlockMine() {
+	as.playSound(SoundEffect{
+		frequency: 200,
 		duration:  80,
 		volume:    0.2,
 		waveform:  3,
@@ -906,15 +928,44 @@ func (as *AudioSystem) PlayJumpBump() {
 	})
 }
 
-// PlayEnemyDefeat - звук победы над врагом
-func (as *AudioSystem) PlayEnemyDefeat() {
+// PlayBlockPlace - звук размещения блока
+func (as *AudioSystem) PlayBlockPlace() {
 	as.playSound(SoundEffect{
-		frequency: 440,
+		frequency: 150,
 		duration:  100,
-		volume:    0.3,
+		volume:    0.18,
 		waveform:  1,
+		sliding:   false,
+	})
+}
+
+// PlayWind - звук ветра (фоновый)
+func (as *AudioSystem) PlayWind() {
+	as.playSound(SoundEffect{
+		frequency: 300,
+		duration:  400,
+		volume:    0.08,
+		waveform:  3,
 		sliding:   true,
 	})
+}
+
+// PlayWater - звук воды
+func (as *AudioSystem) PlayWater() {
+	as.playSound(SoundEffect{
+		frequency: 400,
+		duration:  300,
+		volume:    0.1,
+		waveform:  0,
+		sliding:   true,
+	})
+}
+
+// PlaySecret - звук секрета
+func (as *AudioSystem) PlaySecret() {
+	as.playSound(SoundEffect{frequency: 800, duration: 100, volume: 0.25, waveform: 0, sliding: false})
+	as.playSound(SoundEffect{frequency: 1200, duration: 100, volume: 0.25, waveform: 0, sliding: false})
+	as.playSound(SoundEffect{frequency: 1600, duration: 150, volume: 0.25, waveform: 0, sliding: false})
 }
 
 func NewGame() *Game {
@@ -3695,56 +3746,58 @@ func (g *Game) drawFloatingTexts(screen *ebiten.Image) {
 func (g *Game) drawUI(screen *ebiten.Image) {
 	// Draw inventory bar
 	g.drawInventory(screen)
-	
-	// Draw UI background panel (semi-transparent dark)
-	uiBgColor := color.RGBA{0, 0, 0, 180}
-	vector.DrawFilledRect(screen, 0, 0, screenWidth, 50, uiBgColor, false)
 
-	// Score display with icon
+	// Draw elegant minimal UI - top bar with gradient
+	// Semi-transparent gradient background
+	for y := 0; y < 45; y++ {
+		alpha := uint8(150 - y*2)
+		gradientColor := color.RGBA{0, 0, 0, alpha}
+		vector.StrokeLine(screen, 0, float32(y), screenWidth, float32(y), 1, gradientColor, false)
+	}
+
+	// Score display with icon - elegant positioning
 	scoreText := fmt.Sprintf("🍎 %d", g.player.score)
-	ebitenutil.DebugPrintAt(screen, scoreText, 15, 12)
+	drawTextWithShadow(screen, scoreText, 20, 15, color.RGBA{255, 255, 255, 255})
 
 	// Coins display
 	coinText := fmt.Sprintf("🪙 %d", g.player.coins)
-	ebitenutil.DebugPrintAt(screen, coinText, 120, 12)
+	drawTextWithShadow(screen, coinText, 140, 15, color.RGBA{255, 215, 0, 255})
 
-	// Lives display (hearts)
-	livesText := "❤️ "
-	for i := 0; i < g.player.lives; i++ {
-		livesText += "❤️ "
+	// Lives display (hearts) - only show if more than 0
+	if g.player.lives > 0 {
+		livesX := 260
+		for i := 0; i < g.player.lives && i < 5; i++ {
+			heartX := livesX + i*25
+			// Draw heart emoji with glow
+			vector.DrawFilledCircle(screen, float32(heartX+8), 22, 8, color.RGBA{255, 50, 50, 200}, false)
+			vector.DrawFilledCircle(screen, float32(heartX+8), 22, 5, color.RGBA{255, 100, 100, 255}, false)
+		}
 	}
-	ebitenutil.DebugPrintAt(screen, livesText, 220, 12)
 
-	// Time of day indicator
-	timeIcon := "☀️"
+	// Time of day & weather - minimal icons
 	if g.timeOfDay == Night {
-		timeIcon = "🌙"
+		vector.DrawFilledCircle(screen, 420, 22, 10, color.RGBA{200, 200, 255, 200}, false)
+	} else {
+		vector.DrawFilledCircle(screen, 420, 22, 12, color.RGBA{255, 255, 100, 255}, false)
+		vector.DrawFilledCircle(screen, 420, 22, 8, color.RGBA{255, 255, 200, 255}, false)
 	}
-	timeText := fmt.Sprintf("%s", timeIcon)
-	ebitenutil.DebugPrintAt(screen, timeText, 350, 12)
 
 	// Weather indicator
-	weatherIcon := "☀️"
 	if g.weather == Stormy {
-		weatherIcon = "⛈️"
+		// Draw lightning icon
+		vector.StrokeLine(screen, 460, 15, 455, 25, 3, color.RGBA{255, 255, 200, 255}, false)
+		vector.StrokeLine(screen, 455, 25, 465, 25, 3, color.RGBA{255, 255, 200, 255}, false)
 	}
-	weatherText := fmt.Sprintf("%s", weatherIcon)
-	ebitenutil.DebugPrintAt(screen, weatherText, 390, 12)
 
-	// Invincibility indicator (if player is invincible)
+	// Invincibility indicator - subtle glow
 	if g.player.invincible > 0 {
-		invText := "✨ PROTECTED ✨"
-		ebitenutil.DebugPrintAt(screen, invText, 500, 12)
+		glowIntensity := uint8(100 + math.Sin(float64(g.frameCount)*0.3)*50)
+		glowColor := color.RGBA{255, 255, 200, glowIntensity}
+		vector.DrawFilledCircle(screen, 500, 22, 15, glowColor, false)
+		vector.DrawFilledCircle(screen, 500, 22, 10, color.RGBA{255, 255, 255, 200}, false)
 	}
 
-	// Controls hint (bottom of screen)
-	controlsBgColor := color.RGBA{0, 0, 0, 120}
-	vector.DrawFilledRect(screen, 0, screenHeight-30, screenWidth, 30, controlsBgColor, false)
-
-	controlsText := "⬅️➡️/WASD: Move | ⬆️/Space: Jump | E: Enter/Use | ESC: Menu | 1-9: Select Block | LMB: Mine/Place"
-	ebitenutil.DebugPrintAt(screen, controlsText, 10, screenHeight-25)
-
-	// Draw level progress (coins collected / total)
+	// Draw level progress - minimal bar at top right
 	totalCoins := len(g.coins)
 	collectedCoins := 0
 	for _, coin := range g.coins {
@@ -3752,50 +3805,93 @@ func (g *Game) drawUI(screen *ebiten.Image) {
 			collectedCoins++
 		}
 	}
-	progressText := fmt.Sprintf("🪙 %d/%d", collectedCoins, totalCoins)
-	ebitenutil.DebugPrintAt(screen, progressText, screenWidth-100, 12)
+	
+	if totalCoins > 0 {
+		progressX := screenWidth - 120
+		progressW := 100
+		progressH := 8
+		
+		// Background
+		vector.DrawFilledRect(screen, float32(progressX), 16, float32(progressW), float32(progressH), color.RGBA{50, 50, 50, 200}, false)
+		
+		// Progress bar
+		if collectedCoins > 0 {
+			filledW := int(float32(progressW) * float32(collectedCoins) / float32(totalCoins))
+			vector.DrawFilledRect(screen, float32(progressX), 16, float32(filledW), float32(progressH), color.RGBA{255, 215, 0, 255}, false)
+		}
+		
+		// Border
+		vector.StrokeRect(screen, float32(progressX), 16, float32(progressW), float32(progressH), 1, color.RGBA{150, 150, 150, 255}, false)
+	}
+}
+
+// drawTextWithShadow - отрисовка текста с тенью
+func drawTextWithShadow(screen *ebiten.Image, text string, x, y int, c color.RGBA) {
+	// Shadow
+	ebitenutil.DebugPrintAt(screen, text, x+1, y+1)
+	// Main text
+	ebitenutil.DebugPrintAt(screen, text, x, y)
 }
 
 // drawInventory - отрисовка инвентаря
 func (g *Game) drawInventory(screen *ebiten.Image) {
-	// Draw inventory bar at bottom
-	barY := screenHeight - 60
-	barHeight := 50
-	
-	// Background
-	vector.DrawFilledRect(screen, 10, float32(barY), float32(inventorySize*52+20), float32(barHeight), color.RGBA{0, 0, 0, 200}, false)
-	
+	// Draw elegant inventory bar at bottom
+	barY := screenHeight - 55
+	barHeight := 45
+	barWidth := inventorySize*44 + 16
+
+	// Gradient background
+	for y := 0; y < barHeight; y++ {
+		alpha := uint8(180 - y*2)
+		gradientColor := color.RGBA{20, 20, 30, alpha}
+		vector.StrokeLine(screen, 10, float32(barY+y), float32(barWidth+10), float32(barY+y), 1, gradientColor, false)
+	}
+
 	// Draw slots
 	for i := 0; i < inventorySize; i++ {
-		slotX := 20 + i*52
-		slotY := barY + 5
-		
-		// Slot background
-		slotColor := color.RGBA{80, 80, 80, 255}
+		slotX := 18 + i*44
+		slotY := barY + 4
+
+		// Slot background with gradient
 		if i == g.inventory.selected {
-			slotColor = color.RGBA{255, 215, 0, 255} // Gold for selected slot
+			// Selected slot - gold glow
+			vector.DrawFilledRect(screen, float32(slotX-2), float32(slotY-2), 44, 44, color.RGBA{255, 215, 0, 100}, false)
+			vector.StrokeRect(screen, float32(slotX), float32(slotY), 40, 40, 2, color.RGBA{255, 215, 0, 255}, false)
+		} else {
+			// Normal slot
+			vector.DrawFilledRect(screen, float32(slotX), float32(slotY), 40, 40, color.RGBA{60, 60, 70, 200}, false)
+			vector.StrokeRect(screen, float32(slotX), float32(slotY), 40, 40, 1, color.RGBA{100, 100, 110, 255}, false)
 		}
-		vector.DrawFilledRect(screen, float32(slotX), float32(slotY), 48, 48, slotColor, false)
-		vector.StrokeRect(screen, float32(slotX), float32(slotY), 48, 48, 2, color.RGBA{150, 150, 150, 255}, false)
-		
+
 		// Draw item
 		slot := g.inventory.slots[i]
 		if slot.count > 0 {
 			itemColor := getBlockColor(slot.item)
-			vector.DrawFilledRect(screen, float32(slotX+8), float32(slotY+8), 32, 32, itemColor, false)
-			
+			// Item with bevel effect
+			vector.DrawFilledRect(screen, float32(slotX+6), float32(slotY+6), 28, 28, itemColor, false)
+			// Highlight
+			vector.StrokeLine(screen, float32(slotX+6), float32(slotY+6), float32(slotX+34), float32(slotY+6), 2, color.RGBA{255, 255, 255, 150}, false)
+			vector.StrokeLine(screen, float32(slotX+6), float32(slotY+6), float32(slotX+6), float32(slotY+34), 2, color.RGBA{255, 255, 255, 150}, false)
+			// Shadow
+			vector.StrokeLine(screen, float32(slotX+6), float32(slotY+34), float32(slotX+34), float32(slotY+34), 2, color.RGBA{0, 0, 0, 150}, false)
+			vector.StrokeLine(screen, float32(slotX+34), float32(slotY+6), float32(slotX+34), float32(slotY+34), 2, color.RGBA{0, 0, 0, 150}, false)
+
 			// Draw count
 			countText := fmt.Sprintf("%d", slot.count)
-			countX := slotX + 32
-			countY := slotY + 32
-			ebitenutil.DebugPrintAt(screen, countText, countX, countY)
+			countX := slotX + 28
+			countY := slotY + 28
+			drawTextWithShadow(screen, countText, countX, countY, color.RGBA{255, 255, 255, 255})
 		}
+
+		// Slot number hint
+		slotNum := fmt.Sprintf("%d", i+1)
+		drawTextWithShadow(screen, slotNum, slotX+2, slotY+2, color.RGBA{150, 150, 150, 255})
 	}
-	
-	// Crafting hint
+
+	// Crafting hint - minimal
 	if g.state == Crafting {
-		craftHint := "Press 1-5 to craft | ESC to exit"
-		ebitenutil.DebugPrintAt(screen, craftHint, 20, barY-25)
+		craftHint := "1-5: Craft | ESC: Exit"
+		drawTextWithShadow(screen, craftHint, 20, barY-20, color.RGBA{255, 215, 0, 255})
 	}
 }
 
@@ -4239,8 +4335,11 @@ func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
 }
 
 func main() {
+	// Set window to be resizable and centered
 	ebiten.SetWindowSize(screenWidth, screenHeight)
-	ebiten.SetWindowTitle("Go Mario - 2D Platformer")
+	ebiten.SetWindowTitle("🍄 Go Mario - Adventure World 🌟")
+	ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
+	ebiten.SetWindowPosition(100, 100)
 
 	game := NewGame()
 

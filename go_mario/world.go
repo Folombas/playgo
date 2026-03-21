@@ -132,7 +132,7 @@ func generateBiomes(world *World) {
 		{xStart: 5*biomeWidth/blockSize, xEnd: world.width, biomeType: Caves, name: "💀 Dark Caves"},
 	}
 
-	// Apply biome-specific blocks
+	// Apply biome-specific blocks and decorations
 	for _, biome := range world.biomes {
 		for x := biome.xStart; x < biome.xEnd && x < world.width; x++ {
 			for y := 0; y < world.height; y++ {
@@ -142,14 +142,32 @@ func generateBiomes(world *World) {
 				}
 
 				switch biome.biomeType {
+				case Forest:
+					// More trees and plants in forest
+					if block.typ == Grass && y > 0 && world.blocks[x][y-1].typ == Air {
+						if rand.Float32() < 0.03 {
+							// Place wood block as tree trunk base
+							world.blocks[x][y-1].typ = Wood
+							if y-2 >= 0 {
+								world.blocks[x][y-2].typ = Wood
+							}
+							if y-3 >= 0 {
+								world.blocks[x][y-3].typ = Leaves
+							}
+						}
+					}
 				case Desert:
 					if block.typ == Grass {
 						block.typ = Sand
 					}
 					// Add cactus on surface
 					if block.typ == Sand && y > 0 && world.blocks[x][y-1].typ == Air {
-						if rand.Float32() < 0.02 {
+						if rand.Float32() < 0.015 {
 							world.blocks[x][y-1].typ = Cactus
+							// Taller cactus chance
+							if rand.Float32() < 0.3 && y-2 >= 0 {
+								world.blocks[x][y-2].typ = Cactus
+							}
 						}
 					}
 				case Snow:
@@ -181,6 +199,14 @@ func generateBiomes(world *World) {
 					if block.typ == Stone && y > world.height/2 {
 						if rand.Float32() < 0.1 {
 							block.typ = Ancient_Stone
+						}
+					}
+					// Glow crystals in deep caves
+					if block.typ == Stone && y > world.height*2/3 {
+						if rand.Float32() < 0.005 && world.blocks[x][y-1].typ == Air {
+							// Random crystal color
+							crystalType := []BlockType{Ruby_Ore, Sapphire_Ore, Emerald_Ore}[rand.Intn(3)]
+							world.blocks[x][y].typ = crystalType
 						}
 					}
 				}
@@ -334,57 +360,123 @@ func generateChestLoot(chestType ChestType) []Item {
 	return loot
 }
 
-// generateHeightmap создаёт карту высот с помощью шума
+// generateHeightmap создаёт карту высот с улучшенным шумом
 func generateHeightmap(width int, seed int64) []int {
 	heightmap := make([]int, width)
-	
-	// Base height
+
+	// Base height - varied for more interesting terrain
 	baseHeight := worldHeight/blockSize/2 - 5
-	
-	// Generate using multiple sine waves for pseudo-random terrain
+
+	// Use multiple sine waves with different frequencies for pseudo-random terrain
+	// Add random variations for more natural look
+	rand.Seed(seed)
+	randomOffset := rand.Float64() * 10
+
 	for x := 0; x < width; x++ {
-		noise := math.Sin(float64(x)*0.1)*5 +
-			math.Sin(float64(x)*0.05)*10 +
-			math.Sin(float64(x)*0.02)*15
+		// Main terrain waves - large hills
+		noise := math.Sin(float64(x)*0.03)*8 +
+			math.Sin(float64(x)*0.08)*5 +
+			math.Sin(float64(x)*0.15)*3
 		
+		// Add smaller variations for detail
+		noise += math.Sin(float64(x)*0.3 + randomOffset)*2
+		
+		// Add some randomness for natural feel
+		if rand.Float64() < 0.1 {
+			noise += float64(rand.Intn(5) - 2)
+		}
+
 		heightmap[x] = baseHeight + int(noise)
+		
+		// Clamp to reasonable range
+		if heightmap[x] < 5 {
+			heightmap[x] = 5
+		}
+		if heightmap[x] > worldHeight/blockSize-20 {
+			heightmap[x] = worldHeight/blockSize - 20
+		}
 	}
-	
+
+	// Smooth the heightmap for more natural transitions
+	for i := 0; i < 3; i++ {
+		for x := 1; x < width-1; x++ {
+			heightmap[x] = (heightmap[x-1] + heightmap[x]*2 + heightmap[x+1]) / 4
+		}
+	}
+
 	return heightmap
 }
 
-// generateCaves создаёт пещеры
+// generateCaves создаёт улучшенные пещеры
 func generateCaves(world *World) {
-	numCaves := rand.Intn(20) + 10
-	
-	for i := 0; i < numCaves; i++ {
-		// Start position
-		startX := rand.Intn(world.width)
-		startY := rand.Intn(world.height/2) + world.height/4
-		
+	// Main cave systems - larger and more connected
+	numMainCaves := rand.Intn(8) + 5
+
+	for i := 0; i < numMainCaves; i++ {
+		// Start position - random depth
+		startX := rand.Intn(world.width - 20) + 10
+		startY := rand.Intn(world.height/3) + world.height/4
+
 		// Cave parameters
-		length := rand.Intn(50) + 30
+		length := rand.Intn(80) + 50
 		direction := float64(rand.Intn(360)) * math.Pi / 180
-		
+		caveWidth := rand.Intn(3) + 2 // Cave radius
+
 		x := float64(startX)
 		y := float64(startY)
-		
+
 		for j := 0; j < length; j++ {
-			bx := int(x)
-			by := int(y)
-			
-			if bx >= 0 && bx < world.width && by >= 0 && by < world.height {
-				// Only carve through stone and dirt
-				if world.blocks[bx][by].typ == Stone || world.blocks[bx][by].typ == Dirt {
-					world.blocks[bx][by].typ = Air
-					world.blocks[bx][by].solid = false
+			// Carve cave with varying width
+			for cx := -caveWidth; cx <= caveWidth; cx++ {
+				for cy := -caveWidth; cy <= caveWidth; cy++ {
+					if cx*cx+cy*cy <= caveWidth*caveWidth {
+						bx := int(x) + cx
+						by := int(y) + cy
+
+						if bx >= 0 && bx < world.width && by >= 0 && by < world.height {
+							if world.blocks[bx][by].typ == Stone || world.blocks[bx][by].typ == Dirt {
+								world.blocks[bx][by].typ = Air
+								world.blocks[bx][by].solid = false
+							}
+						}
+					}
 				}
 			}
-			
-			// Move cave
-			direction += (rand.Float64() - 0.5) * 0.5
-			x += math.Cos(direction) * 2
-			y += math.Sin(direction) * 2
+
+			// Smooth direction changes
+			direction += (rand.Float64() - 0.5) * 0.3
+			x += math.Cos(direction) * 1.5
+			y += math.Sin(direction) * 1.5
+
+			// Vary cave width
+			if j%20 == 0 {
+				caveWidth = rand.Intn(3) + 2
+			}
+		}
+	}
+
+	// Add smaller side caves and chambers
+	numChambers := rand.Intn(15) + 10
+	for i := 0; i < numChambers; i++ {
+		chamberX := rand.Intn(world.width - 30) + 15
+		chamberY := rand.Intn(world.height/2) + world.height/6
+		chamberRadius := rand.Intn(8) + 5
+
+		// Carve circular chamber
+		for x := -chamberRadius; x <= chamberRadius; x++ {
+			for y := -chamberRadius; y <= chamberRadius; y++ {
+				if x*x+y*y <= chamberRadius*chamberRadius {
+					bx := chamberX + x
+					by := chamberY + y
+
+					if bx >= 0 && bx < world.width && by >= 0 && by < world.height {
+						if world.blocks[bx][by].typ == Stone || world.blocks[bx][by].typ == Dirt {
+							world.blocks[bx][by].typ = Air
+							world.blocks[bx][by].solid = false
+						}
+					}
+				}
+			}
 		}
 	}
 }
