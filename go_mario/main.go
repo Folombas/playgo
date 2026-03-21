@@ -545,6 +545,7 @@ type Game struct {
 	stormClouds   []Cloud
 	house         House
 	audio         *AudioSystem
+	bgm           *BGM
 	coins         []Coin
 	enemies       []Enemy
 	platforms     []Platform
@@ -619,6 +620,33 @@ type AudioStream struct {
 	pos    int
 }
 
+// MusicTrack - структура музыкального трека
+type MusicTrack struct {
+	name        string
+	notes       []Note
+	tempo       float64
+	loop        bool
+	instrument  int // 0=sine, 1=square, 2=sawtooth
+}
+
+// Note - музыкальная нота
+type Note struct {
+	frequency float64
+	duration  int // в кадрах (60 кадров = 1 секунда)
+}
+
+// BGM - менеджер фоновой музыки
+type BGM struct {
+	tracks     map[string]*MusicTrack
+	currentTrack string
+	isPlaying  bool
+	volume     float64
+	noteIndex  int
+	frameCount int
+	audioCtx   *audio.Context
+	player     audio.Player
+}
+
 func (a *AudioStream) Read(b []byte) (int, error) {
 	if a.pos >= len(a.buffer) {
 		return 0, io.EOF
@@ -676,6 +704,177 @@ func NewAudioSystem() *AudioSystem {
 		enabled:    true,
 		audioCtx:   audioCtx,
 		soundQueue: make([]SoundEffect, 0),
+	}
+}
+
+// NewBGM создаёт менеджер фоновой музыки
+func NewBGM() *BGM {
+	bgm := &BGM{
+		tracks:   make(map[string]*MusicTrack),
+		volume:   0.15,
+		audioCtx: audio.NewContext(22050), // Lower sample rate for music
+	}
+	
+	// Create music tracks
+	bgm.createTracks()
+	
+	return bgm
+}
+
+// createTracks создаёт музыкальные треки
+func (b *BGM) createTracks() {
+	// Main theme - upbeat adventure music
+	b.tracks["main"] = &MusicTrack{
+		name: "Adventure Theme",
+		notes: []Note{
+			{659, 15}, {784, 15}, {988, 15}, {1047, 15}, {784, 15}, {659, 15}, {523, 15}, {587, 15},
+			{659, 15}, {784, 15}, {880, 15}, {784, 15}, {659, 15}, {523, 15}, {587, 15}, {659, 15},
+			{523, 15}, {440, 15}, {392, 15}, {440, 15}, {523, 15}, {659, 15}, {587, 15}, {523, 15},
+			{440, 15}, {392, 15}, {330, 15}, {440, 15}, {523, 15}, {659, 15}, {784, 15}, {659, 15},
+		},
+		tempo:      1.0,
+		loop:       true,
+		instrument: 1, // Square wave
+	}
+	
+	// Exploration - calm ambient
+	b.tracks["explore"] = &MusicTrack{
+		name: "Exploration",
+		notes: []Note{
+			{523, 20}, {659, 20}, {784, 20}, {1047, 20},
+			{784, 20}, {659, 20}, {523, 20}, {440, 20},
+			{523, 20}, {659, 20}, {784, 20}, {880, 20},
+			{784, 20}, {659, 20}, {523, 20}, {392, 20},
+		},
+		tempo:      0.8,
+		loop:       true,
+		instrument: 0, // Sine wave
+	}
+	
+	// Battle - intense action
+	b.tracks["battle"] = &MusicTrack{
+		name: "Battle",
+		notes: []Note{
+			{784, 10}, {784, 10}, {880, 10}, {784, 10}, {659, 10}, {659, 10}, {587, 10}, {659, 10},
+			{523, 10}, {523, 10}, {659, 10}, {523, 10}, {440, 10}, {440, 10}, {392, 10}, {440, 10},
+			{784, 10}, {784, 10}, {880, 10}, {784, 10}, {659, 10}, {659, 10}, {587, 10}, {659, 10},
+			{784, 15}, {659, 15}, {523, 15}, {440, 15}, {392, 20}, {330, 20},
+		},
+		tempo:      1.2,
+		loop:       true,
+		instrument: 2, // Sawtooth
+	}
+	
+	// Victory - triumphant fanfare
+	b.tracks["victory"] = &MusicTrack{
+		name: "Victory",
+		notes: []Note{
+			{523, 15}, {659, 15}, {784, 15}, {1047, 15},
+			{784, 15}, {880, 15}, {988, 15}, {1047, 15},
+			{1175, 20}, {1047, 15}, {988, 15}, {784, 15},
+			{659, 15}, {784, 15}, {523, 30},
+		},
+		tempo:      1.0,
+		loop:       false,
+		instrument: 0,
+	}
+}
+
+// Play начинает проигрывание трека
+func (b *BGM) Play(trackName string) {
+	if !b.isPlaying || b.currentTrack != trackName {
+		b.currentTrack = trackName
+		b.noteIndex = 0
+		b.frameCount = 0
+		b.isPlaying = true
+	}
+}
+
+// Stop останавливает музыку
+func (b *BGM) Stop() {
+	b.isPlaying = false
+	b.currentTrack = ""
+}
+
+// SetVolume устанавливает громкость
+func (b *BGM) SetVolume(vol float64) {
+	b.volume = vol
+}
+
+// Update обновляет музыку (вызывать каждый кадр)
+func (b *BGM) Update() {
+	if !b.isPlaying {
+		return
+	}
+	
+	track, exists := b.tracks[b.currentTrack]
+	if !exists {
+		return
+	}
+	
+	if b.noteIndex >= len(track.notes) {
+		if track.loop {
+			b.noteIndex = 0
+		} else {
+			b.isPlaying = false
+			return
+		}
+	}
+	
+	note := track.notes[b.noteIndex]
+	b.frameCount++
+	
+	noteDuration := int(float64(note.duration) / track.tempo)
+	if b.frameCount >= noteDuration {
+		b.frameCount = 0
+		b.noteIndex++
+		
+		// Play note
+		if b.audioCtx != nil {
+			b.playNote(note.frequency, noteDuration, track.instrument)
+		}
+	}
+}
+
+// playNote проигрывает одну ноту
+func (b *BGM) playNote(frequency float64, duration int, instrument int) {
+	samples := make([]float64, duration*10) // 10 samples per frame
+	
+	for i := range samples {
+		var sample float64
+		phase := float64(i) * 2 * math.Pi * frequency / 22050
+		
+		switch instrument {
+		case 0: // Sine
+			sample = math.Sin(phase)
+		case 1: // Square
+			if math.Sin(phase) >= 0 {
+				sample = 1.0
+			} else {
+				sample = -1.0
+			}
+		case 2: // Sawtooth
+			sample = 2*(phase/(2*math.Pi)-math.Floor(phase/(2*math.Pi)+0.5))
+		default:
+			sample = math.Sin(phase)
+		}
+		
+		// Envelope
+		envelope := 1.0
+		if i < len(samples)/10 {
+			envelope = float64(i) / float64(len(samples)/10)
+		} else if i > len(samples)*7/10 {
+			envelope = float64(len(samples)-i) / float64(len(samples)*3/10)
+		}
+		
+		samples[i] = sample * envelope * b.volume
+	}
+	
+	// Create player
+	stream := &AudioStream{buffer: samples, pos: 0}
+	player, err := b.audioCtx.NewPlayer(stream)
+	if err == nil {
+		player.Play()
 	}
 }
 
@@ -1213,6 +1412,7 @@ func NewGame() *Game {
 		lightning:     Lightning{active: false, timer: 0, branches: []LightningBranch{}},
 		house:         house,
 		audio:         NewAudioSystem(),
+		bgm:           NewBGM(),
 		coins:         coins,
 		enemies:       enemies,
 		platforms:     platforms,
@@ -1329,6 +1529,14 @@ func (g *Game) Update() error {
 		if inpututil.IsKeyJustPressed(ebiten.KeyM) {
 			g.audio.enabled = !g.audio.enabled
 		}
+		// Toggle music with N
+		if inpututil.IsKeyJustPressed(ebiten.KeyN) {
+			if g.bgm != nil && g.bgm.isPlaying {
+				g.bgm.Stop()
+			} else if g.bgm != nil {
+				g.bgm.Play("explore")
+			}
+		}
 		// Back to pause with ESC
 		if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
 			g.state = Paused
@@ -1365,6 +1573,36 @@ func (g *Game) Update() error {
 	}
 
 	g.frameCount++
+
+	// Update background music
+	if g.bgm != nil {
+		g.bgm.Update()
+		
+		// Play appropriate music based on game state
+		if g.state == Playing {
+			// Check if enemies are nearby for battle music
+			inBattle := false
+			for _, enemy := range g.enemies {
+				if enemy.alive {
+					dist := math.Sqrt(math.Pow(float64(enemy.x)-g.player.x, 2) + math.Pow(float64(enemy.y)-g.player.y, 2))
+					if dist < 300 {
+						inBattle = true
+						break
+					}
+				}
+			}
+			
+			if inBattle {
+				g.bgm.Play("battle")
+			} else {
+				g.bgm.Play("explore")
+			}
+		} else if g.state == Menu {
+			g.bgm.Play("main")
+		} else if g.state == GameWon {
+			g.bgm.Play("victory")
+		}
+	}
 
 	// Update cloud positions
 	for i := range g.clouds {
@@ -4688,7 +4926,7 @@ func (g *Game) drawSettings(screen *ebiten.Image) {
 	// Title
 	title := "⚙️ SETTINGS"
 	titleX := screenWidth/2 - len(title)*8
-	titleY := screenHeight/2 - 80
+	titleY := screenHeight/2 - 100
 	drawTextWithShadow(screen, title, titleX, titleY, color.RGBA{255, 255, 255, 255})
 
 	// Sound setting
@@ -4699,15 +4937,28 @@ func (g *Game) drawSettings(screen *ebiten.Image) {
 		soundColor = color.RGBA{255, 100, 100, 255}
 	}
 
-	soundText := fmt.Sprintf("Sound: %s (M to toggle)", soundStatus)
+	soundText := fmt.Sprintf("Sound: %s (M)", soundStatus)
 	soundX := screenWidth/2 - len(soundText)*6
 	soundY := titleY + 60
 	drawTextWithShadow(screen, soundText, soundX, soundY, soundColor)
 
+	// Music setting
+	musicStatus := "ON"
+	musicColor := color.RGBA{0, 255, 0, 255}
+	if g.bgm == nil || !g.bgm.isPlaying {
+		musicStatus = "OFF"
+		musicColor = color.RGBA{255, 100, 100, 255}
+	}
+
+	musicText := fmt.Sprintf("Music: %s (N)", musicStatus)
+	musicX := screenWidth/2 - len(musicText)*6
+	musicY := titleY + 100
+	drawTextWithShadow(screen, musicText, musicX, musicY, musicColor)
+
 	// Back option
 	backText := "ESC - Back"
 	backX := screenWidth/2 - len(backText)*6
-	backY := titleY + 120
+	backY := titleY + 160
 	drawTextWithShadow(screen, backText, backX, backY, color.RGBA{200, 200, 200, 255})
 }
 
