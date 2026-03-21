@@ -302,6 +302,8 @@ const (
 	InsideHouse
 	GameWon
 	Crafting  // Режим крафта
+	Paused    // Пауза
+	Settings  // Настройки
 )
 
 type TimeOfDay int
@@ -1304,6 +1306,36 @@ func (g *Game) Update() error {
 		return nil
 	}
 
+	// Handle paused state
+	if g.state == Paused {
+		// Resume with P or ESC
+		if inpututil.IsKeyJustPressed(ebiten.KeyP) || inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
+			g.state = Playing
+		}
+		// Open settings with S
+		if inpututil.IsKeyJustPressed(ebiten.KeyS) {
+			g.state = Settings
+		}
+		// Return to menu with M
+		if inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
+			g.state = Menu
+		}
+		return nil
+	}
+
+	// Handle settings state
+	if g.state == Settings {
+		// Toggle sound with M
+		if inpututil.IsKeyJustPressed(ebiten.KeyM) {
+			g.audio.enabled = !g.audio.enabled
+		}
+		// Back to pause with ESC
+		if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
+			g.state = Paused
+		}
+		return nil
+	}
+
 	// Handle inside house state
 	if g.state == InsideHouse {
 		// Exit house with ESC or inside door
@@ -1313,7 +1345,7 @@ func (g *Game) Update() error {
 			g.player.x = 1980
 			g.player.y = 0  // Will fall to ground
 		}
-		
+
 		// Player movement inside house
 		if ebiten.IsKeyPressed(ebiten.KeyArrowLeft) || ebiten.IsKeyPressed(ebiten.KeyA) {
 			g.player.x -= moveSpeed
@@ -1325,10 +1357,10 @@ func (g *Game) Update() error {
 			g.player.facing = 1
 			g.player.animFrame++
 		}
-		
+
 		// Check if player is near inside door (for exiting)
 		g.checkInsideDoorExit()
-		
+
 		return nil
 	}
 
@@ -1469,6 +1501,12 @@ func (g *Game) Update() error {
 	// Update camera
 	if g.camera != nil && g.state == Playing {
 		g.camera.Update(g.player.x, g.player.y)
+	}
+
+	// Pause with P
+	if inpututil.IsKeyJustPressed(ebiten.KeyP) && g.state == Playing {
+		g.state = Paused
+		return nil
 	}
 
 	// Handle mining and placing blocks
@@ -3238,6 +3276,19 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		return
 	}
 
+	// Handle paused and settings states - draw game first, then overlay
+	if g.state == Paused || g.state == Settings {
+		// Draw game in background
+		g.drawGameBackground(screen)
+		// Draw overlay
+		if g.state == Paused {
+			g.drawPaused(screen)
+		} else {
+			g.drawSettings(screen)
+		}
+		return
+	}
+
 	// Draw sky based on time of day and weather
 	if g.weather == Stormy {
 		g.drawStormySky(screen)
@@ -4564,6 +4615,100 @@ func (g *Game) loadGame() bool {
 	g.audio.PlayPowerup()
 	g.spawnFloatingText(float32(g.player.x), float32(g.player.y), "GAME LOADED!", color.RGBA{0, 255, 255, 255})
 	return true
+}
+
+// drawGameBackground - отрисовка фона игры для паузы
+func (g *Game) drawGameBackground(screen *ebiten.Image) {
+	// Draw sky
+	if g.weather == Stormy {
+		g.drawStormySky(screen)
+	} else if g.timeOfDay == Day {
+		g.drawDaySky(screen)
+	} else {
+		g.drawNightSky(screen)
+	}
+
+	// Draw world
+	g.drawWorld(screen)
+
+	// Draw house
+	g.drawHouse(screen)
+
+	// Draw trees
+	g.drawTrees(screen)
+
+	// Draw platforms
+	g.drawPlatforms(screen)
+
+	// Draw coins
+	g.drawCoins(screen)
+
+	// Draw powerups
+	g.drawPowerups(screen)
+
+	// Draw enemies
+	g.drawEnemies(screen)
+
+	// Draw player
+	g.drawPlayer(screen)
+}
+
+// drawPaused - отрисовка меню паузы
+func (g *Game) drawPaused(screen *ebiten.Image) {
+	// Semi-transparent overlay
+	overlayColor := color.RGBA{0, 0, 0, 180}
+	vector.DrawFilledRect(screen, 0, 0, screenWidth, screenHeight, overlayColor, false)
+
+	// Title
+	title := "⏸️ PAUSED"
+	titleX := screenWidth/2 - len(title)*8
+	titleY := screenHeight/2 - 60
+	drawTextWithShadow(screen, title, titleX, titleY, color.RGBA{255, 255, 255, 255})
+
+	// Options
+	options := []string{
+		"P / ESC - Resume",
+		"S - Settings",
+		"Enter - Menu",
+	}
+
+	for i, opt := range options {
+		optX := screenWidth/2 - len(opt)*6
+		optY := titleY + 50 + i*30
+		drawTextWithShadow(screen, opt, optX, optY, color.RGBA{200, 200, 200, 255})
+	}
+}
+
+// drawSettings - отрисовка настроек
+func (g *Game) drawSettings(screen *ebiten.Image) {
+	// Semi-transparent overlay
+	overlayColor := color.RGBA{0, 0, 0, 200}
+	vector.DrawFilledRect(screen, 0, 0, screenWidth, screenHeight, overlayColor, false)
+
+	// Title
+	title := "⚙️ SETTINGS"
+	titleX := screenWidth/2 - len(title)*8
+	titleY := screenHeight/2 - 80
+	drawTextWithShadow(screen, title, titleX, titleY, color.RGBA{255, 255, 255, 255})
+
+	// Sound setting
+	soundStatus := "ON"
+	soundColor := color.RGBA{0, 255, 0, 255}
+	if !g.audio.enabled {
+		soundStatus = "OFF"
+		soundColor = color.RGBA{255, 100, 100, 255}
+	}
+
+	soundText := fmt.Sprintf("Sound: %s (M to toggle)", soundStatus)
+	soundX := screenWidth/2 - len(soundText)*6
+	soundY := titleY + 60
+	drawTextWithShadow(screen, soundText, soundX, soundY, soundColor)
+
+	// Back option
+	backText := "ESC - Back"
+	backX := screenWidth/2 - len(backText)*6
+	backY := titleY + 120
+	drawTextWithShadow(screen, backText, backX, backY, color.RGBA{200, 200, 200, 255})
 }
 
 func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
