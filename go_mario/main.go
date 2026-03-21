@@ -708,11 +708,11 @@ func NewAudioSystem() *AudioSystem {
 }
 
 // NewBGM создаёт менеджер фоновой музыки
-func NewBGM() *BGM {
+func NewBGM(audioCtx *audio.Context) *BGM {
 	bgm := &BGM{
 		tracks:   make(map[string]*MusicTrack),
 		volume:   0.15,
-		audioCtx: audio.NewContext(22050), // Lower sample rate for music
+		audioCtx: audioCtx, // Используем существующий контекст
 	}
 	
 	// Create music tracks
@@ -1396,7 +1396,11 @@ func NewGame() *Game {
 		}
 	}
 
-	return &Game{
+	// Initialize audio system first
+	audio := NewAudioSystem()
+	
+	// Initialize game
+	game := &Game{
 		frameCount:    0,
 		clouds:        clouds,
 		stormClouds:   stormClouds,
@@ -1411,8 +1415,8 @@ func NewGame() *Game {
 		raindrops:     raindrops,
 		lightning:     Lightning{active: false, timer: 0, branches: []LightningBranch{}},
 		house:         house,
-		audio:         NewAudioSystem(),
-		bgm:           NewBGM(),
+		audio:         audio,
+		bgm:           NewBGM(audio.audioCtx), // Pass audio context to BGM
 		coins:         coins,
 		enemies:       enemies,
 		platforms:     platforms,
@@ -1421,29 +1425,35 @@ func NewGame() *Game {
 		sparkParticles: sparkParticles,
 		floatingTexts: floatingTexts,
 		screenShake:   ScreenShake{active: false, intensity: 0, timer: 0},
-		
+
 		// Initialize world and crafting
 		world:     NewWorld(rand.Int63()),
 		camera:    NewCamera(),
 		inventory: NewInventory(),
 		recipes:   NewRecipes(),
-		
+
 		// Tutorial and quests
 		tutorial:    NewTutorial(),
 		quests:      NewQuests(),
 		checkpoints: NewCheckpoints(),
 		healthPacks: NewHealthPacks(),
-		
+
 		// Achievement album
 		album:       NewAchievementAlbum(),
 		activeNotifications: make([]AchievementNotification, 0),
 		blocksMined: 0,
 		enemiesDefeated: 0,
-		
+
 		// Tutorial hints
 		showControls:    false,
 		controlsTimer:   0,
+		
+		// Save system
+		saveAvailable: false,
+		lastSaveTime:  0,
 	}
+	
+	return game
 }
 
 func createTree(x, y float32, height float32) Tree {
