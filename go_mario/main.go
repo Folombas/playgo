@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"image"
 	"image/color"
 	"io"
 	"log"
@@ -24,10 +25,21 @@ type Sprite struct {
 	height int
 }
 
+// SpriteSheet - лист спрайтов для анимации
+type SpriteSheet struct {
+	images   []*ebiten.Image
+	frameW   int
+	frameH   int
+	frameCount int
+	currentFrame int
+	animTimer int
+}
+
 // Tileset - набор тайлов
 type Tileset struct {
 	tiles    map[BlockType]*Sprite
 	tileSize int
+	useSprites bool // true если загружены PNG
 }
 
 // Global tileset
@@ -38,9 +50,52 @@ func InitTileset() *Tileset {
 	ts := &Tileset{
 		tiles:    make(map[BlockType]*Sprite),
 		tileSize: blockSize,
+		useSprites: false,
 	}
 	
-	// Generate textures for each block type
+	// Try to load PNG sprites first
+	if ts.loadSprites() {
+		ts.useSprites = true
+		log.Println("✓ Loaded PNG sprites!")
+	} else {
+		log.Println("⚠ Using procedural textures (no PNG files found)")
+		// Generate procedural textures as fallback
+		ts.generateProceduralTiles()
+	}
+	
+	return ts
+}
+
+// loadSprites пытается загрузить PNG спрайты
+func (ts *Tileset) loadSprites() bool {
+	// Check if assets directory exists
+	if _, err := os.Stat("assets/tiles/grass.png"); err == nil {
+		ts.tiles[Grass] = ts.loadTile("assets/tiles/grass.png")
+		ts.tiles[Dirt] = ts.loadTile("assets/tiles/dirt.png")
+		ts.tiles[Stone] = ts.loadTile("assets/tiles/stone.png")
+		ts.tiles[Wood] = ts.loadTile("assets/tiles/wood.png")
+		ts.tiles[Bricks] = ts.loadTile("assets/tiles/brick.png")
+		return true
+	}
+	return false
+}
+
+// loadTile загружает один тайл
+func (ts *Tileset) loadTile(path string) *Sprite {
+	img, _, err := ebitenutil.NewImageFromFile(path)
+	if err != nil {
+		return nil
+	}
+	bounds := img.Bounds()
+	return &Sprite{
+		image:  img,
+		width:  bounds.Dx(),
+		height: bounds.Dy(),
+	}
+}
+
+// generateProceduralTiles генерирует текстуры процедурно
+func (ts *Tileset) generateProceduralTiles() {
 	ts.tiles[Dirt] = ts.createDirtTile()
 	ts.tiles[Grass] = ts.createGrassTile()
 	ts.tiles[Stone] = ts.createStoneTile()
@@ -53,8 +108,6 @@ func InitTileset() *Tileset {
 	ts.tiles[Diamond_Ore] = ts.createDiamondOreTile()
 	ts.tiles[Plank] = ts.createPlankTile()
 	ts.tiles[Crafting_Table] = ts.createCraftingTableTile()
-	
-	return ts
 }
 
 // createDirtTile создаёт текстуру земли
@@ -4310,65 +4363,142 @@ func (g *Game) drawPlayer(screen *ebiten.Image) {
 		return
 	}
 
-	// Bunny body (light gray/white)
-	bodyColor := color.RGBA{240, 240, 240, 255}
-	vector.DrawFilledRect(screen, x+5, y+15, w-10, h-15, bodyColor, false)
-
-	// Bunny head (circle)
-	headY := y + 10
-	headX := x + w/2
-	vector.DrawFilledCircle(screen, headX, headY, 12, bodyColor, false)
-
-	// Bunny ears (long, pointing up)
-	earColor := color.RGBA{240, 240, 240, 255}
-	earInnerColor := color.RGBA{255, 180, 180, 255} // pink inner ear
-
-	// Left ear
-	leftEarX := headX - 4
-	leftEarY := headY - 8
-	vector.DrawFilledRect(screen, leftEarX-3, leftEarY-15, 6, 18, earColor, false)
-	vector.DrawFilledRect(screen, leftEarX-1, leftEarY-12, 2, 10, earInnerColor, false)
-
-	// Right ear
-	rightEarX := headX + 4
-	rightEarY := headY - 8
-	vector.DrawFilledRect(screen, rightEarX-3, rightEarY-15, 6, 18, earColor, false)
-	vector.DrawFilledRect(screen, rightEarX-1, rightEarY-12, 2, 10, earInnerColor, false)
-
-	// Eyes (black with white highlight)
-	eyeOffset := g.player.facing * 3
-	leftEyeX := headX - 4 + float32(eyeOffset)
-	rightEyeX := headX + 4 + float32(eyeOffset)
-	eyeY := headY + 2
-
-	// Eye whites
-	vector.DrawFilledCircle(screen, leftEyeX, eyeY, 4, color.RGBA{255, 255, 255, 255}, false)
-	vector.DrawFilledCircle(screen, rightEyeX, eyeY, 4, color.RGBA{255, 255, 255, 255}, false)
-
-	// Pupils (black)
-	vector.DrawFilledCircle(screen, leftEyeX+float32(eyeOffset), eyeY, 2, color.RGBA{0, 0, 0, 255}, false)
-	vector.DrawFilledCircle(screen, rightEyeX+float32(eyeOffset), eyeY, 2, color.RGBA{0, 0, 0, 255}, false)
-
-	// Nose (pink triangle)
-	noseX := headX + float32(g.player.facing*2)
-	noseY := headY + 8
-	vector.DrawFilledCircle(screen, noseX, noseY, 2, color.RGBA{255, 180, 180, 255}, false)
-
-	// Legs (animated based on movement)
-	legOffset := float32(math.Sin(float64(g.player.animFrame)*0.5)) * 5
-	if !g.player.onGround {
-		legOffset = 3 // jumping pose
+	// Try to load player sprite
+	if playerSprite := g.loadPlayerSprite(); playerSprite != nil {
+		// Draw sprite with animation
+		frame := g.getPlayerAnimationFrame()
+		op := &ebiten.DrawImageOptions{}
+		op.GeoM.Translate(float64(x), float64(y))
+		if g.player.facing < 0 {
+			op.GeoM.Scale(-1, 1)
+			op.GeoM.Translate(float64(w), 0)
+		}
+		screen.DrawImage(playerSprite[frame], op)
+		return
 	}
 
-	// Back leg
-	vector.DrawFilledCircle(screen, x+10-legOffset, y+h-5, 5, bodyColor, false)
-	// Front leg
-	vector.DrawFilledCircle(screen, x+w-10+legOffset, y+h-5, 5, bodyColor, false)
+	// Fallback to procedural drawing - IMPROVED Mario-style character
+	g.drawProceduralPlayer(screen, x, y, w, h)
+}
 
-	// Tail (fluffy white ball)
-	tailX := x + w - 8
-	tailY := y + h/2 + 5
-	vector.DrawFilledCircle(screen, tailX, tailY, 5, color.RGBA{255, 255, 255, 255}, false)
+// loadPlayerSprite загружает спрайт игрока если есть
+func (g *Game) loadPlayerSprite() []*ebiten.Image {
+	// Try to load from assets
+	img, _, err := ebitenutil.NewImageFromFile("assets/sprites/player.png")
+	if err != nil {
+		return nil
+	}
+	// Split into frames (assuming 8 frames horizontally)
+	bounds := img.Bounds()
+	frameW := bounds.Dx() / 8
+	frames := make([]*ebiten.Image, 8)
+	for i := 0; i < 8; i++ {
+		frame := ebiten.NewImage(frameW, bounds.Dy())
+		subImage := img.SubImage(image.Rect(i*frameW, 0, (i+1)*frameW, bounds.Dy()))
+		if ebitenImg, ok := subImage.(*ebiten.Image); ok {
+			frame.DrawImage(ebitenImg, nil)
+		} else {
+			// Fallback: draw using WritePixels
+			for py := 0; py < bounds.Dy(); py++ {
+				for px := 0; px < frameW; px++ {
+					r, g, b, a := subImage.At(i*frameW+px, py).RGBA()
+					if a > 0 {
+						frame.Set(px, py, color.RGBA{uint8(r >> 8), uint8(g >> 8), uint8(b >> 8), uint8(a >> 8)})
+					}
+				}
+			}
+		}
+		frames[i] = frame
+	}
+	return frames
+}
+
+// getPlayerAnimationFrame возвращает текущий кадр анимации
+func (g *Game) getPlayerAnimationFrame() int {
+	if !g.player.onGround {
+		return 4 // Jump frame
+	}
+	if g.player.animFrame%20 < 10 {
+		return (g.player.animFrame / 10) % 4 // Run frames 0-3
+	}
+	return 0 // Idle frame
+}
+
+// drawProceduralPlayer рисует игрока процедурно (Mario-style human)
+func (g *Game) drawProceduralPlayer(screen *ebiten.Image, x, y float32, w, h float32) {
+	// Animation offset
+	legOffset := float32(math.Sin(float64(g.player.animFrame)*0.5)) * 4
+	if !g.player.onGround {
+		legOffset = 2
+	}
+
+	// facing direction
+	dir := g.player.facing
+	if dir == 0 {
+		dir = 1
+	}
+
+	// === BOOTS (brown) ===
+	bootColor := color.RGBA{101, 67, 33, 255}
+	// Left boot
+	vector.DrawFilledRect(screen, x+8-legOffset, y+h-8, 10, 8, bootColor, false)
+	// Right boot
+	vector.DrawFilledRect(screen, x+w-18+legOffset, y+h-8, 10, 8, bootColor, false)
+
+	// === PANTS (blue overalls) ===
+	pantsColor := color.RGBA{50, 50, 180, 255}
+	vector.DrawFilledRect(screen, x+6, y+h-22, w-12, 14, pantsColor, false)
+
+	// Overall straps
+	vector.DrawFilledRect(screen, x+8, y+h-28, 5, 10, pantsColor, false)
+	vector.DrawFilledRect(screen, x+w-13, y+h-28, 5, 10, pantsColor, false)
+
+	// === SHIRT (red) ===
+	shirtColor := color.RGBA{200, 30, 30, 255}
+	vector.DrawFilledRect(screen, x+5, y+h-35, w-10, 12, shirtColor, false)
+
+	// Sleeves
+	vector.DrawFilledRect(screen, x+2, y+h-32, 6, 8, shirtColor, false)
+	vector.DrawFilledRect(screen, x+w-8, y+h-32, 6, 8, shirtColor, false)
+
+	// === HEAD (skin tone) ===
+	skinColor := color.RGBA{255, 220, 180, 255}
+	headX := x + w/2
+	headY := y + h - 42
+	vector.DrawFilledCircle(screen, headX, headY, 14, skinColor, false)
+
+	// === HAT (red cap) ===
+	hatColor := color.RGBA{200, 30, 30, 255}
+	// Hat top
+	vector.DrawFilledRect(screen, x+6, y+h-52, w-12, 8, hatColor, false)
+	// Hat brim (extends in facing direction)
+	brimX := x + w/2 - 18 + float32(dir)*8
+	vector.DrawFilledRect(screen, brimX, y+h-48, 24, 5, hatColor, false)
+
+	// === EYES ===
+	eyeX := headX + float32(dir)*4
+	eyeY := headY + 2
+	// Eye white
+	vector.DrawFilledCircle(screen, eyeX, eyeY, 5, color.RGBA{255, 255, 255, 255}, false)
+	// Pupil
+	vector.DrawFilledCircle(screen, eyeX+float32(dir), eyeY, 3, color.RGBA{0, 0, 0, 255}, false)
+
+	// === NOSE ===
+	noseX := headX + float32(dir)*8
+	noseY := headY + 8
+	vector.DrawFilledCircle(screen, noseX, noseY, 4, color.RGBA{255, 180, 160, 255}, false)
+
+	// === MUSTACHE ===
+	mustacheX := headX + float32(dir)*6
+	mustacheY := headY + 12
+	vector.DrawFilledRect(screen, mustacheX-6, mustacheY, 12, 4, color.RGBA{50, 30, 20, 255}, false)
+
+	// === GLOVES (white) ===
+	gloveColor := color.RGBA{255, 255, 255, 255}
+	// Front hand (swinging)
+	handX := x + w/2 + float32(dir)*12
+	handY := y + h - 25 + legOffset
+	vector.DrawFilledCircle(screen, handX, handY, 6, gloveColor, false)
 }
 
 // drawPlatforms - отрисовка платформ
