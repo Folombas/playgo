@@ -4042,74 +4042,43 @@ func (g *Game) drawInventory(screen *ebiten.Image) {
 	}
 }
 
-// drawTutorial - отрисовка туториала
+// drawTutorial - минималистичная отрисовка текущей подсказки
 func (g *Game) drawTutorial(screen *ebiten.Image) {
 	if g.tutorial == nil || !g.tutorial.visible {
 		return
 	}
-	
-	// Draw tutorial panel on left side
-	panelX := 10
-	panelY := 60
-	panelW := 280
-	panelH := 200
-	
-	// Background
-	vector.DrawFilledRect(screen, float32(panelX), float32(panelY), float32(panelW), float32(panelH), color.RGBA{0, 0, 0, 180}, false)
-	vector.StrokeRect(screen, float32(panelX), float32(panelY), float32(panelW), float32(panelH), 2, color.RGBA{255, 215, 0, 255}, false)
-	
-	// Title
-	title := "📖 TUTORIAL"
-	ebitenutil.DebugPrintAt(screen, title, panelX+10, panelY+10)
-	
-	// Draw steps
-	for i, step := range g.tutorial.steps {
-		y := panelY + 35 + i*25
-		marker := "⬜"
 
-		if step.completed {
-			marker = "✅"
-		} else if i == g.tutorial.currentStep {
-			marker = "➡️"
+	// Show only current hint as small notification
+	if g.tutorial.currentStep < len(g.tutorial.steps) {
+		step := g.tutorial.steps[g.tutorial.currentStep]
+		if !step.completed {
+			// Small hint at bottom center
+			hintText := fmt.Sprintf("💡 %s", step.title)
+			hintX := screenWidth/2 - len(hintText)*6
+			hintY := screenHeight - 85
+			
+			// Semi-transparent background
+			vector.DrawFilledRect(screen, float32(hintX-5), float32(hintY-5), float32(len(hintText)*12+10), 20, color.RGBA{0, 0, 0, 100}, false)
+			drawTextWithShadow(screen, hintText, hintX, hintY, color.RGBA{255, 255, 100, 255})
 		}
-
-		text := fmt.Sprintf("%s %s", marker, step.title)
-		ebitenutil.DebugPrintAt(screen, text, panelX+10, y)
 	}
 }
 
-// drawQuests - отрисовка квестов
+// drawQuests - минималистичная отрисовка прогресса квестов
 func (g *Game) drawQuests(screen *ebiten.Image) {
-	// Draw quests panel on right side
-	panelX := screenWidth - 250
-	panelY := 60
-	panelW := 240
-	panelH := 180
+	// Show quest progress as small counter in UI
+	completed := 0
+	total := len(g.quests)
 	
-	// Background
-	vector.DrawFilledRect(screen, float32(panelX), float32(panelY), float32(panelW), float32(panelH), color.RGBA{0, 0, 0, 180}, false)
-	vector.StrokeRect(screen, float32(panelX), float32(panelY), float32(panelW), float32(panelH), 2, color.RGBA{255, 100, 100, 255}, false)
-	
-	// Title
-	title := "📜 QUESTS"
-	ebitenutil.DebugPrintAt(screen, title, panelX+10, panelY+10)
-	
-	// Draw quests
-	for i, quest := range g.quests {
-		y := panelY + 35 + i*30
-		marker := "⬜"
-		
+	for _, quest := range g.quests {
 		if quest.completed {
-			marker = "✅"
+			completed++
 		}
-		
-		// Quest title
-		text := fmt.Sprintf("%s %s", marker, quest.title)
-		ebitenutil.DebugPrintAt(screen, text, panelX+10, y)
-		
-		// Quest objective
-		objText := fmt.Sprintf("   %s", quest.objective)
-		ebitenutil.DebugPrintAt(screen, objText, panelX+10, y+15)
+	}
+	
+	if total > 0 {
+		questText := fmt.Sprintf("📜 %d/%d", completed, total)
+		drawTextWithShadow(screen, questText, screenWidth-80, 15, color.RGBA{255, 100, 100, 255})
 	}
 }
 
