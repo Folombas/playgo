@@ -570,7 +570,7 @@ func (g *Game) updatePlayer() {
 		p.vy = JumpForce
 		p.onGround = false
 		playSound(SoundJump)
-		g.spawnParticles(p.x+float64(p.width/2), p.y+float64(p.height), 5, color.RGBA{200, 200, 200, 255})
+		g.spawnJumpParticles(p.x+float64(p.width/2), p.y+float64(p.height))
 	}
 
 	// Variable jump height
@@ -685,7 +685,8 @@ func (g *Game) hitBlock(x, y int) {
 		g.player.coins++
 		g.player.score += 200
 		playSound(SoundCoin)
-		g.spawnParticles(float64(x*TileSize+TileSize/2), float64(y*TileSize), 10, color.RGBA{255, 215, 0, 255})
+		g.spawnCoinParticles(float64(x*TileSize), float64(y*TileSize))
+		g.spawnPowerupParticles(float64(x*TileSize+TileSize/2), float64(y*TileSize))
 
 		// Chance for powerup
 		if rand.Float32() < 0.1 {
@@ -752,7 +753,7 @@ func (g *Game) updateEnemies() {
 				g.player.vy = -6
 				g.player.score += 100
 				playSound(SoundStomp)
-				g.spawnParticles(enemy.x+float64(enemy.width/2), enemy.y+float64(enemy.height/2), 15, color.RGBA{139, 69, 19, 255})
+				g.spawnStompParticles(enemy.x+float64(enemy.width/2), enemy.y+float64(enemy.height/2))
 			} else if !g.player.isInvincible {
 				g.playerHit()
 			}
@@ -860,6 +861,73 @@ func (g *Game) spawnParticles(x, y float64, count int, c color.RGBA) {
 	}
 }
 
+// spawnJumpParticles создаёт частицы при прыжке
+func (g *Game) spawnJumpParticles(x, y float64) {
+	g.spawnParticles(x, y, 8, color.RGBA{200, 200, 200, 255}) // Dust
+}
+
+// spawnCoinParticles создаёт частицы при сборе монеты
+func (g *Game) spawnCoinParticles(x, y float64) {
+	for i := 0; i < 10; i++ {
+		g.particles = append(g.particles, &Particle{
+			x: x + 10,
+			y: y + 10,
+			vx: float64(rand.Intn(8)-4) * 0.8,
+			vy: float64(-rand.Intn(10)-5) * 0.5,
+			life: 40 + rand.Intn(20),
+			color: color.RGBA{255, 215, 0, 255}, // Gold
+			size: float32(rand.Intn(6)+3),
+		})
+	}
+}
+
+// spawnStompParticles создаёт частицы при уничтожении врага
+func (g *Game) spawnStompParticles(x, y float64) {
+	for i := 0; i < 12; i++ {
+		g.particles = append(g.particles, &Particle{
+			x: x + 16,
+			y: y + 16,
+			vx: float64(rand.Intn(12)-6) * 0.7,
+			vy: float64(rand.Intn(12)-6) * 0.7,
+			life: 25 + rand.Intn(15),
+			color: color.RGBA{139, 69, 19, 255}, // Brown
+			size: float32(rand.Intn(5)+2),
+		})
+	}
+}
+
+// spawnHitParticles создаёт частицы при получении урона
+func (g *Game) spawnHitParticles(x, y float64) {
+	for i := 0; i < 15; i++ {
+		g.particles = append(g.particles, &Particle{
+			x: x + 15,
+			y: y + 20,
+			vx: float64(rand.Intn(14)-7) * 0.6,
+			vy: float64(rand.Intn(14)-7) * 0.6,
+			life: 35 + rand.Intn(20),
+			color: color.RGBA{255, 50, 50, 255}, // Red
+			size: float32(rand.Intn(5)+3),
+		})
+	}
+}
+
+// spawnPowerupParticles создаёт частицы при получении бонуса
+func (g *Game) spawnPowerupParticles(x, y float64) {
+	for i := 0; i < 20; i++ {
+		angle := float64(i) * 2 * math.Pi / 20
+		speed := 2.0
+		g.particles = append(g.particles, &Particle{
+			x: x + 16,
+			y: y + 16,
+			vx: math.Cos(angle) * speed,
+			vy: math.Sin(angle) * speed,
+			life: 50 + rand.Intn(20),
+			color: color.RGBA{255, 100, 100, 255}, // Pink/Red
+			size: float32(rand.Intn(6)+4),
+		})
+	}
+}
+
 func (g *Game) checkCollision(p *Player, e *Enemy) bool {
 	return p.x < e.x+float64(e.width) &&
 		p.x+float64(p.width) > e.x &&
@@ -878,6 +946,7 @@ func (g *Game) playerHit() {
 		g.player.isInvincible = true
 		g.player.powerTimer = 120
 		playSound(SoundHit)
+		g.spawnHitParticles(g.player.x, g.player.y)
 	} else {
 		g.playerDie()
 	}
@@ -959,8 +1028,17 @@ func (g *Game) drawPlaying(screen *ebiten.Image) {
 	// Draw player
 	g.drawPlayer(screen)
 
+	// Draw particles
+	g.drawParticles(screen)
+
 	// Draw UI
 	g.drawUI(screen)
+}
+
+func (g *Game) drawParticles(screen *ebiten.Image) {
+	for _, p := range g.particles {
+		vector.DrawFilledCircle(screen, float32(p.x), float32(p.y), p.size, p.color, true)
+	}
 }
 
 func (g *Game) drawLevel(screen *ebiten.Image) {
