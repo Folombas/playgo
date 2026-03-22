@@ -75,75 +75,119 @@ type Assets struct {
 	playerWalk2  *ebiten.Image
 	playerJump   *ebiten.Image
 	playerDuck   *ebiten.Image
-	
+
 	// Enemy sprites
-	slimeGreen *ebiten.Image
-	slimeBlue  *ebiten.Image
-	bee        *ebiten.Image
-	fishGreen  *ebiten.Image
-	
+	slimeGreen1  *ebiten.Image
+	slimeGreen2  *ebiten.Image
+	slimeBlue1   *ebiten.Image
+	slimeBlue2   *ebiten.Image
+	bee1         *ebiten.Image
+	bee2         *ebiten.Image
+
 	// Tile sprites
-	groundTile *ebiten.Image
-	brickTile  *ebiten.Image
+	grassTile    *ebiten.Image
+	brickTile    *ebiten.Image
 	questionTile *ebiten.Image
-	hardTile   *ebiten.Image
-	pipeTile   *ebiten.Image
-	
+	hardTile     *ebiten.Image
+	pipeTile     *ebiten.Image
+	usedTile     *ebiten.Image
+
 	// Items
-	coinSprite *ebiten.Image
-	flagSprite *ebiten.Image
+	coinSprite   *ebiten.Image
+	flagSprite   *ebiten.Image
 }
 
 var gameAssets *Assets
+var tileImages map[int]*ebiten.Image
 
 func LoadAssets() (*Assets, error) {
 	assets := &Assets{}
-	
+	tileImages = make(map[int]*ebiten.Image)
+
 	// Load player sprites (Green alien)
 	var err error
 	assets.playerStand, _, err = ebitenutil.NewImageFromFile("assets/PNG/Players/128x256/Green/alienGreen_stand.png")
 	if err != nil {
-		// Fallback if file not found
 		assets.playerStand = nil
 	}
-	
+
 	assets.playerWalk1, _, err = ebitenutil.NewImageFromFile("assets/PNG/Players/128x256/Green/alienGreen_walk1.png")
 	if err != nil {
 		assets.playerWalk1 = nil
 	}
-	
+
 	assets.playerWalk2, _, err = ebitenutil.NewImageFromFile("assets/PNG/Players/128x256/Green/alienGreen_walk2.png")
 	if err != nil {
 		assets.playerWalk2 = nil
 	}
-	
+
 	assets.playerJump, _, err = ebitenutil.NewImageFromFile("assets/PNG/Players/128x256/Green/alienGreen_jump.png")
 	if err != nil {
 		assets.playerJump = nil
 	}
-	
-	// Load enemy sprites
-	assets.slimeGreen, _, err = ebitenutil.NewImageFromFile("assets/PNG/Enemies/slimeGreen.png")
+
+	// Load enemy sprites (2 frames for animation)
+	assets.slimeGreen1, _, err = ebitenutil.NewImageFromFile("assets/PNG/Enemies/slimeGreen.png")
 	if err != nil {
-		assets.slimeGreen = nil
+		assets.slimeGreen1 = nil
 	}
-	
-	assets.slimeBlue, _, err = ebitenutil.NewImageFromFile("assets/PNG/Enemies/slimeBlue.png")
+	// Use same sprite for frame 2 if no second frame
+	assets.slimeGreen2 = assets.slimeGreen1
+
+	assets.slimeBlue1, _, err = ebitenutil.NewImageFromFile("assets/PNG/Enemies/slimeBlue.png")
 	if err != nil {
-		assets.slimeBlue = nil
+		assets.slimeBlue1 = nil
 	}
-	
-	assets.bee, _, err = ebitenutil.NewImageFromFile("assets/PNG/Enemies/bee.png")
+	assets.slimeBlue2 = assets.slimeBlue1
+
+	assets.bee1, _, err = ebitenutil.NewImageFromFile("assets/PNG/Enemies/bee.png")
 	if err != nil {
-		assets.bee = nil
+		assets.bee1 = nil
 	}
-	
+	assets.bee2 = assets.bee1
+
+	// Load tile sprites
+	assets.grassTile, _, err = ebitenutil.NewImageFromFile("assets/PNG/Ground/Grass/grass.png")
+	if err != nil {
+		assets.grassTile = nil
+	}
+	tileImages[TileGround] = assets.grassTile
+
+	assets.brickTile, _, err = ebitenutil.NewImageFromFile("assets/PNG/Tiles/brickGrey.png")
+	if err != nil {
+		assets.brickTile = nil
+	}
+	tileImages[TileBrick] = assets.brickTile
+
+	assets.questionTile, _, err = ebitenutil.NewImageFromFile("assets/PNG/Tiles/boxItem.png")
+	if err != nil {
+		assets.questionTile = nil
+	}
+	tileImages[TileQuestion] = assets.questionTile
+
+	assets.hardTile, _, err = ebitenutil.NewImageFromFile("assets/PNG/Tiles/brickBrown.png")
+	if err != nil {
+		assets.hardTile = nil
+	}
+	tileImages[TileHard] = assets.hardTile
+
+	assets.pipeTile, _, err = ebitenutil.NewImageFromFile("assets/PNG/Tiles/lockGreen.png")
+	if err != nil {
+		assets.pipeTile = nil
+	}
+
+	assets.usedTile, _, err = ebitenutil.NewImageFromFile("assets/PNG/Tiles/boxItem_disabled.png")
+	if err != nil {
+		assets.usedTile = nil
+	}
+	tileImages[TileUsed] = assets.usedTile
+
 	// Load coin sprite
 	assets.coinSprite, _, err = ebitenutil.NewImageFromFile("assets/PNG/Items/coinGold.png")
 	if err != nil {
 		assets.coinSprite = nil
 	}
-	
+
 	return assets, nil
 }
 
@@ -975,40 +1019,51 @@ func (g *Game) drawEnemies(screen *ebiten.Image) {
 		if !enemy.alive {
 			continue
 		}
-		
+
 		drawX := float32(enemy.x) - float32(g.camera.x)
 		drawY := float32(enemy.y)
-		
+
 		// Skip if off-screen
 		if drawX < -40 || drawX > ScreenWidth+40 {
 			continue
 		}
-		
-		// Use enemy sprite if available
+
+		// Use enemy sprite with animation if available
 		var sprite *ebiten.Image
 		if gameAssets != nil {
+			// Animation frame based on enemy position/time
+			animFrame := (enemy.animFrame / 10) % 2
+			
 			switch enemy.enemyType {
 			case EnemyGoomba:
-				sprite = gameAssets.slimeGreen
+				if animFrame == 0 {
+					sprite = gameAssets.slimeGreen1
+				} else {
+					sprite = gameAssets.slimeGreen2
+				}
 			case EnemyKoopa:
-				sprite = gameAssets.slimeBlue
+				if animFrame == 0 {
+					sprite = gameAssets.slimeBlue1
+				} else {
+					sprite = gameAssets.slimeBlue2
+				}
 			default:
-				sprite = gameAssets.slimeGreen
+				sprite = gameAssets.slimeGreen1
 			}
 		}
-		
+
 		if sprite != nil {
 			scale := float64(float32(enemy.height) / float32(sprite.Bounds().Dy()))
 			op := &ebiten.DrawImageOptions{}
 			op.GeoM.Scale(scale, scale)
 			op.GeoM.Translate(float64(drawX), float64(drawY))
-			
+
 			// Flip if facing left
 			if enemy.facing == -1 {
 				op.GeoM.Scale(-1, 1)
 				op.GeoM.Translate(float64(float32(sprite.Bounds().Dx())*float32(enemy.height)/float32(sprite.Bounds().Dy())), 0)
 			}
-			
+
 			screen.DrawImage(sprite, op)
 		} else {
 			// Fallback: Vector enemy
@@ -1017,7 +1072,7 @@ func (g *Game) drawEnemies(screen *ebiten.Image) {
 				enemyColor = color.RGBA{0, 100, 200, 255} // Blue
 			}
 			vector.DrawFilledRect(screen, drawX, drawY, enemy.width, enemy.height, enemyColor, false)
-			
+
 			// Eyes
 			eyeY := drawY + 8
 			eyeOffset := enemy.facing * 3
@@ -1028,6 +1083,33 @@ func (g *Game) drawEnemies(screen *ebiten.Image) {
 }
 
 func (g *Game) drawTile(screen *ebiten.Image, tile int, x, y float32) {
+	// Try to use sprite first
+	if gameAssets != nil {
+		var sprite *ebiten.Image
+		switch tile {
+		case TileGround:
+			sprite = gameAssets.grassTile
+		case TileBrick:
+			sprite = gameAssets.brickTile
+		case TileQuestion:
+			sprite = gameAssets.questionTile
+		case TileHard:
+			sprite = gameAssets.hardTile
+		case TileUsed:
+			sprite = gameAssets.usedTile
+		case TilePipeL, TilePipeTopL, TilePipeR, TilePipeTopR:
+			sprite = gameAssets.pipeTile
+		}
+
+		if sprite != nil {
+			op := &ebiten.DrawImageOptions{}
+			op.GeoM.Translate(float64(x), float64(y))
+			screen.DrawImage(sprite, op)
+			return
+		}
+	}
+
+	// Fallback: Vector-based rendering
 	switch tile {
 	case TileGround:
 		// Ground with grass top
@@ -1205,9 +1287,62 @@ func initAudio() {
 	audioCtx = audio.NewContext(44100)
 }
 
+// generateBeep creates a simple beep sound
+func generateBeep(frequency, duration float64) []byte {
+	sampleRate := 44100
+	numSamples := int(float64(sampleRate) * duration)
+	samples := make([]byte, numSamples*2)
+
+	for i := 0; i < numSamples; i++ {
+		t := float64(i) / float64(sampleRate)
+		// Simple sine wave with envelope
+		envelope := 1.0 - float64(i)/float64(numSamples)
+		value := math.Sin(2*math.Pi*frequency*t) * envelope * 0.3
+		
+		// Convert to 16-bit
+		sample := int16(value * 32767)
+		samples[i*2] = byte(sample)
+		samples[i*2+1] = byte(sample >> 8)
+	}
+
+	return samples
+}
+
 func playSound(sound SoundType) {
-	// Simplified - would need actual audio implementation
-	_ = sound
+	if audioCtx == nil {
+		return
+	}
+
+	var samples []byte
+	
+	// Generate different sounds for each type
+	switch sound {
+	case SoundJump:
+		samples = generateBeep(400, 0.1)
+	case SoundCoin:
+		samples = generateBeep(1200, 0.15)
+	case SoundStomp:
+		samples = generateBeep(200, 0.08)
+	case SoundHit:
+		samples = generateBeep(150, 0.2)
+	case SoundDie:
+		samples = generateBeep(100, 0.5)
+	case SoundPowerup:
+		samples = generateBeep(800, 0.3)
+	case SoundBump:
+		samples = generateBeep(100, 0.05)
+	case SoundBreak:
+		samples = generateBeep(80, 0.1)
+	case SoundStart:
+		samples = generateBeep(600, 0.2)
+	case SoundWin:
+		samples = generateBeep(800, 0.4)
+	}
+
+	if len(samples) > 0 {
+		player := audioCtx.NewPlayerFromBytes(samples)
+		player.Play()
+	}
 }
 
 // ============================================================================
