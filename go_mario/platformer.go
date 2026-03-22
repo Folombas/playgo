@@ -65,6 +65,93 @@ const (
 )
 
 // ============================================================================
+// ASSETS
+// ============================================================================
+
+type Assets struct {
+	// Player sprites (Green alien - main character)
+	playerStand  *ebiten.Image
+	playerWalk1  *ebiten.Image
+	playerWalk2  *ebiten.Image
+	playerJump   *ebiten.Image
+	playerDuck   *ebiten.Image
+	
+	// Enemy sprites
+	slimeGreen *ebiten.Image
+	slimeBlue  *ebiten.Image
+	bee        *ebiten.Image
+	fishGreen  *ebiten.Image
+	
+	// Tile sprites
+	groundTile *ebiten.Image
+	brickTile  *ebiten.Image
+	questionTile *ebiten.Image
+	hardTile   *ebiten.Image
+	pipeTile   *ebiten.Image
+	
+	// Items
+	coinSprite *ebiten.Image
+	flagSprite *ebiten.Image
+}
+
+var gameAssets *Assets
+
+func LoadAssets() (*Assets, error) {
+	assets := &Assets{}
+	
+	// Load player sprites (Green alien)
+	var err error
+	assets.playerStand, _, err = ebitenutil.NewImageFromFile("assets/PNG/Players/128x256/Green/alienGreen_stand.png")
+	if err != nil {
+		// Fallback if file not found
+		assets.playerStand = nil
+	}
+	
+	assets.playerWalk1, _, err = ebitenutil.NewImageFromFile("assets/PNG/Players/128x256/Green/alienGreen_walk1.png")
+	if err != nil {
+		assets.playerWalk1 = nil
+	}
+	
+	assets.playerWalk2, _, err = ebitenutil.NewImageFromFile("assets/PNG/Players/128x256/Green/alienGreen_walk2.png")
+	if err != nil {
+		assets.playerWalk2 = nil
+	}
+	
+	assets.playerJump, _, err = ebitenutil.NewImageFromFile("assets/PNG/Players/128x256/Green/alienGreen_jump.png")
+	if err != nil {
+		assets.playerJump = nil
+	}
+	
+	// Load enemy sprites
+	assets.slimeGreen, _, err = ebitenutil.NewImageFromFile("assets/PNG/Enemies/slimeGreen.png")
+	if err != nil {
+		assets.slimeGreen = nil
+	}
+	
+	assets.slimeBlue, _, err = ebitenutil.NewImageFromFile("assets/PNG/Enemies/slimeBlue.png")
+	if err != nil {
+		assets.slimeBlue = nil
+	}
+	
+	assets.bee, _, err = ebitenutil.NewImageFromFile("assets/PNG/Enemies/bee.png")
+	if err != nil {
+		assets.bee = nil
+	}
+	
+	// Load coin sprite
+	assets.coinSprite, _, err = ebitenutil.NewImageFromFile("assets/PNG/Items/coinGold.png")
+	if err != nil {
+		assets.coinSprite = nil
+	}
+	
+	return assets, nil
+}
+
+func (a *Assets) HasSprites() bool {
+	return a.playerStand != nil
+}
+
+// ============================================================================
 // GAME STRUCTURES
 // ============================================================================
 
@@ -168,6 +255,13 @@ type Game struct {
 
 func NewGame() *Game {
 	rand.Seed(time.Now().UnixNano())
+	
+	// Load assets
+	var err error
+	gameAssets, err = LoadAssets()
+	if err != nil {
+		fmt.Println("Warning: Some assets failed to load, using fallback rendering")
+	}
 
 	g := &Game{
 		player: &Player{
@@ -852,11 +946,18 @@ func (g *Game) drawLevel(screen *ebiten.Image) {
 
 		if drawX > -20 && drawX < ScreenWidth+20 {
 			coin.animFrame++
-			offset := float32(math.Sin(float64(coin.animFrame)*0.1) * 3)
-
-			// Coin sprite
-			vector.DrawFilledCircle(screen, drawX+10, drawY+10+offset, 8, color.RGBA{255, 215, 0, 255}, false)
-			vector.DrawFilledCircle(screen, drawX+10, drawY+10+offset, 5, color.RGBA{255, 235, 100, 255}, false)
+			
+			// Use coin sprite if available
+			if gameAssets != nil && gameAssets.coinSprite != nil {
+				op := &ebiten.DrawImageOptions{}
+				offset := float32(math.Sin(float64(coin.animFrame)*0.1) * 3)
+				op.GeoM.Translate(float64(drawX), float64(drawY+offset))
+				screen.DrawImage(gameAssets.coinSprite, op)
+			} else {
+				// Fallback: Vector coin
+				vector.DrawFilledCircle(screen, drawX+10, drawY+10, 8, color.RGBA{255, 215, 0, 255}, false)
+				vector.DrawFilledCircle(screen, drawX+10, drawY+10, 5, color.RGBA{255, 235, 100, 255}, false)
+			}
 		}
 	}
 
@@ -864,6 +965,66 @@ func (g *Game) drawLevel(screen *ebiten.Image) {
 	flagX := float32(g.level.flagX) - float32(g.camera.x)
 	vector.StrokeLine(screen, flagX+10, float32(g.level.flagY), flagX+10, float32(g.level.flagY+TileSize*4), 3, color.RGBA{100, 100, 100, 255}, false)
 	vector.DrawFilledRect(screen, flagX+10, float32(g.level.flagY), 40, 30, color.RGBA{0, 200, 0, 255}, false)
+	
+	// Draw enemies
+	g.drawEnemies(screen)
+}
+
+func (g *Game) drawEnemies(screen *ebiten.Image) {
+	for _, enemy := range g.level.enemies {
+		if !enemy.alive {
+			continue
+		}
+		
+		drawX := float32(enemy.x) - float32(g.camera.x)
+		drawY := float32(enemy.y)
+		
+		// Skip if off-screen
+		if drawX < -40 || drawX > ScreenWidth+40 {
+			continue
+		}
+		
+		// Use enemy sprite if available
+		var sprite *ebiten.Image
+		if gameAssets != nil {
+			switch enemy.enemyType {
+			case EnemyGoomba:
+				sprite = gameAssets.slimeGreen
+			case EnemyKoopa:
+				sprite = gameAssets.slimeBlue
+			default:
+				sprite = gameAssets.slimeGreen
+			}
+		}
+		
+		if sprite != nil {
+			scale := float64(float32(enemy.height) / float32(sprite.Bounds().Dy()))
+			op := &ebiten.DrawImageOptions{}
+			op.GeoM.Scale(scale, scale)
+			op.GeoM.Translate(float64(drawX), float64(drawY))
+			
+			// Flip if facing left
+			if enemy.facing == -1 {
+				op.GeoM.Scale(-1, 1)
+				op.GeoM.Translate(float64(float32(sprite.Bounds().Dx())*float32(enemy.height)/float32(sprite.Bounds().Dy())), 0)
+			}
+			
+			screen.DrawImage(sprite, op)
+		} else {
+			// Fallback: Vector enemy
+			enemyColor := color.RGBA{139, 69, 19, 255} // Brown
+			if enemy.enemyType == EnemyKoopa {
+				enemyColor = color.RGBA{0, 100, 200, 255} // Blue
+			}
+			vector.DrawFilledRect(screen, drawX, drawY, enemy.width, enemy.height, enemyColor, false)
+			
+			// Eyes
+			eyeY := drawY + 8
+			eyeOffset := enemy.facing * 3
+			vector.DrawFilledCircle(screen, drawX+8+float32(eyeOffset), eyeY, 4, color.RGBA{255, 255, 255, 255}, false)
+			vector.DrawFilledCircle(screen, drawX+20+float32(eyeOffset), eyeY, 4, color.RGBA{255, 255, 255, 255}, false)
+		}
+	}
 }
 
 func (g *Game) drawTile(screen *ebiten.Image, tile int, x, y float32) {
@@ -908,6 +1069,45 @@ func (g *Game) drawPlayer(screen *ebiten.Image) {
 		return
 	}
 
+	// Use sprite if available
+	if gameAssets != nil && gameAssets.HasSprites() {
+		var sprite *ebiten.Image
+		
+		// Choose sprite based on state
+		if !p.onGround {
+			sprite = gameAssets.playerJump
+		} else if p.vy != 0 || p.vx != 0 {
+			// Walking animation
+			if (p.animFrame / 8) % 2 == 0 {
+				sprite = gameAssets.playerWalk1
+			} else {
+				sprite = gameAssets.playerWalk2
+			}
+		} else {
+			sprite = gameAssets.playerStand
+		}
+		
+		if sprite != nil {
+			// Scale sprite to player size
+			scale := float64(float32(p.height) / 256.0 * 2.5) // Adjust scale
+			width := float64(float32(sprite.Bounds().Dx()) * float32(p.height) / 256.0 * 2.5)
+			
+			// Flip if facing left
+			op := &ebiten.DrawImageOptions{}
+			op.GeoM.Scale(scale, scale)
+			op.GeoM.Translate(float64(drawX), float64(drawY))
+			
+			if p.facing == -1 {
+				op.GeoM.Scale(-1, 1)
+				op.GeoM.Translate(width, 0)
+			}
+			
+			screen.DrawImage(sprite, op)
+			return
+		}
+	}
+
+	// Fallback: Vector-based rendering (original code)
 	// Body color based on power state
 	bodyColor := color.RGBA{220, 20, 20, 255} // Red (Mario)
 	if p.isFire {
