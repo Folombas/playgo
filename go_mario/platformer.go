@@ -54,6 +54,10 @@ const (
 	EnemyGoomba  = 1
 	EnemyKoopa   = 2
 	EnemyPiranha = 3
+	EnemyFly     = 4
+	EnemyFrog    = 5
+	EnemyMouse   = 6
+	EnemySaw     = 7
 
 	// Powerup types
 	PowerupMushroom = 1
@@ -87,6 +91,16 @@ type Assets struct {
 	slimeBlue2   *ebiten.Image
 	bee1         *ebiten.Image
 	bee2         *ebiten.Image
+	
+	// New enemy sprites
+	fly1         *ebiten.Image
+	fly2         *ebiten.Image
+	frog1        *ebiten.Image
+	frog2        *ebiten.Image
+	mouse1       *ebiten.Image
+	mouse2       *ebiten.Image
+	saw1         *ebiten.Image
+	saw2         *ebiten.Image
 
 	// Tile sprites
 	grassTile    *ebiten.Image
@@ -152,6 +166,43 @@ func LoadAssets() (*Assets, error) {
 		assets.bee1 = nil
 	}
 	assets.bee2 = assets.bee1
+
+	// Load new enemy sprites
+	assets.fly1, _, err = ebitenutil.NewImageFromFile("assets/PNG/Enemies/fly_move.png")
+	if err != nil {
+		assets.fly1 = nil
+	}
+	assets.fly2, _, err = ebitenutil.NewImageFromFile("assets/PNG/Enemies/fly.png")
+	if err != nil {
+		assets.fly2 = assets.fly1
+	}
+
+	assets.frog1, _, err = ebitenutil.NewImageFromFile("assets/PNG/Enemies/frog_move.png")
+	if err != nil {
+		assets.frog1 = nil
+	}
+	assets.frog2, _, err = ebitenutil.NewImageFromFile("assets/PNG/Enemies/frog.png")
+	if err != nil {
+		assets.frog2 = assets.frog1
+	}
+
+	assets.mouse1, _, err = ebitenutil.NewImageFromFile("assets/PNG/Enemies/mouse_move.png")
+	if err != nil {
+		assets.mouse1 = nil
+	}
+	assets.mouse2, _, err = ebitenutil.NewImageFromFile("assets/PNG/Enemies/mouse.png")
+	if err != nil {
+		assets.mouse2 = assets.mouse1
+	}
+
+	assets.saw1, _, err = ebitenutil.NewImageFromFile("assets/PNG/Enemies/saw_move.png")
+	if err != nil {
+		assets.saw1 = nil
+	}
+	assets.saw2, _, err = ebitenutil.NewImageFromFile("assets/PNG/Enemies/saw.png")
+	if err != nil {
+		assets.saw2 = assets.saw1
+	}
 
 	// Load tile sprites
 	assets.grassTile, _, err = ebitenutil.NewImageFromFile("assets/PNG/Ground/Grass/grass.png")
@@ -463,13 +514,31 @@ func GenerateLevel(world int) *Level {
 				}
 
 			case 3: // Enemy spawn
+				// Select enemy type based on world and random chance
 				enemyType := EnemyGoomba
-				if world > 1 && rand.Float32() < 0.3 {
-					enemyType = EnemyKoopa
+				randVal := rand.Float32()
+				
+				if world >= 4 && randVal < 0.15 {
+					enemyType = EnemySaw      // Saw in later worlds
+				} else if world >= 3 && randVal < 0.25 {
+					enemyType = EnemyMouse    // Mouse in world 3+
+				} else if world >= 2 && randVal < 0.35 {
+					enemyType = EnemyFrog     // Frog in world 2+
+				} else if world >= 2 && randVal < 0.5 {
+					enemyType = EnemyFly      // Fly in world 2+
+				} else if world >= 1 && randVal < 0.7 {
+					enemyType = EnemyKoopa    // Koopa common
 				}
+				
+				// Flying enemies spawn in air
+				spawnY := 8 * TileSize
+				if enemyType == EnemyFly {
+					spawnY = 4 * TileSize // Spawn higher
+				}
+				
 				level.enemies = append(level.enemies, &Enemy{
 					x: float64(x * TileSize),
-					y: float64(8 * TileSize),
+					y: float64(spawnY),
 					width: 32,
 					height: 32,
 					enemyType: enemyType,
@@ -763,12 +832,59 @@ func (g *Game) updateEnemies() {
 
 		enemy.animFrame++
 
-		// Simple AI
-		if enemy.enemyType == EnemyPiranha {
-			// Move up and down
+		// Enemy AI based on type
+		switch enemy.enemyType {
+		case EnemyPiranha:
+			// Move up and down in pipe
 			enemy.y += math.Sin(float64(enemy.animFrame)*0.05) * 0.5
-		} else {
-			// Walk
+
+		case EnemyFly:
+			// Flying enemy - moves in sine wave pattern
+			enemy.x += float64(enemy.facing) * 0.8
+			enemy.y += math.Sin(float64(enemy.animFrame)*0.1) * 1.5
+			// Change direction periodically
+			if enemy.animFrame%200 == 0 {
+				enemy.facing = -enemy.facing
+			}
+
+		case EnemyFrog:
+			// Frog - jumps around
+			enemy.x += float64(enemy.facing) * 0.3
+			enemy.vy += Gravity * 0.3
+			enemy.y += enemy.vy
+			// Ground check for frog
+			bottomTile := int(enemy.y+float64(enemy.height)+1) / TileSize
+			leftTile := int(enemy.x) / TileSize
+			rightTile := int(enemy.x+float64(enemy.width)) / TileSize
+			if g.isSolid(leftTile, bottomTile) || g.isSolid(rightTile, bottomTile) {
+				enemy.y = float64(bottomTile*TileSize - int(enemy.height))
+				enemy.vy = -8 // Jump!
+			}
+			// Change direction at edges
+			if enemy.animFrame%150 == 0 {
+				enemy.facing = -enemy.facing
+			}
+
+		case EnemyMouse:
+			// Mouse - fast ground enemy
+			enemy.x += float64(enemy.facing) * 1.2
+			// Turn at edges or walls
+			leftTile := int(enemy.x) / TileSize
+			rightTile := int(enemy.x+float64(enemy.width)) / TileSize
+			bottomTile := int(enemy.y+float64(enemy.height)+1) / TileSize
+			if enemy.facing < 0 && (!g.isSolid(leftTile, bottomTile) || g.isSolid(leftTile, int(enemy.y)/TileSize)) {
+				enemy.facing = 1
+			} else if enemy.facing > 0 && (!g.isSolid(rightTile, bottomTile) || g.isSolid(rightTile, int(enemy.y)/TileSize)) {
+				enemy.facing = -1
+			}
+
+		case EnemySaw:
+			// Saw - moves horizontally, damages on touch
+			enemy.x += math.Sin(float64(enemy.animFrame)*0.08) * 2
+			// Saws can't be stomped
+
+		default:
+			// Goomba/Koopa - simple walk
 			enemy.x += float64(enemy.facing) * 0.5
 
 			// Turn at edges or walls
@@ -785,9 +901,12 @@ func (g *Game) updateEnemies() {
 
 		// Collision with player
 		if g.checkCollision(g.player, enemy) {
+			// Can't stomp flying enemies or saws
+			canStomp := enemy.enemyType != EnemyFly && enemy.enemyType != EnemySaw
+			
 			if enemy.enemyType == EnemyPiranha {
 				g.playerHit()
-			} else if g.player.vy > 0 && g.player.y+float64(g.player.height) < enemy.y+float64(enemy.height)/2 {
+			} else if canStomp && g.player.vy > 0 && g.player.y+float64(g.player.height) < enemy.y+float64(enemy.height)/2 {
 				// Stomp enemy
 				enemy.squashed = true
 				g.player.vy = -6
@@ -1171,7 +1290,7 @@ func (g *Game) drawEnemies(screen *ebiten.Image) {
 		if gameAssets != nil {
 			// Animation frame based on enemy position/time
 			animFrame := (enemy.animFrame / 10) % 2
-			
+
 			switch enemy.enemyType {
 			case EnemyGoomba:
 				if animFrame == 0 {
@@ -1184,6 +1303,30 @@ func (g *Game) drawEnemies(screen *ebiten.Image) {
 					sprite = gameAssets.slimeBlue1
 				} else {
 					sprite = gameAssets.slimeBlue2
+				}
+			case EnemyFly:
+				if animFrame == 0 {
+					sprite = gameAssets.fly1
+				} else {
+					sprite = gameAssets.fly2
+				}
+			case EnemyFrog:
+				if animFrame == 0 {
+					sprite = gameAssets.frog1
+				} else {
+					sprite = gameAssets.frog2
+				}
+			case EnemyMouse:
+				if animFrame == 0 {
+					sprite = gameAssets.mouse1
+				} else {
+					sprite = gameAssets.mouse2
+				}
+			case EnemySaw:
+				if animFrame == 0 {
+					sprite = gameAssets.saw1
+				} else {
+					sprite = gameAssets.saw2
 				}
 			default:
 				sprite = gameAssets.slimeGreen1
@@ -1204,18 +1347,29 @@ func (g *Game) drawEnemies(screen *ebiten.Image) {
 
 			screen.DrawImage(sprite, op)
 		} else {
-			// Fallback: Vector enemy
-			enemyColor := color.RGBA{139, 69, 19, 255} // Brown
-			if enemy.enemyType == EnemyKoopa {
+			// Fallback: Vector enemy with unique colors per type
+			enemyColor := color.RGBA{139, 69, 19, 255} // Brown (Goomba)
+			switch enemy.enemyType {
+			case EnemyKoopa:
 				enemyColor = color.RGBA{0, 100, 200, 255} // Blue
+			case EnemyFly:
+				enemyColor = color.RGBA{100, 255, 100, 255} // Green
+			case EnemyFrog:
+				enemyColor = color.RGBA{0, 200, 100, 255} // Frog green
+			case EnemyMouse:
+				enemyColor = color.RGBA{150, 100, 50, 255} // Brown mouse
+			case EnemySaw:
+				enemyColor = color.RGBA{150, 150, 150, 255} // Gray saw
 			}
 			vector.DrawFilledRect(screen, drawX, drawY, enemy.width, enemy.height, enemyColor, false)
 
-			// Eyes
-			eyeY := drawY + 8
-			eyeOffset := enemy.facing * 3
-			vector.DrawFilledCircle(screen, drawX+8+float32(eyeOffset), eyeY, 4, color.RGBA{255, 255, 255, 255}, false)
-			vector.DrawFilledCircle(screen, drawX+20+float32(eyeOffset), eyeY, 4, color.RGBA{255, 255, 255, 255}, false)
+			// Eyes for organic enemies
+			if enemy.enemyType != EnemySaw {
+				eyeY := drawY + 8
+				eyeOffset := enemy.facing * 3
+				vector.DrawFilledCircle(screen, drawX+8+float32(eyeOffset), eyeY, 4, color.RGBA{255, 255, 255, 255}, false)
+				vector.DrawFilledCircle(screen, drawX+20+float32(eyeOffset), eyeY, 4, color.RGBA{255, 255, 255, 255}, false)
+			}
 		}
 	}
 }
