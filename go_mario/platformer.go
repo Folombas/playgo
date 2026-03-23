@@ -912,7 +912,7 @@ func (g *Game) updateEnemies() {
 				g.player.vy = -6
 				g.player.score += 100
 				playSound(SoundStomp)
-				g.spawnStompParticles(enemy.x+float64(enemy.width/2), enemy.y+float64(enemy.height/2))
+				g.spawnEnemyDefeatParticles(enemy.x+float64(enemy.width/2), enemy.y+float64(enemy.height/2), enemy.enemyType)
 			} else if !g.player.isInvincible {
 				g.playerHit()
 			}
@@ -1084,6 +1084,71 @@ func (g *Game) spawnPowerupParticles(x, y float64) {
 			color: color.RGBA{255, 100, 100, 255}, // Pink/Red
 			size: float32(rand.Intn(6)+4),
 		})
+	}
+}
+
+// spawnEnemyDefeatParticles создаёт частицы при уничтожении врага (тип зависит от врага)
+func (g *Game) spawnEnemyDefeatParticles(x, y float64, enemyType int) {
+	switch enemyType {
+	case EnemyFly:
+		// Green sparkles for fly
+		for i := 0; i < 15; i++ {
+			g.particles = append(g.particles, &Particle{
+				x: x + 16,
+				y: y + 16,
+				vx: float64(rand.Intn(16)-8) * 0.8,
+				vy: float64(rand.Intn(16)-8) * 0.8,
+				life: 30 + rand.Intn(20),
+				color: color.RGBA{100, 255, 100, 255}, // Green
+				size: float32(rand.Intn(5)+2),
+			})
+		}
+	case EnemyFrog:
+		// Green blobs for frog
+		for i := 0; i < 18; i++ {
+			angle := float64(i) * 2 * math.Pi / 18
+			speed := float64(rand.Intn(5)+3) * 0.5
+			g.particles = append(g.particles, &Particle{
+				x: x + 16,
+				y: y + 16,
+				vx: math.Cos(angle) * speed,
+				vy: math.Sin(angle) * speed,
+				life: 35 + rand.Intn(15),
+				color: color.RGBA{0, 200, 100, 255}, // Frog green
+				size: float32(rand.Intn(6)+3),
+			})
+		}
+	case EnemyMouse:
+		// Brown/orange for mouse
+		for i := 0; i < 14; i++ {
+			g.particles = append(g.particles, &Particle{
+				x: x + 16,
+				y: y + 16,
+				vx: float64(rand.Intn(14)-7) * 0.9,
+				vy: float64(-rand.Intn(10)-3) * 0.6,
+				life: 28 + rand.Intn(12),
+				color: color.RGBA{180, 120, 60, 255}, // Brown/orange
+				size: float32(rand.Intn(5)+2),
+			})
+		}
+	case EnemySaw:
+		// Metal sparks for saw (can't be stomped, but destroyed by star)
+		for i := 0; i < 25; i++ {
+			angle := float64(i) * 2 * math.Pi / 25
+			speed := float64(rand.Intn(8)+4) * 0.7
+			g.particles = append(g.particles, &Particle{
+				x: x + 16,
+				y: y + 16,
+				vx: math.Cos(angle) * speed,
+				vy: math.Sin(angle) * speed,
+				life: 40 + rand.Intn(20),
+				color: color.RGBA{200, 200, 200, 255}, // Silver
+				size: float32(rand.Intn(4)+2),
+			})
+		}
+	default:
+		// Default brown for Goomba/Koopa
+		g.spawnStompParticles(x, y)
 	}
 }
 
