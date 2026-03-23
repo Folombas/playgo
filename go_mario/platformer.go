@@ -59,6 +59,13 @@ const (
 	EnemyMouse   = 6
 	EnemySaw     = 7
 
+	// New enemy types (Day 86)
+	EnemyBarnacle = 8
+	EnemyLadybug  = 9
+	EnemySnail    = 10
+	EnemyWorm     = 11
+	EnemyFish     = 12
+
 	// Powerup types
 	PowerupMushroom = 1
 	PowerupFlower   = 2
@@ -156,6 +163,18 @@ type Assets struct {
 	mouse2       *ebiten.Image
 	saw1         *ebiten.Image
 	saw2         *ebiten.Image
+
+	// Additional enemy sprites (Day 86)
+	barnacle1    *ebiten.Image
+	barnacle2    *ebiten.Image
+	ladybug1     *ebiten.Image
+	ladybug2     *ebiten.Image
+	snail1       *ebiten.Image
+	snail2       *ebiten.Image
+	worm1        *ebiten.Image
+	worm2        *ebiten.Image
+	fish1        *ebiten.Image
+	fish2        *ebiten.Image
 
 	// Tile sprites
 	grassTile    *ebiten.Image
@@ -257,6 +276,52 @@ func LoadAssets() (*Assets, error) {
 	assets.saw2, _, err = ebitenutil.NewImageFromFile("assets/PNG/Enemies/saw.png")
 	if err != nil {
 		assets.saw2 = assets.saw1
+	}
+
+	// Load additional enemy sprites (Day 86)
+	assets.barnacle1, _, err = ebitenutil.NewImageFromFile("assets/PNG/Enemies/barnacle.png")
+	if err != nil {
+		assets.barnacle1 = nil
+	}
+	assets.barnacle2, _, err = ebitenutil.NewImageFromFile("assets/PNG/Enemies/barnacle_attack.png")
+	if err != nil {
+		assets.barnacle2 = assets.barnacle1
+	}
+
+	assets.ladybug1, _, err = ebitenutil.NewImageFromFile("assets/PNG/Enemies/ladybug_move.png")
+	if err != nil {
+		assets.ladybug1 = nil
+	}
+	assets.ladybug2, _, err = ebitenutil.NewImageFromFile("assets/PNG/Enemies/ladybug_fly.png")
+	if err != nil {
+		assets.ladybug2 = assets.ladybug1
+	}
+
+	assets.snail1, _, err = ebitenutil.NewImageFromFile("assets/PNG/Enemies/snail_move.png")
+	if err != nil {
+		assets.snail1 = nil
+	}
+	assets.snail2, _, err = ebitenutil.NewImageFromFile("assets/PNG/Enemies/snail.png")
+	if err != nil {
+		assets.snail2 = assets.snail1
+	}
+
+	assets.worm1, _, err = ebitenutil.NewImageFromFile("assets/PNG/Enemies/wormGreen_move.png")
+	if err != nil {
+		assets.worm1 = nil
+	}
+	assets.worm2, _, err = ebitenutil.NewImageFromFile("assets/PNG/Enemies/wormGreen.png")
+	if err != nil {
+		assets.worm2 = assets.worm1
+	}
+
+	assets.fish1, _, err = ebitenutil.NewImageFromFile("assets/PNG/Enemies/fishGreen_move.png")
+	if err != nil {
+		assets.fish1 = nil
+	}
+	assets.fish2, _, err = ebitenutil.NewImageFromFile("assets/PNG/Enemies/fishGreen.png")
+	if err != nil {
+		assets.fish2 = assets.fish1
 	}
 
 	// Load tile sprites
@@ -622,25 +687,37 @@ func GenerateLevel(world int) *Level {
 				// Select enemy type based on world and random chance
 				enemyType := EnemyGoomba
 				randVal := rand.Float32()
-				
-				if world >= 4 && randVal < 0.15 {
-					enemyType = EnemySaw      // Saw in later worlds
-				} else if world >= 3 && randVal < 0.25 {
-					enemyType = EnemyMouse    // Mouse in world 3+
-				} else if world >= 2 && randVal < 0.35 {
-					enemyType = EnemyFrog     // Frog in world 2+
-				} else if world >= 2 && randVal < 0.5 {
-					enemyType = EnemyFly      // Fly in world 2+
-				} else if world >= 1 && randVal < 0.7 {
-					enemyType = EnemyKoopa    // Koopa common
+
+				if world >= 5 && randVal < 0.12 {
+					enemyType = EnemyFish      // Fish in world 5+
+				} else if world >= 4 && randVal < 0.18 {
+					enemyType = EnemyWorm      // Worm in world 4+
+				} else if world >= 4 && randVal < 0.24 {
+					enemyType = EnemySaw       // Saw in later worlds
+				} else if world >= 3 && randVal < 0.32 {
+					enemyType = EnemySnail     // Snail in world 3+
+				} else if world >= 3 && randVal < 0.40 {
+					enemyType = EnemyMouse     // Mouse in world 3+
+				} else if world >= 2 && randVal < 0.50 {
+					enemyType = EnemyLadybug   // Ladybug in world 2+
+				} else if world >= 2 && randVal < 0.60 {
+					enemyType = EnemyFrog      // Frog in world 2+
+				} else if world >= 2 && randVal < 0.70 {
+					enemyType = EnemyFly       // Fly in world 2+
+				} else if world >= 1 && randVal < 0.85 {
+					enemyType = EnemyKoopa     // Koopa common
+				} else if world >= 1 {
+					enemyType = EnemyBarnacle  // Barnacle on structures
 				}
-				
+
 				// Flying enemies spawn in air
 				spawnY := 8 * TileSize
-				if enemyType == EnemyFly {
-					spawnY = 4 * TileSize // Spawn higher
+				if enemyType == EnemyFly || enemyType == EnemyLadybug {
+					spawnY = 3 * TileSize // Spawn higher
+				} else if enemyType == EnemyFish {
+					spawnY = 6 * TileSize // Spawn in mid-air (water zones later)
 				}
-				
+
 				level.enemies = append(level.enemies, &Enemy{
 					x: float64(x * TileSize),
 					y: float64(spawnY),
@@ -1049,6 +1126,55 @@ func (g *Game) updateEnemies() {
 			enemy.x += math.Sin(float64(enemy.animFrame)*0.08) * 2
 			// Saws can't be stomped
 
+		// New enemy behaviors (Day 86)
+		case EnemyBarnacle:
+			// Barnacle - stationary enemy that attacks when player is near
+			distToPlayer := math.Abs(g.player.x - enemy.x)
+			if distToPlayer < 100 {
+				// Attack mode - extend
+				enemy.y += math.Sin(float64(enemy.animFrame)*0.2) * 0.3
+			}
+
+		case EnemyLadybug:
+			// Ladybug - flies in figure-8 pattern
+			enemy.x += float64(enemy.facing) * 1.0
+			enemy.y += math.Sin(float64(enemy.animFrame)*0.15) * 2
+			if enemy.animFrame%180 == 0 {
+				enemy.facing = -enemy.facing
+			}
+
+		case EnemySnail:
+			// Snail - very slow but armored
+			enemy.x += float64(enemy.facing) * 0.2
+			// Turn at edges
+			leftTile := int(enemy.x) / TileSize
+			rightTile := int(enemy.x+float64(enemy.width)) / TileSize
+			bottomTile := int(enemy.y+float64(enemy.height)+1) / TileSize
+			if enemy.facing < 0 && !g.isSolid(leftTile, bottomTile) {
+				enemy.facing = 1
+			} else if enemy.facing > 0 && !g.isSolid(rightTile, bottomTile) {
+				enemy.facing = -1
+			}
+
+		case EnemyWorm:
+			// Worm - emerges from ground periodically
+			baseY := enemy.y
+			if enemy.animFrame%200 < 100 {
+				// Emerged - can be stomped
+				enemy.y = baseY - 10
+			} else {
+				// Hidden in ground - invulnerable
+				enemy.y = baseY
+			}
+
+		case EnemyFish:
+			// Fish - swims in water/lava areas
+			enemy.x += float64(enemy.facing) * 1.5
+			enemy.y += math.Sin(float64(enemy.animFrame)*0.1) * 1.0
+			if enemy.animFrame%150 == 0 {
+				enemy.facing = -enemy.facing
+			}
+
 		default:
 			// Goomba/Koopa - simple walk
 			enemy.x += float64(enemy.facing) * 0.5
@@ -1067,10 +1193,29 @@ func (g *Game) updateEnemies() {
 
 		// Collision with player
 		if g.checkCollision(g.player, enemy) {
-			// Can't stomp flying enemies or saws
+			// Can't stomp certain enemies
 			canStomp := enemy.enemyType != EnemyFly && enemy.enemyType != EnemySaw
-			
-			if enemy.enemyType == EnemyPiranha {
+
+			// Special enemy behaviors
+			switch enemy.enemyType {
+			case EnemyBarnacle:
+				// Can only stomp when retracted
+				if math.Sin(float64(enemy.animFrame)*0.2) > 0.5 {
+					canStomp = false
+				}
+			case EnemySnail:
+				// Snail requires 2 stomps or star power
+				if !g.player.isInvincible && !g.player.isBig {
+					canStomp = false // Too armored
+				}
+			case EnemyWorm:
+				// Can only stomp when emerged
+				if enemy.animFrame%200 >= 100 {
+					canStomp = false
+				}
+			}
+
+			if enemy.enemyType == EnemyPiranha || enemy.enemyType == EnemyBarnacle {
 				g.playerHit()
 			} else if canStomp && g.player.vy > 0 && g.player.y+float64(g.player.height) < enemy.y+float64(enemy.height)/2 {
 				// Stomp enemy
@@ -1455,6 +1600,80 @@ func (g *Game) spawnEnemyDefeatParticles(x, y float64, enemyType int) {
 				size: float32(rand.Intn(4)+2),
 			})
 		}
+
+	// New enemy particles (Day 86)
+	case EnemyBarnacle:
+		// Red/orange for barnacle
+		for i := 0; i < 16; i++ {
+			angle := float64(i) * 2 * math.Pi / 16
+			speed := float64(rand.Intn(6)+3) * 0.6
+			g.particles = append(g.particles, &Particle{
+				x: x + 16,
+				y: y + 16,
+				vx: math.Cos(angle) * speed,
+				vy: math.Sin(angle) * speed,
+				life: 30 + rand.Intn(15),
+				color: color.RGBA{255, 100, 50, 255}, // Red-orange
+				size: float32(rand.Intn(5)+2),
+			})
+		}
+	case EnemyLadybug:
+		// Red with black spots for ladybug
+		for i := 0; i < 18; i++ {
+			g.particles = append(g.particles, &Particle{
+				x: x + 16,
+				y: y + 16,
+				vx: float64(rand.Intn(16)-8) * 0.7,
+				vy: float64(-rand.Intn(12)-4) * 0.5,
+				life: 32 + rand.Intn(18),
+				color: color.RGBA{220, 20, 20, 255}, // Red
+				size: float32(rand.Intn(5)+2),
+			})
+		}
+	case EnemySnail:
+		// Green/brown for snail
+		for i := 0; i < 14; i++ {
+			g.particles = append(g.particles, &Particle{
+				x: x + 16,
+				y: y + 16,
+				vx: float64(rand.Intn(12)-6) * 0.5,
+				vy: float64(-rand.Intn(8)-2) * 0.4,
+				life: 35 + rand.Intn(15),
+				color: color.RGBA{100, 150, 50, 255}, // Green-brown
+				size: float32(rand.Intn(5)+3),
+			})
+		}
+	case EnemyWorm:
+		// Pink for worm
+		for i := 0; i < 16; i++ {
+			angle := float64(i) * 2 * math.Pi / 16
+			speed := float64(rand.Intn(5)+2) * 0.6
+			g.particles = append(g.particles, &Particle{
+				x: x + 16,
+				y: y + 16,
+				vx: math.Cos(angle) * speed,
+				vy: math.Sin(angle) * speed,
+				life: 28 + rand.Intn(12),
+				color: color.RGBA{255, 150, 150, 255}, // Pink
+				size: float32(rand.Intn(4)+2),
+			})
+		}
+	case EnemyFish:
+		// Blue/cyan for fish
+		for i := 0; i < 20; i++ {
+			angle := float64(i) * 2 * math.Pi / 20
+			speed := float64(rand.Intn(7)+4) * 0.6
+			g.particles = append(g.particles, &Particle{
+				x: x + 16,
+				y: y + 16,
+				vx: math.Cos(angle) * speed,
+				vy: math.Sin(angle) * speed,
+				life: 35 + rand.Intn(15),
+				color: color.RGBA{50, 150, 255, 255}, // Blue
+				size: float32(rand.Intn(5)+2),
+			})
+		}
+
 	default:
 		// Default brown for Goomba/Koopa
 		g.spawnStompParticles(x, y)
@@ -1571,7 +1790,7 @@ func (g *Game) drawMenu(screen *ebiten.Image) {
 	text.Draw(screen, features, gameAssets.gameFont, ScreenWidth/2-180, ScreenHeight-60, color.RGBA{255, 215, 0, 255})
 
 	// Version info
-	versionText := "Go365 - Day 83 | March 23, 2026"
+	versionText := "Go365 - Day 86 | March 23, 2026 | New Enemies!"
 	text.Draw(screen, versionText, gameAssets.gameFont, 20, ScreenHeight-30, color.RGBA{200, 200, 200, 255})
 }
 
@@ -1662,10 +1881,37 @@ func (g *Game) drawLevel(screen *ebiten.Image) {
 		}
 	}
 
-	// Draw flag
+	// Draw flag with animation
 	flagX := float32(g.level.flagX) - float32(g.camera.x)
+	flagFrame := g.frameCount / 15 % 3
+	
+	// Flag pole
 	vector.StrokeLine(screen, flagX+10, float32(g.level.flagY), flagX+10, float32(g.level.flagY+TileSize*4), 3, color.RGBA{100, 100, 100, 255}, false)
-	vector.DrawFilledRect(screen, flagX+10, float32(g.level.flagY), 40, 30, color.RGBA{0, 200, 0, 255}, false)
+	
+	// Animated flag sprite or fallback
+	if gameAssets != nil {
+		var flagSprite *ebiten.Image
+		var err error
+		switch flagFrame {
+		case 0:
+			flagSprite, _, err = ebitenutil.NewImageFromFile("assets/PNG/Items/flagRed1.png")
+		case 1:
+			flagSprite, _, err = ebitenutil.NewImageFromFile("assets/PNG/Items/flagRed2.png")
+		default:
+			flagSprite, _, err = ebitenutil.NewImageFromFile("assets/PNG/Items/flagRed_down.png")
+		}
+		if err == nil && flagSprite != nil {
+			op := &ebiten.DrawImageOptions{}
+			op.GeoM.Translate(float64(flagX+10), float64(g.level.flagY))
+			screen.DrawImage(flagSprite, op)
+		} else {
+			// Fallback: Vector flag
+			vector.DrawFilledRect(screen, flagX+10, float32(g.level.flagY), 40, 30, color.RGBA{0, 200, 0, 255}, false)
+		}
+	} else {
+		// Fallback: Vector flag
+		vector.DrawFilledRect(screen, flagX+10, float32(g.level.flagY), 40, 30, color.RGBA{0, 200, 0, 255}, false)
+	}
 
 	// Draw keys
 	g.drawKeys(screen)
@@ -1737,6 +1983,39 @@ func (g *Game) drawEnemies(screen *ebiten.Image) {
 				} else {
 					sprite = gameAssets.saw2
 				}
+
+			// New enemy sprites (Day 86)
+			case EnemyBarnacle:
+				if animFrame == 0 {
+					sprite = gameAssets.barnacle1
+				} else {
+					sprite = gameAssets.barnacle2
+				}
+			case EnemyLadybug:
+				if animFrame == 0 {
+					sprite = gameAssets.ladybug1
+				} else {
+					sprite = gameAssets.ladybug2
+				}
+			case EnemySnail:
+				if animFrame == 0 {
+					sprite = gameAssets.snail1
+				} else {
+					sprite = gameAssets.snail2
+				}
+			case EnemyWorm:
+				if animFrame == 0 {
+					sprite = gameAssets.worm1
+				} else {
+					sprite = gameAssets.worm2
+				}
+			case EnemyFish:
+				if animFrame == 0 {
+					sprite = gameAssets.fish1
+				} else {
+					sprite = gameAssets.fish2
+				}
+
 			default:
 				sprite = gameAssets.slimeGreen1
 			}
