@@ -6,13 +6,17 @@ import (
 	"log"
 	"math"
 	"math/rand"
+	"os"
 	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/audio"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
+	"github.com/hajimehoshi/ebiten/v2/text"
 	"github.com/hajimehoshi/ebiten/v2/vector"
+	"golang.org/x/image/font"
+	"golang.org/x/image/font/opentype"
 )
 
 // ============================================================================
@@ -95,6 +99,9 @@ type Assets struct {
 	// Items
 	coinSprite   *ebiten.Image
 	flagSprite   *ebiten.Image
+
+	// Font
+	gameFont     font.Face
 }
 
 var gameAssets *Assets
@@ -188,7 +195,32 @@ func LoadAssets() (*Assets, error) {
 		assets.coinSprite = nil
 	}
 
+	// Load font
+	assets.gameFont, err = loadFont("assets/fonts/SuperAdorable-MAvyp.ttf", 24)
+	if err != nil {
+		// Fallback to default font
+		assets.gameFont = nil
+	}
+
 	return assets, nil
+}
+
+// loadFont загружает шрифт из файла
+func loadFont(path string, size int) (font.Face, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	
+	ttFont, err := opentype.Parse(data)
+	if err != nil {
+		return nil, err
+	}
+	
+	return opentype.NewFace(ttFont, &opentype.FaceOptions{
+		Size: float64(size),
+		DPI:  72,
+	})
 }
 
 func (a *Assets) HasSprites() bool {
@@ -551,12 +583,20 @@ func (g *Game) updatePlayer() {
 		}
 		p.facing = 1
 		p.animFrame++
+		// Play footstep sound periodically while walking
+		if p.onGround && p.animFrame%20 == 0 {
+			playSound(SoundFootstep)
+		}
 	} else if ebiten.IsKeyPressed(ebiten.KeyArrowLeft) || ebiten.IsKeyPressed(ebiten.KeyA) {
 		if p.vx > -RunSpeed {
 			p.vx -= Acceleration
 		}
 		p.facing = -1
 		p.animFrame++
+		// Play footstep sound periodically while walking
+		if p.onGround && p.animFrame%20 == 0 {
+			playSound(SoundFootstep)
+		}
 	} else {
 		// Friction
 		p.vx *= Friction
@@ -991,18 +1031,30 @@ func (g *Game) Draw(screen *ebiten.Image) {
 }
 
 func (g *Game) drawMenu(screen *ebiten.Image) {
-	// Sky
-	screen.Fill(color.RGBA{100, 150, 200, 255})
+	// Sky gradient
+	for y := 0; y < ScreenHeight; y++ {
+		r := uint8(100 + y/10)
+		g := uint8(150 + y/15)
+		b := uint8(200)
+		screen.Fill(color.RGBA{r, g, b, 255})
+	}
 
-	// Title
+	// Title with shadow
 	title := "SUPER GO MARIO"
-	titleX := ScreenWidth/2 - len(title)*10
-	ebitenutil.DebugPrintAt(screen, title, titleX, 150)
+	titleX := ScreenWidth/2 - 140
+	
+	// Shadow
+	text.Draw(screen, title, gameAssets.gameFont, titleX+3, 153, color.RGBA{0, 0, 0, 100})
+	// Main title
+	text.Draw(screen, title, gameAssets.gameFont, titleX, 150, color.RGBA{255, 215, 0, 255})
 
 	// Subtitle
 	subtitle := "A Classic 2D Platformer"
-	subX := ScreenWidth/2 - len(subtitle)*6
-	ebitenutil.DebugPrintAt(screen, subtitle, subX, 200)
+	subX := ScreenWidth/2 - 100
+	text.Draw(screen, subtitle, gameAssets.gameFont, subX, 200, color.RGBA{255, 255, 255, 255})
+
+	// Decorative line
+	vector.DrawFilledRect(screen, 200, 230, 400, 3, color.RGBA{255, 255, 255, 200}, false)
 
 	// Instructions
 	instructions := []string{
@@ -1014,8 +1066,16 @@ func (g *Game) drawMenu(screen *ebiten.Image) {
 	}
 
 	for i, line := range instructions {
-		ebitenutil.DebugPrintAt(screen, line, ScreenWidth/2-len(line)*6, 300+i*25)
+		textColor := color.RGBA{255, 255, 255, 255}
+		if i == len(instructions)-1 {
+			textColor = color.RGBA{100, 255, 100, 255} // Green for start prompt
+		}
+		text.Draw(screen, line, gameAssets.gameFont, ScreenWidth/2-130, 270+i*32, textColor)
 	}
+
+	// Version info
+	versionText := "Go365 - Day 83 | March 23, 2026"
+	text.Draw(screen, versionText, gameAssets.gameFont, 20, ScreenHeight-30, color.RGBA{200, 200, 200, 255})
 }
 
 func (g *Game) drawPlaying(screen *ebiten.Image) {
@@ -1299,41 +1359,76 @@ func (g *Game) drawPlayer(screen *ebiten.Image) {
 
 func (g *Game) drawUI(screen *ebiten.Image) {
 	// Top bar
-	vector.DrawFilledRect(screen, 0, 0, ScreenWidth, 40, color.RGBA{0, 0, 0, 150}, false)
+	vector.DrawFilledRect(screen, 0, 0, ScreenWidth, 40, color.RGBA{0, 0, 0, 180}, false)
+	vector.DrawFilledRect(screen, 0, 39, ScreenWidth, 2, color.RGBA{100, 100, 100, 255}, false)
 
-	// Score
-	scoreText := fmt.Sprintf("MARIO\n%06d", g.player.score)
-	ebitenutil.DebugPrintAt(screen, scoreText, 20, 5)
+	// Use custom font if available, otherwise fallback to DebugPrint
+	if gameAssets != nil && gameAssets.gameFont != nil {
+		// Score
+		scoreText := fmt.Sprintf("MARIO\n%06d", g.player.score)
+		text.Draw(screen, scoreText, gameAssets.gameFont, 20, 28, color.RGBA{255, 255, 255, 255})
 
-	// Coins
-	coinText := fmt.Sprintf("COINS\nx%02d", g.player.coins)
-	ebitenutil.DebugPrintAt(screen, coinText, 150, 5)
+		// Coins
+		coinText := fmt.Sprintf("COINS\nx%02d", g.player.coins)
+		text.Draw(screen, coinText, gameAssets.gameFont, 180, 28, color.RGBA{255, 215, 0, 255})
 
-	// World
-	worldText := fmt.Sprintf("WORLD\n%d-1", g.player.world)
-	ebitenutil.DebugPrintAt(screen, worldText, 280, 5)
+		// World
+		worldText := fmt.Sprintf("WORLD\n%d-1", g.player.world)
+		text.Draw(screen, worldText, gameAssets.gameFont, 340, 28, color.RGBA{100, 200, 100, 255})
 
-	// Lives
-	livesText := fmt.Sprintf("LIVES\nx%d", g.player.lives)
-	ebitenutil.DebugPrintAt(screen, livesText, 410, 5)
+		// Lives
+		livesText := fmt.Sprintf("LIVES\nx%d", g.player.lives)
+		text.Draw(screen, livesText, gameAssets.gameFont, 500, 28, color.RGBA{255, 100, 100, 255})
+	} else {
+		// Fallback to DebugPrint
+		scoreText := fmt.Sprintf("MARIO\n%06d", g.player.score)
+		ebitenutil.DebugPrintAt(screen, scoreText, 20, 5)
+
+		coinText := fmt.Sprintf("COINS\nx%02d", g.player.coins)
+		ebitenutil.DebugPrintAt(screen, coinText, 150, 5)
+
+		worldText := fmt.Sprintf("WORLD\n%d-1", g.player.world)
+		ebitenutil.DebugPrintAt(screen, worldText, 280, 5)
+
+		livesText := fmt.Sprintf("LIVES\nx%d", g.player.lives)
+		ebitenutil.DebugPrintAt(screen, livesText, 410, 5)
+	}
 }
 
 func (g *Game) drawGameOver(screen *ebiten.Image) {
-	screen.Fill(color.RGBA{0, 0, 0, 255})
-	text := "GAME OVER"
-	ebitenutil.DebugPrintAt(screen, text, ScreenWidth/2-len(text)*8, ScreenHeight/2)
-	ebitenutil.DebugPrintAt(screen, "Press ENTER to restart", ScreenWidth/2-80, ScreenHeight/2+50)
+	// Dark red background
+	screen.Fill(color.RGBA{50, 0, 0, 255})
+
+	title := "GAME OVER"
+	text.Draw(screen, title, gameAssets.gameFont, ScreenWidth/2-90, ScreenHeight/2-20, color.RGBA{255, 50, 50, 255})
+
+	scoreText := fmt.Sprintf("Final Score: %06d", g.player.score)
+	text.Draw(screen, scoreText, gameAssets.gameFont, ScreenWidth/2-110, ScreenHeight/2+30, color.RGBA{255, 255, 255, 255})
+
+	restartText := "Press ENTER to restart"
+	text.Draw(screen, restartText, gameAssets.gameFont, ScreenWidth/2-110, ScreenHeight/2+80, color.RGBA{200, 200, 200, 255})
 }
 
 func (g *Game) drawWon(screen *ebiten.Image) {
-	screen.Fill(color.RGBA{100, 150, 200, 255})
-	text := "COURSE CLEAR!"
-	ebitenutil.DebugPrintAt(screen, text, ScreenWidth/2-len(text)*8, ScreenHeight/2-30)
+	// Victory gradient
+	for y := 0; y < ScreenHeight; y++ {
+		r := uint8(100 + y/10)
+		g := uint8(180 + y/15)
+		b := uint8(150)
+		screen.Fill(color.RGBA{r, g, b, 255})
+	}
+
+	title := "COURSE CLEAR!"
+	text.Draw(screen, title, gameAssets.gameFont, ScreenWidth/2-120, ScreenHeight/2-50, color.RGBA{255, 215, 0, 255})
 
 	scoreText := fmt.Sprintf("Score: %06d", g.player.score)
-	ebitenutil.DebugPrintAt(screen, scoreText, ScreenWidth/2-50, ScreenHeight/2+20)
+	text.Draw(screen, scoreText, gameAssets.gameFont, ScreenWidth/2-80, ScreenHeight/2+10, color.RGBA{255, 255, 255, 255})
 
-	ebitenutil.DebugPrintAt(screen, "Press ENTER to continue", ScreenWidth/2-80, ScreenHeight/2+70)
+	coinsText := fmt.Sprintf("Coins Collected: %d", g.player.coins)
+	text.Draw(screen, coinsText, gameAssets.gameFont, ScreenWidth/2-110, ScreenHeight/2+50, color.RGBA{255, 215, 0, 255})
+
+	restartText := "Press ENTER to continue"
+	text.Draw(screen, restartText, gameAssets.gameFont, ScreenWidth/2-110, ScreenHeight/2+100, color.RGBA{255, 255, 255, 255})
 }
 
 func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
@@ -1341,7 +1436,7 @@ func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
 }
 
 // ============================================================================
-// AUDIO (Simple beep system)
+// AUDIO (Enhanced with Kenney RPG Audio)
 // ============================================================================
 
 type SoundType int
@@ -1357,15 +1452,44 @@ const (
 	SoundBreak
 	SoundStart
 	SoundWin
+	SoundFootstep
+	SoundDoor
+	SoundItem
 )
 
 var audioCtx *audio.Context
+
+// soundFiles maps sound types to Kenney RPG audio files
+var soundFiles = map[SoundType]string{
+	SoundJump:     "Audio/footstep00.ogg",
+	SoundFootstep: "Audio/footstep01.ogg",
+	SoundCoin:     "Audio/handleCoins.ogg",
+	SoundStomp:    "Audio/cloth1.ogg",
+	SoundHit:      "Audio/creak1.ogg",
+	SoundDie:      "Audio/doorClose_1.ogg",
+	SoundPowerup:  "Audio/bookOpen.ogg",
+	SoundBump:     "Audio/bookPlace1.ogg",
+	SoundBreak:    "Audio/knifeSlice.ogg",
+	SoundStart:    "Audio/metalClick.ogg",
+	SoundWin:      "Audio/handleCoins2.ogg",
+	SoundDoor:     "Audio/doorOpen_1.ogg",
+	SoundItem:     "Audio/beltHandle1.ogg",
+}
 
 func initAudio() {
 	audioCtx = audio.NewContext(44100)
 }
 
-// generateBeep creates a simple beep sound
+// loadSoundFromFile загружает звук из файла
+func loadSoundFromFile(filePath string) ([]byte, error) {
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return nil, err
+	}
+	return data, nil
+}
+
+// generateBeep creates a simple beep sound (fallback)
 func generateBeep(frequency, duration float64) []byte {
 	sampleRate := 44100
 	numSamples := int(float64(sampleRate) * duration)
@@ -1376,7 +1500,7 @@ func generateBeep(frequency, duration float64) []byte {
 		// Simple sine wave with envelope
 		envelope := 1.0 - float64(i)/float64(numSamples)
 		value := math.Sin(2*math.Pi*frequency*t) * envelope * 0.3
-		
+
 		// Convert to 16-bit
 		sample := int16(value * 32767)
 		samples[i*2] = byte(sample)
@@ -1391,9 +1515,21 @@ func playSound(sound SoundType) {
 		return
 	}
 
+	// Try to load from file first
+	filePath, ok := soundFiles[sound]
+	if ok {
+		fullPath := "assets/sounds/" + filePath
+		data, err := loadSoundFromFile(fullPath)
+		if err == nil && len(data) > 0 {
+			player := audioCtx.NewPlayerFromBytes(data)
+			player.SetVolume(0.5)
+			player.Play()
+			return
+		}
+	}
+
+	// Fallback to generated beep
 	var samples []byte
-	
-	// Generate different sounds for each type
 	switch sound {
 	case SoundJump:
 		samples = generateBeep(400, 0.1)
@@ -1415,6 +1551,10 @@ func playSound(sound SoundType) {
 		samples = generateBeep(600, 0.2)
 	case SoundWin:
 		samples = generateBeep(800, 0.4)
+	case SoundFootstep:
+		samples = generateBeep(300, 0.05)
+	case SoundItem:
+		samples = generateBeep(1000, 0.1)
 	}
 
 	if len(samples) > 0 {
