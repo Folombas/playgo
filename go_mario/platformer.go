@@ -70,7 +70,62 @@ const (
 	StatePlaying  = 1
 	StateGameOver = 2
 	StateWon      = 3
+
+	// Tile types extended
+	TileSpike   = 11
+	TileChest   = 12
+	TileKey     = 13
 )
+
+// ============================================================================
+// ACHIEVEMENTS
+// ============================================================================
+
+type Achievement struct {
+	id          string
+	name        string
+	description string
+	unlocked    bool
+}
+
+var achievements = map[string]*Achievement{
+	"first_blood": {
+		id:          "first_blood",
+		name:        "Первая кровь",
+		description: "Победите первого врага",
+		unlocked:    false,
+	},
+	"coin_master": {
+		id:          "coin_master",
+		name:        "Мастер монет",
+		description: "Соберите 100 монет",
+		unlocked:    false,
+	},
+	"enemy_slayer": {
+		id:          "enemy_slayer",
+		name:        "Убийца врагов",
+		description: "Победите 10 врагов",
+		unlocked:    false,
+	},
+	"treasure_hunter": {
+		id:          "treasure_hunter",
+		name:        "Охотник за сокровищами",
+		description: "Найдите секретный сундук",
+		unlocked:    false,
+	},
+	"speedrunner": {
+		id:          "speedrunner",
+		name:        "Спидраннер",
+		description: "Пройдите уровень за 60 секунд",
+		unlocked:    false,
+	},
+	"survivor": {
+		id:          "survivor",
+		name:        "Выживший",
+		description: "Пройдите уровень без урона",
+		unlocked:    false,
+	},
+}
 
 // ============================================================================
 // ASSETS
@@ -295,9 +350,12 @@ type Player struct {
 
 	// Stats
 	coins       int
+	keys        int
 	score       int
 	lives       int
 	world       int
+	enemiesDefeated int
+	damageTaken     int
 
 	// Power state
 	isBig       bool
@@ -341,14 +399,46 @@ type Particle struct {
 
 // Level - уровень
 type Level struct {
-	width   int
-	height  int
-	tiles   [][]int
-	coins   []Coin
-	enemies []*Enemy
-	powerups []*Powerup
-	flagX   int
-	flagY   int
+	width       int
+	height      int
+	tiles       [][]int
+	coins       []Coin
+	enemies     []*Enemy
+	powerups    []*Powerup
+	keys        []*Key
+	chests      []*Chest
+	spikes      []*Spike
+	flagX       int
+	flagY       int
+	timeLimit   int
+	timeElapsed int
+}
+
+// Key - ключ
+type Key struct {
+	x, y      float64
+	collected bool
+	animFrame int
+}
+
+// Chest - сундук
+type Chest struct {
+	x, y      float64
+	width     float32
+	height    float32
+	opened    bool
+	locked    bool
+	animFrame int
+	contents  string // "coins", "star", "1up"
+	value     int
+}
+
+// Spike - шипы
+type Spike struct {
+	x, y     float64
+	width    float32
+	height   float32
+	damage   int
 }
 
 // Coin - монета
@@ -371,6 +461,11 @@ type Game struct {
 	particles  []*Particle
 	state      int
 	frameCount int
+	levelStartTime int
+
+	// Achievements
+	achievements   map[string]*Achievement
+	newAchievements []*Achievement
 
 	// Audio
 	audioEnabled bool
@@ -402,6 +497,9 @@ func NewGame() *Game {
 		camera:     &Camera{},
 		state:      StateMenu,
 		frameCount: 0,
+		levelStartTime: 0,
+		achievements:   achievements,
+		newAchievements: make([]*Achievement, 0),
 		audioEnabled: true,
 	}
 
@@ -419,6 +517,9 @@ func (g *Game) LoadLevel(world int) {
 	g.player.vy = 0
 	g.camera.x = 0
 	g.particles = make([]*Particle, 0)
+	g.level.timeElapsed = 0
+	g.levelStartTime = g.frameCount
+	g.player.damageTaken = 0
 }
 
 // GenerateLevel генерирует уровень
@@ -433,6 +534,10 @@ func GenerateLevel(world int) *Level {
 		coins:  make([]Coin, 0),
 		enemies: make([]*Enemy, 0),
 		powerups: make([]*Powerup, 0),
+		keys:   make([]*Key, 0),
+		chests: make([]*Chest, 0),
+		spikes: make([]*Spike, 0),
+		timeLimit: 300 + world*30, // 5 секунд на уровень + бонус
 	}
 
 	// Initialize tiles
@@ -555,7 +660,44 @@ func GenerateLevel(world int) *Level {
 						}
 					}
 				}
+
+			case 5: // Key spawn
+				keyY := rand.Intn(4) + 4
+				level.keys = append(level.keys, &Key{
+					x: float64(x*TileSize + TileSize/2),
+					y: float64(keyY*TileSize + TileSize/2),
+				})
+
+			case 6: // Chest spawn
+				chestY := 9
+				locked := rand.Float32() < 0.5
+				contents := []string{"coins", "star", "1up"}
+				content := contents[rand.Intn(len(contents))]
+				value := rand.Intn(50) + 50
+				if content == "star" {
+					value = 1
+				}
+				level.chests = append(level.chests, &Chest{
+					x: float64(x * TileSize),
+					y: float64(chestY * TileSize),
+					width: 40,
+					height: 32,
+					locked: locked,
+					contents: content,
+					value: value,
+				})
 			}
+		}
+
+		// Add spikes on ground
+		if x > 20 && rand.Float32() < 0.03 {
+			level.spikes = append(level.spikes, &Spike{
+				x: float64(x * TileSize),
+				y: float64(9*TileSize + 24),
+				width: 40,
+				height: 16,
+				damage: 1,
+			})
 		}
 	}
 
@@ -609,6 +751,13 @@ func (g *Game) updateMenu() {
 }
 
 func (g *Game) updatePlaying() {
+	g.level.timeElapsed++
+
+	// Check time limit for speedrunner achievement
+	if g.level.timeElapsed < 60*60 && g.player.x >= float64(g.level.flagX) {
+		g.unlockAchievement("speedrunner")
+	}
+
 	// Player input
 	g.updatePlayer()
 
@@ -627,13 +776,30 @@ func (g *Game) updatePlaying() {
 	// Update powerups
 	g.updatePowerups()
 
+	// Update keys
+	g.updateKeys()
+
+	// Update chests
+	g.updateChests()
+
+	// Check spikes
+	g.checkSpikes()
+
 	// Update particles
 	g.updateParticles()
+
+	// Update achievements
+	g.updateAchievements()
 
 	// Check win condition
 	if g.player.x >= float64(g.level.flagX) {
 		g.state = StateWon
 		playSound(SoundWin)
+
+		// Check survivor achievement
+		if g.player.damageTaken == 0 {
+			g.unlockAchievement("survivor")
+		}
 	}
 
 	// Check death
@@ -992,6 +1158,117 @@ func (g *Game) applyPowerup(powerType int) {
 	}
 }
 
+// ============================================================================
+// KEYS & CHESTS
+// ============================================================================
+
+func (g *Game) updateKeys() {
+	for _, key := range g.level.keys {
+		if key.collected {
+			continue
+		}
+		key.animFrame++
+
+		// Check collision
+		if g.checkKeyCollision(key) {
+			key.collected = true
+			g.player.keys++
+			g.player.score += 50
+			playSound(SoundItem)
+			g.spawnKeyParticles(key.x, key.y)
+		}
+	}
+}
+
+func (g *Game) checkKeyCollision(key *Key) bool {
+	dx := (g.player.x + float64(g.player.width)/2) - key.x
+	dy := (g.player.y + float64(g.player.height)/2) - key.y
+	dist := math.Sqrt(dx*dx + dy*dy)
+	return dist < float64(g.player.width/2+g.player.height/3)
+}
+
+func (g *Game) updateChests() {
+	for _, chest := range g.level.chests {
+		if chest.opened {
+			continue
+		}
+		chest.animFrame++
+
+		// Check collision
+		if g.player.x < chest.x+float64(chest.width) &&
+			g.player.x+float64(g.player.width) > chest.x &&
+			g.player.y < chest.y+float64(chest.height) &&
+			g.player.y+float64(g.player.height) > chest.y {
+
+			if chest.locked {
+				if g.player.keys > 0 {
+					g.player.keys--
+					chest.locked = false
+					playSound(SoundItem)
+				}
+			} else {
+				// Open chest
+				chest.opened = true
+				g.player.score += chest.value
+
+				switch chest.contents {
+				case "coins":
+					g.player.coins += chest.value
+				case "star":
+					g.player.isInvincible = true
+					g.player.powerTimer = 600
+				case "1up":
+					g.player.lives++
+				}
+
+				playSound(SoundPowerup)
+				g.spawnChestParticles(chest.x+float64(chest.width)/2, chest.y+float64(chest.height)/2)
+				g.unlockAchievement("treasure_hunter")
+			}
+		}
+	}
+}
+
+func (g *Game) checkSpikes() {
+	for _, spike := range g.level.spikes {
+		if g.player.x < spike.x+float64(spike.width) &&
+			g.player.x+float64(g.player.width) > spike.x &&
+			g.player.y < spike.y+float64(spike.height) &&
+			g.player.y+float64(g.player.height) > spike.y {
+
+			if !g.player.isInvincible {
+				g.player.damageTaken++
+				g.playerHit()
+			}
+		}
+	}
+}
+
+// ============================================================================
+// ACHIEVEMENTS
+// ============================================================================
+
+func (g *Game) unlockAchievement(id string) {
+	if ach, ok := g.achievements[id]; ok {
+		if !ach.unlocked {
+			ach.unlocked = true
+			g.newAchievements = append(g.newAchievements, ach)
+			playSound(SoundPowerup)
+		}
+	}
+}
+
+func (g *Game) updateAchievements() {
+	// Remove old notifications after 3 seconds (180 frames)
+	if len(g.newAchievements) > 0 && g.frameCount%180 == 0 {
+		if len(g.newAchievements) > 1 {
+			g.newAchievements = g.newAchievements[1:]
+		} else {
+			g.newAchievements = make([]*Achievement, 0)
+		}
+	}
+}
+
 func (g *Game) updateParticles() {
 	for i := len(g.particles) - 1; i >= 0; i-- {
 		p := g.particles[i]
@@ -1083,6 +1360,38 @@ func (g *Game) spawnPowerupParticles(x, y float64) {
 			life: 50 + rand.Intn(20),
 			color: color.RGBA{255, 100, 100, 255}, // Pink/Red
 			size: float32(rand.Intn(6)+4),
+		})
+	}
+}
+
+// spawnKeyParticles создаёт частицы при сборе ключа
+func (g *Game) spawnKeyParticles(x, y float64) {
+	for i := 0; i < 12; i++ {
+		g.particles = append(g.particles, &Particle{
+			x: x,
+			y: y,
+			vx: float64(rand.Intn(8)-4) * 0.7,
+			vy: float64(-rand.Intn(8)-4) * 0.5,
+			life: 35 + rand.Intn(15),
+			color: color.RGBA{255, 215, 0, 255}, // Gold
+			size: float32(rand.Intn(5) + 3),
+		})
+	}
+}
+
+// spawnChestParticles создаёт частицы при открытии сундука
+func (g *Game) spawnChestParticles(x, y float64) {
+	for i := 0; i < 30; i++ {
+		angle := float64(i) * 2 * math.Pi / 30
+		speed := float64(rand.Intn(10)+5) * 0.7
+		g.particles = append(g.particles, &Particle{
+			x: x,
+			y: y,
+			vx: math.Cos(angle) * speed,
+			vy: math.Sin(angle) * speed,
+			life: 50 + rand.Intn(20),
+			color: color.RGBA{255, 215, 0, 255}, // Gold treasure
+			size: float32(rand.Intn(6) + 4),
 		})
 	}
 }
@@ -1244,8 +1553,8 @@ func (g *Game) drawMenu(screen *ebiten.Image) {
 	instructions := []string{
 		"Arrow Keys / WASD - Move",
 		"Space / W / Up - Jump",
-		"Stomp enemies, collect coins, reach the flag!",
-		"",
+		"Stomp enemies, collect coins & keys!",
+		"Open chests, avoid spikes!",
 		"Press ENTER or SPACE to Start",
 	}
 
@@ -1256,6 +1565,10 @@ func (g *Game) drawMenu(screen *ebiten.Image) {
 		}
 		text.Draw(screen, line, gameAssets.gameFont, ScreenWidth/2-130, 270+i*32, textColor)
 	}
+
+	// Features
+	features := "🗝️ Keys  🎁 Chests  ⚠️ Spikes  🏆 Achievements"
+	text.Draw(screen, features, gameAssets.gameFont, ScreenWidth/2-180, ScreenHeight-60, color.RGBA{255, 215, 0, 255})
 
 	// Version info
 	versionText := "Go365 - Day 83 | March 23, 2026"
@@ -1277,11 +1590,33 @@ func (g *Game) drawPlaying(screen *ebiten.Image) {
 
 	// Draw UI
 	g.drawUI(screen)
+
+	// Draw achievement notifications
+	g.drawAchievements(screen)
 }
 
 func (g *Game) drawParticles(screen *ebiten.Image) {
 	for _, p := range g.particles {
 		vector.DrawFilledCircle(screen, float32(p.x), float32(p.y), p.size, p.color, true)
+	}
+}
+
+func (g *Game) drawAchievements(screen *ebiten.Image) {
+	if len(g.newAchievements) == 0 {
+		return
+	}
+
+	// Draw achievement notification
+	y := float32(80)
+	for _, ach := range g.newAchievements {
+		vector.DrawFilledRect(screen, 20, y-30, float32(ScreenWidth-40), 70, color.RGBA{0, 0, 0, 200}, false)
+		vector.DrawFilledRect(screen, 20, y-30, float32(ScreenWidth-40), 3, color.RGBA{255, 215, 0, 255}, false)
+
+		if gameAssets != nil && gameAssets.gameFont != nil {
+			text.Draw(screen, "🏆 ДОСТИЖЕНИЕ!", gameAssets.gameFont, 40, int(y)-10, color.RGBA{255, 215, 0, 255})
+			text.Draw(screen, ach.name, gameAssets.gameFont, 40, int(y)+15, color.RGBA{255, 255, 255, 255})
+		}
+		y += 80
 	}
 }
 
@@ -1331,7 +1666,16 @@ func (g *Game) drawLevel(screen *ebiten.Image) {
 	flagX := float32(g.level.flagX) - float32(g.camera.x)
 	vector.StrokeLine(screen, flagX+10, float32(g.level.flagY), flagX+10, float32(g.level.flagY+TileSize*4), 3, color.RGBA{100, 100, 100, 255}, false)
 	vector.DrawFilledRect(screen, flagX+10, float32(g.level.flagY), 40, 30, color.RGBA{0, 200, 0, 255}, false)
-	
+
+	// Draw keys
+	g.drawKeys(screen)
+
+	// Draw chests
+	g.drawChests(screen)
+
+	// Draw spikes
+	g.drawSpikes(screen)
+
 	// Draw enemies
 	g.drawEnemies(screen)
 }
@@ -1435,6 +1779,69 @@ func (g *Game) drawEnemies(screen *ebiten.Image) {
 				vector.DrawFilledCircle(screen, drawX+8+float32(eyeOffset), eyeY, 4, color.RGBA{255, 255, 255, 255}, false)
 				vector.DrawFilledCircle(screen, drawX+20+float32(eyeOffset), eyeY, 4, color.RGBA{255, 255, 255, 255}, false)
 			}
+		}
+	}
+}
+
+// ============================================================================
+// DRAW KEYS, CHESTS, SPIKES
+// ============================================================================
+
+func (g *Game) drawKeys(screen *ebiten.Image) {
+	for _, key := range g.level.keys {
+		if key.collected {
+			continue
+		}
+		drawX := float32(key.x) - float32(g.camera.x)
+		drawY := float32(key.y)
+
+		if drawX > -20 && drawX < ScreenWidth+20 {
+			key.animFrame++
+			offset := float32(math.Sin(float64(key.animFrame)*0.1) * 5)
+
+			// Draw key
+			vector.DrawFilledCircle(screen, drawX, drawY+offset, 8, color.RGBA{255, 215, 0, 255}, false)
+			vector.DrawFilledRect(screen, drawX-2, drawY+offset+8, 4, 10, color.RGBA{255, 215, 0, 255}, false)
+		}
+	}
+}
+
+func (g *Game) drawChests(screen *ebiten.Image) {
+	for _, chest := range g.level.chests {
+		if chest.opened {
+			continue
+		}
+		drawX := float32(chest.x) - float32(g.camera.x)
+		drawY := float32(chest.y)
+
+		if chest.locked {
+			// Locked chest - red
+			vector.DrawFilledRect(screen, drawX, drawY+10, chest.width, chest.height-10, color.RGBA{139, 90, 43, 255}, false)
+			vector.DrawFilledRect(screen, drawX+5, drawY, chest.width-10, 15, color.RGBA{100, 80, 40, 255}, false)
+			// Lock symbol
+			vector.DrawFilledCircle(screen, drawX+float32(chest.width)/2, drawY+float32(chest.height)/2, 6, color.RGBA{255, 0, 0, 255}, false)
+		} else {
+			// Unlocked chest - gold
+			vector.DrawFilledRect(screen, drawX, drawY+10, chest.width, chest.height-10, color.RGBA{180, 120, 60, 255}, false)
+			vector.DrawFilledRect(screen, drawX+5, drawY, chest.width-10, 15, color.RGBA{150, 100, 50, 255}, false)
+			// Gold trim
+			vector.DrawFilledRect(screen, drawX+float32(chest.width)/2-5, drawY+float32(chest.height)/2-3, 10, 6, color.RGBA{255, 215, 0, 255}, false)
+		}
+	}
+}
+
+func (g *Game) drawSpikes(screen *ebiten.Image) {
+	for _, spike := range g.level.spikes {
+		drawX := float32(spike.x) - float32(g.camera.x)
+		drawY := float32(spike.y)
+
+		// Draw spike as triangle
+		vector.StrokeLine(screen, drawX, drawY+spike.height, drawX+spike.width/2, drawY, 3, color.RGBA{150, 150, 150, 255}, false)
+		vector.StrokeLine(screen, drawX+spike.width/2, drawY, drawX+spike.width, drawY+spike.height, 3, color.RGBA{150, 150, 150, 255}, false)
+		// Fill
+		for i := int(drawX); i < int(drawX+spike.width); i++ {
+			height := spike.height * (1 - float32(math.Abs(float64(i-int(drawX)-int(spike.width/2))))/float32(spike.width/2))
+			vector.DrawFilledRect(screen, float32(i), drawY+spike.height-float32(height), 1, float32(height), color.RGBA{150, 150, 150, 180}, false)
 		}
 	}
 }
@@ -1591,13 +1998,26 @@ func (g *Game) drawUI(screen *ebiten.Image) {
 		coinText := fmt.Sprintf("COINS\nx%02d", g.player.coins)
 		text.Draw(screen, coinText, gameAssets.gameFont, 180, 28, color.RGBA{255, 215, 0, 255})
 
+		// Keys
+		keyText := fmt.Sprintf("KEYS\nx%d", g.player.keys)
+		text.Draw(screen, keyText, gameAssets.gameFont, 280, 28, color.RGBA{255, 100, 100, 255})
+
 		// World
 		worldText := fmt.Sprintf("WORLD\n%d-1", g.player.world)
-		text.Draw(screen, worldText, gameAssets.gameFont, 340, 28, color.RGBA{100, 200, 100, 255})
+		text.Draw(screen, worldText, gameAssets.gameFont, 380, 28, color.RGBA{100, 200, 100, 255})
 
 		// Lives
 		livesText := fmt.Sprintf("LIVES\nx%d", g.player.lives)
-		text.Draw(screen, livesText, gameAssets.gameFont, 500, 28, color.RGBA{255, 100, 100, 255})
+		text.Draw(screen, livesText, gameAssets.gameFont, 540, 28, color.RGBA{255, 100, 100, 255})
+
+		// Time
+		timeLeft := g.level.timeLimit - g.level.timeElapsed
+		timeText := fmt.Sprintf("TIME\n%d", timeLeft/60)
+		timeColor := color.RGBA{255, 255, 255, 255}
+		if timeLeft < 100 {
+			timeColor = color.RGBA{255, 100, 100, 255}
+		}
+		text.Draw(screen, timeText, gameAssets.gameFont, 680, 28, timeColor)
 	} else {
 		// Fallback to DebugPrint
 		scoreText := fmt.Sprintf("MARIO\n%06d", g.player.score)
@@ -1643,11 +2063,21 @@ func (g *Game) drawWon(screen *ebiten.Image) {
 	scoreText := fmt.Sprintf("Score: %06d", g.player.score)
 	text.Draw(screen, scoreText, gameAssets.gameFont, ScreenWidth/2-80, ScreenHeight/2+10, color.RGBA{255, 255, 255, 255})
 
-	coinsText := fmt.Sprintf("Coins Collected: %d", g.player.coins)
+	coinsText := fmt.Sprintf("Coins: %d", g.player.coins)
 	text.Draw(screen, coinsText, gameAssets.gameFont, ScreenWidth/2-110, ScreenHeight/2+50, color.RGBA{255, 215, 0, 255})
 
+	// Count unlocked achievements
+	unlockedCount := 0
+	for _, ach := range g.achievements {
+		if ach.unlocked {
+			unlockedCount++
+		}
+	}
+	achText := fmt.Sprintf("Achievements: %d/%d", unlockedCount, len(g.achievements))
+	text.Draw(screen, achText, gameAssets.gameFont, ScreenWidth/2-110, ScreenHeight/2+90, color.RGBA{255, 100, 255, 255})
+
 	restartText := "Press ENTER to continue"
-	text.Draw(screen, restartText, gameAssets.gameFont, ScreenWidth/2-110, ScreenHeight/2+100, color.RGBA{255, 255, 255, 255})
+	text.Draw(screen, restartText, gameAssets.gameFont, ScreenWidth/2-110, ScreenHeight/2+130, color.RGBA{255, 255, 255, 255})
 }
 
 func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
