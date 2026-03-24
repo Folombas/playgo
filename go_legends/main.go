@@ -76,6 +76,56 @@ type Card struct {
 	image       *ebiten.Image
 	selected    bool
 	canPlay     bool
+	
+	// Evolution/Upgrade system
+	level       int      // +1 = +damage/+block
+	upgraded    bool     // Enhanced version
+	enchantments []string // Additional effects
+}
+
+// Achievement - система достижений
+type Achievement struct {
+	id          string
+	name        string
+	description string
+	unlocked    bool
+	progress    int
+	requirement int
+}
+
+var achievementDatabase = map[string]Achievement{
+	"first_blood": {id: "first_blood", name: "Первая кровь", description: "Победите первого врага", unlocked: false, requirement: 1},
+	"deck_master": {id: "deck_master", name: "Мастер колоды", description: "Соберите 20 карт", unlocked: false, requirement: 20},
+	"relic_hunter": {id: "relic_hunter", name: "Охотник за реликвиями", description: "Найдите 5 реликвий", unlocked: false, requirement: 5},
+	"floor_10": {id: "floor_10", name: "Покоритель", description: "Достигните 10 этажа", unlocked: false, requirement: 10},
+	"floor_20": {id: "floor_20", name: "Легенда", description: "Достигните 20 этажа", unlocked: false, requirement: 20},
+	"no_damage": {id: "no_damage", name: "Неуязвимый", description: "Пройдите этаж без урона", unlocked: false, requirement: 1},
+	"combo_master": {id: "combo_master", name: "Комбо-мастер", description: "Сыграйте 10 карт за ход", unlocked: false, requirement: 10},
+	"rich": {id: "rich", name: "Богач", description: "Накопите 100 золота", unlocked: false, requirement: 100},
+}
+
+// Perk/Talent - перки игрока
+type Perk struct {
+	id          string
+	name        string
+	description string
+	tier        int      // 1, 2, 3
+	purchased   bool
+}
+
+var perkDatabase = map[string]Perk{
+	"strength_1": {id: "strength_1", name: "Сила I", description: "+2 урона атаками", tier: 1},
+	"strength_2": {id: "strength_2", name: "Сила II", description: "+4 урона атаками", tier: 2},
+	"strength_3": {id: "strength_3", name: "Сила III", description: "+6 урона атаками", tier: 3},
+	"vitality_1": {id: "vitality_1", name: "Жизнеспособность I", description: "+10 HP", tier: 1},
+	"vitality_2": {id: "vitality_2", name: "Жизнеспособность II", description: "+25 HP", tier: 2},
+	"vitality_3": {id: "vitality_3", name: "Жизнеспособность III", description: "+50 HP", tier: 3},
+	"wisdom_1": {id: "wisdom_1", name: "Мудрость I", description: "+1 энергия", tier: 2},
+	"wisdom_2": {id: "wisdom_2", name: "Мудрость II", description: "+2 энергия", tier: 3},
+	"luck_1": {id: "luck_1", name: "Удача I", description: "Шанс найти редкую карту", tier: 1},
+	"luck_2": {id: "luck_2", name: "Удача II", description: "Больше редкости", tier: 2},
+	"defense_1": {id: "defense_1", name: "Оборона I", description: "+3 блок к картам", tier: 1},
+	"defense_2": {id: "defense_2", name: "Оборона II", description: "+6 блок к картам", tier: 2},
 }
 
 var cardDatabase = map[int]Card{
@@ -178,10 +228,24 @@ type GameState struct {
 	discard      []*Card
 	energy       int
 	turn         int
-_floor        int
+	_floor       int
 	gold         int
 	score        int
-
+	
+	// Progression systems
+	achievements map[string]*Achievement
+	perks        []Perk
+	perkPoints   int      // Очки перков за победы
+	ascension    int      // Уровень сложности (0-20)
+	dailySeed    int64    // Для ежедневных испытаний
+	isDailyRun   bool     // Ежедневный забег
+	
+	// Save system
+	saveSlot     int
+	totalWins    int
+	totalFloors  int
+	highestFloor int
+	
 	// UI State
 	selectedCard    int
 	hoveredCard     int
@@ -191,18 +255,18 @@ _floor        int
 	soundEnabled    bool
 	musicVolume     float64
 	sfxVolume       float64
-
+	
 	// Visual effects
 	particles      []*Particle
 	screenShake    int
 	damageNumbers  []*DamageNumber
-
+	
 	// Assets
 	gameFont       font.Face
 	smallFont      font.Face
 	cardImages     map[int]*ebiten.Image
 	buttonImages   map[int]*ebiten.Image
-
+	
 	// Audio
 	audioCtx       *audio.Context
 	sounds         map[int][]byte
@@ -301,6 +365,7 @@ func NewGameState() *GameState {
 			health:    MaxHealth,
 			energy:    3,
 			maxEnergy: 3,
+			relics:    make([]Relic, 0),
 		},
 		deck:         make([]*Card, 0),
 		hand:         make([]*Card, 0),
@@ -313,7 +378,20 @@ func NewGameState() *GameState {
 		musicVolume:  0.5,
 		sfxVolume:    0.5,
 		gold:         50,
-		_floor:      1,
+		_floor:       1,
+		achievements: make(map[string]*Achievement),
+		perks:        make([]Perk, 0),
+		perkPoints:   0,
+		ascension:    0,
+		totalWins:    0,
+		totalFloors:  0,
+		highestFloor: 0,
+	}
+
+	// Initialize achievements
+	for id, ach := range achievementDatabase {
+		achCopy := ach
+		g.achievements[id] = &achCopy
 	}
 
 	// Load fonts
@@ -340,6 +418,73 @@ func (g *GameState) InitializeStarterDeck() {
 		}
 	}
 	g.ShuffleDeck()
+}
+
+// UpgradeCard - улучшение карты (+урон/+блок)
+func (g *GameState) UpgradeCard(cardIndex int) {
+	if cardIndex >= 0 && cardIndex < len(g.hand) {
+		card := g.hand[cardIndex]
+		if !card.upgraded {
+			card.upgraded = true
+			card.level++
+			
+			// Улучшение эффектов
+			if card.cardType == CardAttack && card.damage > 0 {
+				card.damage += 3
+			}
+			if card.cardType == CardDefense && card.block > 0 {
+				card.block += 3
+			}
+			if card.cost > 0 {
+				// Иногда уменьшаем стоимость
+				if rand.Float32() < 0.3 {
+					card.cost--
+				}
+			}
+			
+			// Визуальный эффект
+			g.spawnParticles(float64(ScreenWidth/2), float64(ScreenHeight/2), 30, color.RGBA{255, 215, 0, 255})
+			PlaySound(g, 5) // Victory sound
+		}
+	}
+}
+
+// CheckAchievements - проверка достижений
+func (g *GameState) CheckAchievements() {
+	for id, ach := range g.achievements {
+		if ach.unlocked {
+			continue
+		}
+		
+		unlocked := false
+		switch id {
+		case "first_blood":
+			unlocked = g.totalWins >= 1
+		case "deck_master":
+			unlocked = len(g.deck) >= 20
+		case "relic_hunter":
+			unlocked = len(g.player.relics) >= 5
+		case "floor_10":
+			unlocked = g.highestFloor >= 10
+		case "floor_20":
+			unlocked = g.highestFloor >= 20
+		case "rich":
+			unlocked = g.gold >= 100
+		case "combo_master":
+			unlocked = len(g.hand) <= MaxHandSize-10 // Played 10 cards
+		}
+		
+		if unlocked {
+			ach.unlocked = true
+			g.achievements[id] = ach
+			// Show achievement notification
+			g.damageNumbers = append(g.damageNumbers, &DamageNumber{
+				x: float64(ScreenWidth/2), y: 100,
+				value: 0, life: 180, isHeal: true, // 3 seconds
+			})
+			PlaySound(g, 5)
+		}
+	}
 }
 
 func (g *GameState) ShuffleDeck() {
@@ -517,6 +662,12 @@ func (g *GameState) updateMap() {
 
 func (g *GameState) updateBattle() {
 	mx, my := ebiten.CursorPosition()
+
+	// Hotkey for upgrade (U key)
+	if inpututil.IsKeyJustPressed(ebiten.KeyU) && len(g.hand) > 0 {
+		// Upgrade random card or first card
+		g.UpgradeCard(0)
+	}
 
 	// Check card hover/click
 	cardStartX := (ScreenWidth - len(g.hand)*CardWidth - (len(g.hand)-1)*20) / 2
@@ -928,7 +1079,15 @@ func (g *GameState) victory() {
 	g.score += 100 * g._floor
 	g.gold += 20
 	g._floor++
+	g.totalWins++
+	g.totalFloors++
+	if g._floor > g.highestFloor {
+		g.highestFloor = g._floor
+	}
 	PlaySound(g, 5)
+
+	// Award perk point
+	g.perkPoints++
 
 	// Add reward card OR relic
 	if len(g.deck) < MaxDeckSize && rand.Float32() < 0.7 {
@@ -943,13 +1102,23 @@ func (g *GameState) victory() {
 		// 30% chance: new relic
 		relicID := rand.Intn(8) + 1
 		if relic, ok := relicDatabase[relicID]; ok {
-			relicCopy := relic
-			g.player.relics = append(g.player.relics, relicCopy)
+			g.player.relics = append(g.player.relics, relic)
 		}
 	}
 	
 	// Heal player after victory
 	g.player.health = min(g.player.health+20, g.player.maxHealth)
+	
+	// Check achievements
+	g.CheckAchievements()
+	
+	// Ascension scaling (harder enemies)
+	ascensionBonus := g.ascension * 10
+	for _, enemy := range g.enemies {
+		enemy.maxHealth += ascensionBonus
+		enemy.health = enemy.maxHealth
+		enemy.damage += g.ascension * 2
+	}
 }
 
 func (g *GameState) spawnParticles(x, y float64, count int, c color.RGBA) {
