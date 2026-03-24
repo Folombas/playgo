@@ -82,6 +82,11 @@ const (
 	TileSpike   = 11
 	TileChest   = 12
 	TileKey     = 13
+	TileSpring  = 14
+	TilePortal  = 15
+
+	// Combo system
+	MaxCombo    = 10
 )
 
 // ============================================================================
@@ -422,6 +427,11 @@ type Player struct {
 	enemiesDefeated int
 	damageTaken     int
 
+	// Combo system
+	combo       int
+	comboTimer  int
+	lastStompTime int
+
 	// Power state
 	isBig       bool
 	isFire      bool
@@ -473,10 +483,32 @@ type Level struct {
 	keys        []*Key
 	chests      []*Chest
 	spikes      []*Spike
+	springs     []*Spring
+	portals     []*Portal
 	flagX       int
 	flagY       int
 	timeLimit   int
 	timeElapsed int
+}
+
+// Spring - пружина
+type Spring struct {
+	x, y      float64
+	width     float32
+	height    float32
+	compressed bool
+	timer     int
+	color     color.RGBA
+}
+
+// Portal - телепорт
+type Portal struct {
+	x, y      float64
+	width     float32
+	height    float32
+	linkedTo  *Portal
+	color     color.RGBA
+	animFrame int
 }
 
 // Key - ключ
@@ -585,6 +617,8 @@ func (g *Game) LoadLevel(world int) {
 	g.level.timeElapsed = 0
 	g.levelStartTime = g.frameCount
 	g.player.damageTaken = 0
+	g.player.combo = 0 // Reset combo on level load
+	g.player.comboTimer = 0
 }
 
 // GenerateLevel генерирует уровень
@@ -602,6 +636,8 @@ func GenerateLevel(world int) *Level {
 		keys:   make([]*Key, 0),
 		chests: make([]*Chest, 0),
 		spikes: make([]*Spike, 0),
+		springs: make([]*Spring, 0),
+		portals: make([]*Portal, 0),
 		timeLimit: 300 + world*30, // 5 секунд на уровень + бонус
 	}
 
@@ -776,6 +812,46 @@ func GenerateLevel(world int) *Level {
 				damage: 1,
 			})
 		}
+
+		// Add springs (Day 84)
+		if x > 30 && rand.Float32() < 0.015 {
+			springColor := color.RGBA{255, 100, 100, 255} // Red spring
+			if world >= 2 {
+				springColor = color.RGBA{100, 255, 100, 255} // Green in world 2+
+			}
+			if world >= 4 {
+				springColor = color.RGBA{100, 100, 255, 255} // Blue in world 4+
+			}
+			level.springs = append(level.springs, &Spring{
+				x: float64(x * TileSize),
+				y: float64(9*TileSize + 8),
+				width: 40,
+				height: 12,
+				compressed: false,
+				color: springColor,
+			})
+		}
+
+		// Add portal pairs (Day 84) - spawn at specific positions
+		if x == 50 && world >= 2 && len(level.portals) == 0 {
+			portal1 := &Portal{
+				x: float64(x * TileSize),
+				y: float64(5 * TileSize),
+				width: 50,
+				height: 70,
+				color: color.RGBA{150, 50, 255, 255}, // Purple
+			}
+			portal2 := &Portal{
+				x: float64((x + 30) * TileSize),
+				y: float64(5 * TileSize),
+				width: 50,
+				height: 70,
+				color: color.RGBA{50, 150, 255, 255}, // Blue
+			}
+			portal1.linkedTo = portal2
+			portal2.linkedTo = portal1
+			level.portals = append(level.portals, portal1, portal2)
+		}
 	}
 
 	// Add flag at end
@@ -862,11 +938,20 @@ func (g *Game) updatePlaying() {
 	// Check spikes
 	g.checkSpikes()
 
+	// Update springs (Day 84)
+	g.updateSprings()
+
+	// Update portals (Day 84)
+	g.updatePortals()
+
 	// Update particles
 	g.updateParticles()
 
 	// Update achievements
 	g.updateAchievements()
+
+	// Update combo (Day 84)
+	g.updateCombo()
 
 	// Check win condition
 	if g.player.x >= float64(g.level.flagX) {
@@ -1224,6 +1309,19 @@ func (g *Game) updateEnemies() {
 				g.player.score += 100
 				playSound(SoundStomp)
 				g.spawnEnemyDefeatParticles(enemy.x+float64(enemy.width/2), enemy.y+float64(enemy.height/2), enemy.enemyType)
+				
+				// Combo system (Day 84)
+				g.player.combo++
+				if g.player.combo > MaxCombo {
+					g.player.combo = MaxCombo
+				}
+				g.player.comboTimer = 120 // 2 seconds at 60 FPS
+				g.player.lastStompTime = g.frameCount
+				
+				// Combo multiplier
+				comboMultiplier := 1.0 + float64(g.player.combo)*0.5
+				bonusScore := int(float64(100) * comboMultiplier)
+				g.player.score += bonusScore
 			} else if !g.player.isInvincible {
 				g.playerHit()
 			}
@@ -1424,6 +1522,70 @@ func (g *Game) updateParticles() {
 
 		if p.life <= 0 {
 			g.particles = append(g.particles[:i], g.particles[i+1:]...)
+		}
+	}
+}
+
+// updateCombo обновляет таймер комбо (Day 84)
+func (g *Game) updateCombo() {
+	if g.player.combo > 0 {
+		g.player.comboTimer--
+		if g.player.comboTimer <= 0 {
+			g.player.combo = 0
+		}
+	}
+}
+
+// updateSprings обновляет пружины (Day 84)
+func (g *Game) updateSprings() {
+	for _, spring := range g.level.springs {
+		if spring.compressed {
+			spring.timer--
+			if spring.timer <= 0 {
+				spring.compressed = false
+			}
+		}
+		
+		// Check collision with player
+		if g.player.x < spring.x+float64(spring.width) &&
+			g.player.x+float64(g.player.width) > spring.x &&
+			g.player.y+float64(g.player.height) > spring.y &&
+			g.player.y < spring.y+float64(spring.height) {
+			
+			if !spring.compressed && g.player.vy > 0 {
+				// Compress spring and bounce
+				spring.compressed = true
+				spring.timer = 10
+				g.player.vy = -16 // High bounce!
+				g.player.onGround = false
+				playSound(SoundPowerup)
+				g.spawnParticles(spring.x+float64(spring.width/2), spring.y, 10, spring.color)
+			}
+		}
+	}
+}
+
+// updatePortals обновляет телепорты (Day 84)
+func (g *Game) updatePortals() {
+	for _, portal := range g.level.portals {
+		portal.animFrame++
+		
+		// Check collision with player
+		if g.player.x < portal.x+float64(portal.width) &&
+			g.player.x+float64(g.player.width) > portal.x &&
+			g.player.y < portal.y+float64(portal.height) &&
+			g.player.y+float64(g.player.height) > portal.y {
+			
+			// Teleport player
+			if portal.linkedTo != nil {
+				g.player.x = portal.linkedTo.x - float64(g.player.width)
+				g.player.y = portal.linkedTo.y
+				g.player.vx = 0
+				g.player.vy = 0
+				playSound(SoundDoor)
+				g.spawnParticles(portal.x+float64(portal.width/2), portal.y+float64(portal.height/2), 20, portal.color)
+				g.spawnParticles(portal.linkedTo.x+float64(portal.linkedTo.width/2), portal.linkedTo.y+float64(portal.linkedTo.height/2), 20, portal.linkedTo.color)
+			}
 		}
 	}
 }
@@ -1706,6 +1868,8 @@ func (g *Game) playerHit() {
 
 func (g *Game) playerDie() {
 	g.player.lives--
+	g.player.combo = 0 // Reset combo on death
+	g.player.comboTimer = 0
 	playSound(SoundDie)
 
 	if g.player.lives <= 0 {
@@ -1773,7 +1937,9 @@ func (g *Game) drawMenu(screen *ebiten.Image) {
 		"Arrow Keys / WASD - Move",
 		"Space / W / Up - Jump",
 		"Stomp enemies, collect coins & keys!",
-		"Open chests, avoid spikes!",
+		"Use springs to bounce high!",
+		"Portals teleport you away!",
+		"Build combos for bonus points!",
 		"Press ENTER or SPACE to Start",
 	}
 
@@ -1787,10 +1953,13 @@ func (g *Game) drawMenu(screen *ebiten.Image) {
 
 	// Features
 	features := "🗝️ Keys  🎁 Chests  ⚠️ Spikes  🏆 Achievements"
-	text.Draw(screen, features, gameAssets.gameFont, ScreenWidth/2-180, ScreenHeight-60, color.RGBA{255, 215, 0, 255})
+	text.Draw(screen, features, gameAssets.gameFont, ScreenWidth/2-180, ScreenHeight-90, color.RGBA{255, 215, 0, 255})
+	
+	newFeatures := "🔴 Springs  🌀 Portals  💥 Combo System"
+	text.Draw(screen, newFeatures, gameAssets.gameFont, ScreenWidth/2-160, ScreenHeight-60, color.RGBA{100, 255, 100, 255})
 
 	// Version info
-	versionText := "Go365 - Day 86 | March 23, 2026 | New Enemies!"
+	versionText := "Go365 - Day 84 | March 24, 2026 | Combo + New Blocks!"
 	text.Draw(screen, versionText, gameAssets.gameFont, 20, ScreenHeight-30, color.RGBA{200, 200, 200, 255})
 }
 
@@ -1921,6 +2090,12 @@ func (g *Game) drawLevel(screen *ebiten.Image) {
 
 	// Draw spikes
 	g.drawSpikes(screen)
+
+	// Draw springs (Day 84)
+	g.drawSprings(screen)
+
+	// Draw portals (Day 84)
+	g.drawPortals(screen)
 
 	// Draw enemies
 	g.drawEnemies(screen)
@@ -2125,6 +2300,51 @@ func (g *Game) drawSpikes(screen *ebiten.Image) {
 	}
 }
 
+// drawSprings отрисовывает пружины (Day 84)
+func (g *Game) drawSprings(screen *ebiten.Image) {
+	for _, spring := range g.level.springs {
+		drawX := float32(spring.x) - float32(g.camera.x)
+		drawY := float32(spring.y)
+
+		if spring.compressed {
+			// Compressed spring
+			vector.DrawFilledRect(screen, drawX, drawY+4, spring.width, spring.height/2, spring.color, false)
+		} else {
+			// Extended spring
+			vector.DrawFilledRect(screen, drawX, drawY, spring.width, spring.height, spring.color, false)
+			// Spring coils
+			for i := 0; i < 4; i++ {
+				y := drawY + float32(i*3) + 2
+				vector.StrokeLine(screen, drawX+2, y, drawX+spring.width-2, y, 2, color.RGBA{255, 255, 255, 200}, false)
+			}
+		}
+	}
+}
+
+// drawPortals отрисовывает телепорты (Day 84)
+func (g *Game) drawPortals(screen *ebiten.Image) {
+	for _, portal := range g.level.portals {
+		drawX := float32(portal.x) - float32(g.camera.x)
+		drawY := float32(portal.y)
+
+		// Animated swirling portal
+		animOffset := float32(math.Sin(float64(portal.animFrame)*0.15) * 5)
+		
+		// Portal frame
+		vector.DrawFilledRect(screen, drawX-3, drawY, 6, portal.height, color.RGBA{100, 100, 100, 255}, false)
+		vector.DrawFilledRect(screen, drawX-3, drawY, portal.width+6, 6, color.RGBA{100, 100, 100, 255}, false)
+		
+		// Portal swirl effect
+		for i := 0; i < 5; i++ {
+			y := drawY + float32(i*14) + animOffset
+			vector.StrokeLine(screen, drawX, y, drawX+portal.width, y, 3, portal.color, false)
+		}
+		
+		// Portal glow
+		vector.DrawFilledRect(screen, drawX+5, drawY+5, portal.width-10, portal.height-10, color.RGBA{200, 100, 255, 100}, false)
+	}
+}
+
 func (g *Game) drawTile(screen *ebiten.Image, tile int, x, y float32) {
 	// Try to use sprite first
 	if gameAssets != nil {
@@ -2297,6 +2517,19 @@ func (g *Game) drawUI(screen *ebiten.Image) {
 			timeColor = color.RGBA{255, 100, 100, 255}
 		}
 		text.Draw(screen, timeText, gameAssets.gameFont, 680, 28, timeColor)
+		
+		// Combo indicator (Day 84)
+		if g.player.combo > 1 {
+			comboText := fmt.Sprintf("COMBO\nx%d", g.player.combo)
+			comboColor := color.RGBA{255, 215, 0, 255} // Gold
+			if g.player.combo >= 5 {
+				comboColor = color.RGBA{255, 100, 100, 255} // Red for high combo
+			}
+			if g.player.combo >= MaxCombo {
+				comboColor = color.RGBA{150, 50, 255, 255} // Purple for MAX combo
+			}
+			text.Draw(screen, comboText, gameAssets.gameFont, 420, 28, comboColor)
+		}
 	} else {
 		// Fallback to DebugPrint
 		scoreText := fmt.Sprintf("MARIO\n%06d", g.player.score)
