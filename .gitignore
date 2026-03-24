@@ -20,6 +20,8 @@ space_empire/go.sum
 harvest_heroes/*.exe
 harvest_heroes/assets/
 harvest_heroes/go.sum
+snake/*.exe
+snake/go.sum
 
 # Qwen
 .qwen/
