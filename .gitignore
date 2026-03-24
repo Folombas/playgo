@@ -14,6 +14,9 @@ go_mario/assets/
 go_legends/*.exe
 go_legends/assets/
 go_legends/go.sum
+space_empire/*.exe
+space_empire/assets/
+space_empire/go.sum
 
 # Qwen
 .qwen/
