@@ -11,6 +11,9 @@ castle_defender/*.exe
 castle_defender/assets/
 go_mario/*.exe
 go_mario/assets/
+go_legends/*.exe
+go_legends/assets/
+go_legends/go.sum
 
 # Qwen
 .qwen/
