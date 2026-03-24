@@ -17,6 +17,9 @@ go_legends/go.sum
 space_empire/*.exe
 space_empire/assets/
 space_empire/go.sum
+harvest_heroes/*.exe
+harvest_heroes/assets/
+harvest_heroes/go.sum
 
 # Qwen
 .qwen/
