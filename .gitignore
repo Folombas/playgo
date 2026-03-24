@@ -1,0 +1,16 @@
+# Игнорировать большие ассеты
+sprites/*.zip
+sprites/Medieval/
+sprites/PlatformerComplete/
+sprites/city_tileset/
+sprites/Horizontal-2D-BG-PNG/
+sprites/parallax-*/
+
+# Игнорировать скомпилированные бинарники в подпапках
+castle_defender/*.exe
+castle_defender/assets/
+go_mario/*.exe
+go_mario/assets/
+
+# Qwen
+.qwen/
