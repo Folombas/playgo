@@ -852,6 +852,57 @@ func (g *Game) updateEnemies() {
 	for i := len(g.enemies) - 1; i >= 0; i-- {
 		e := g.enemies[i]
 
+		// Special abilities update
+		// Healer: heal nearby enemies
+		if e.enemyType == EnemyHealer {
+			for _, other := range g.enemies {
+				if other == e {
+					continue
+				}
+				dx := other.x - e.x
+				dy := other.y - e.y
+				dist := math.Sqrt(dx*dx + dy*dy)
+				if dist < 100 && other.hp < other.maxHp {
+					other.hp += 2
+					if g.frameCount%60 == 0 {
+						PlaySound(g, SoundHeal)
+					}
+				}
+			}
+		}
+
+		// Poison damage over time
+		if e.poisoned {
+			e.hp -= e.poisonDmg
+			if g.frameCount%30 == 0 {
+				// Poison tick visual
+			}
+		}
+
+		// Regen
+		if e.regen > 0 && e.hp < e.maxHp {
+			e.hp = int(float32(e.hp) + e.regen)
+			if e.hp > e.maxHp {
+				e.hp = e.maxHp
+			}
+		}
+
+		// Stealth: become visible when damaged or near tower
+		if e.stealth && !e.visible {
+			e.visible = true // Will be set to false initially, true when shot
+		}
+
+		// Stun timer
+		if e.stunned > 0 {
+			e.stunned--
+			continue // Skip movement while stunned
+		}
+
+		// Slow timer
+		if e.slowTimer > 0 {
+			e.slowTimer--
+		}
+
 		if e.pathIndex >= len(path) {
 			// Reached castle
 			g.lives -= e.damage
@@ -870,9 +921,17 @@ func (g *Game) updateEnemies() {
 		if dist < 5 {
 			e.pathIndex++
 		} else {
-			e.x += (dx / dist) * e.speed
-			e.y += (dy / dist) * e.speed
+			// Apply slow effect
+			speed := e.speed
+			if e.slowTimer > 0 {
+				speed *= 0.5
+			}
+			e.x += (dx / dist) * speed
+			e.y += (dy / dist) * speed
 		}
+
+		// Update enemy in slice
+		g.enemies[i] = e
 	}
 }
 
@@ -944,12 +1003,25 @@ func (g *Game) updateProjectiles() {
 			// Hit target
 			p.alive = false
 			if p.target != nil {
-				p.target.hp -= p.damage
+				// Armor reduces damage
+				actualDamage := p.damage
+				if p.target.armor > 0 {
+					actualDamage = p.damage / p.target.armor
+					if actualDamage < 1 {
+						actualDamage = 1
+					}
+				}
+				p.target.hp -= actualDamage
+				
 				if p.target.hp <= 0 {
 					g.gold += p.target.reward
 					g.score += p.target.reward * 10
 					PlaySound(g, SoundHit)
 				} else {
+					// Stealth enemy becomes visible when hit
+					if p.target.stealth {
+						p.target.visible = true
+					}
 					// Hit sound (quieter)
 					player := g.audioCtx.NewPlayerFromBytes(g.sounds[SoundHit])
 					player.SetVolume(0.2)
