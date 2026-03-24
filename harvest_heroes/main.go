@@ -121,6 +121,14 @@ type Plot struct {
 	waterLevel int
 }
 
+type Resource struct {
+	credits  int
+	metal    int
+	crystal  int
+	energy   int
+	food     int
+}
+
 type Tool struct {
 	toolType   int
 	name       string
@@ -264,7 +272,8 @@ type GameState struct {
 	fishing    []*Fish
 	ores       []*Ore
 	shops      map[int]int  // itemID -> price
-	
+	resources  Resource     // Farm resources
+
 	// Combat stats
 	combo      int
 	critChance float32
@@ -474,6 +483,7 @@ func NewGameState() *GameState {
 		npcs: make([]*NPC, 0),
 		recipes: make([]*Recipe, 0),
 		shops: make(map[int]int),
+		resources: Resource{credits: 100, metal: 50, crystal: 20, energy: 100, food: 100},
 		day: 1,
 		season: SeasonSpring,
 		weather: WeatherSunny,
@@ -779,7 +789,7 @@ func (g *GameState) updateMenu() {
 
 func (g *GameState) updateFarm() {
 	mx, my := ebiten.CursorPosition()
-	
+
 	// Tool selection
 	for i := 0; i < len(g.player.tools); i++ {
 		if mx >= 20+i*50 && mx <= 60+i*50 && my >= ScreenHeight-60 && my <= ScreenHeight-20 {
@@ -789,19 +799,32 @@ func (g *GameState) updateFarm() {
 			}
 		}
 	}
-	
+
 	// Interact with plots
 	plotX := mx / TileSize
 	plotY := my / TileSize
-	
+
 	if plotX >= 0 && plotX < 15 && plotY >= 0 && plotY < 10 {
 		plot := g.farm[plotX][plotY]
-		
+
 		if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
 			g.interactWithPlot(plot)
 		}
 	}
-	
+
+	// Interact with animals
+	for _, animal := range g.animals {
+		dx := float64(mx) - animal.x
+		dy := float64(my) - animal.y
+		dist := math.Sqrt(dx*dx + dy*dy)
+		
+		if dist < 50 {
+			if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
+				g.interactWithAnimal(animal)
+			}
+		}
+	}
+
 	// Navigation buttons
 	if mx >= ScreenWidth-150 && mx <= ScreenWidth-20 && my >= 20 && my <= 60 {
 		if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
@@ -810,12 +833,72 @@ func (g *GameState) updateFarm() {
 			PlaySound(g, 0)
 		}
 	}
-	
+
 	if mx >= ScreenWidth-150 && mx <= ScreenWidth-20 && my >= 80 && my <= 120 {
 		if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
 			g.state = StateTown
 			PlaySound(g, 0)
 		}
+	}
+	
+	// Animal products button
+	if mx >= ScreenWidth-150 && mx <= ScreenWidth-20 && my >= 140 && my <= 180 {
+		if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
+			g.collectAnimalProducts()
+		}
+	}
+}
+
+func (g *GameState) interactWithAnimal(animal *Animal) {
+	tool := g.player.tools[g.selectedTool]
+	
+	switch tool.toolType {
+	case ToolWatering:
+		// Feed animal
+		if !animal.fed && g.resources.food >= 5 {
+			animal.fed = true
+			animal.happiness += 20
+			if animal.happiness > 100 {
+				animal.happiness = 100
+			}
+			g.resources.food -= 5
+			g.spawnParticles(animal.x, animal.y-20, 10, color.RGBA{255, 100, 100, 255})
+			PlaySound(g, 4)
+		}
+	default:
+		// Pet animal
+		animal.happiness += 5
+		if animal.happiness > 100 {
+			animal.happiness = 100
+		}
+		g.spawnParticles(animal.x, animal.y-20, 5, color.RGBA{255, 215, 0, 255})
+		PlaySound(g, 0)
+	}
+}
+
+func (g *GameState) collectAnimalProducts() {
+	collected := 0
+	for _, animal := range g.animals {
+		if animal.products > 0 {
+			switch animal.animalType {
+			case 1: // Chicken
+				g.player.inventory = append(g.player.inventory, &Item{id: 301, name: "Яйцо", quantity: animal.products, value: 10})
+			case 2: // Cow
+				g.player.inventory = append(g.player.inventory, &Item{id: 302, name: "Молоко", quantity: animal.products, value: 20})
+			case 3: // Sheep
+				g.player.inventory = append(g.player.inventory, &Item{id: 303, name: "Шерсть", quantity: animal.products, value: 25})
+			}
+			collected += animal.products
+			animal.products = 0
+		}
+	}
+	
+	if collected > 0 {
+		g.damageNumbers = append(g.damageNumbers, &DamageNumber{
+			x: float64(ScreenWidth/2), y: float64(ScreenHeight/2),
+			value: collected, life: 60, isCrit: false,
+		})
+		PlaySound(g, 4)
 	}
 }
 
