@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/hajimehoshi/ebiten/v2/audio"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"github.com/hajimehoshi/ebiten/v2/text"
@@ -37,6 +38,8 @@ const (
 	TowerArcher  = 1
 	TowerCannon  = 2
 	TowerMagic   = 3
+	TowerIce     = 4  // Замедляет врагов
+	TowerSniper  = 5  // Очень большая дальность
 
 	// Enemy types
 	EnemyKnight  = 1
@@ -50,6 +53,14 @@ const (
 	StatePlaying  = 1
 	StateGameOver = 2
 	StateWon      = 3
+
+	// Sound types
+	SoundShoot    = 0
+	SoundHit      = 1
+	SoundBuild    = 2
+	SoundWave     = 3
+	SoundGameOver = 4
+	SoundWin      = 5
 )
 
 // ============================================================================
@@ -123,6 +134,10 @@ type Game struct {
 	towerImages map[int]*ebiten.Image
 	enemyImages map[int]*ebiten.Image
 	gameFont   font.Face
+
+	// Audio
+	audioCtx   *audio.Context
+	sounds     map[int][]byte
 
 	// Selection
 	selectedTower int
@@ -244,6 +259,76 @@ func LoadFont() font.Face {
 }
 
 // ============================================================================
+// AUDIO SYSTEM
+// ============================================================================
+
+func InitAudio() *audio.Context {
+	return audio.NewContext(44100)
+}
+
+func GenerateSound(frequency, duration float64, soundType string) []byte {
+	sampleRate := 44100
+	numSamples := int(float64(sampleRate) * duration)
+	samples := make([]byte, numSamples*2)
+
+	for i := 0; i < numSamples; i++ {
+		t := float64(i) / float64(sampleRate)
+		var envelope float64 = 1.0 - float64(i)/float64(numSamples)
+		var value float64
+
+		switch soundType {
+		case "shoot":
+			value = math.Sin(2*math.Pi*frequency*t) * envelope * 0.3
+		case "hit":
+			value = math.Sin(2*math.Pi*frequency*2*t) * envelope * envelope * 0.4
+		case "build":
+			value = (math.Sin(2*math.Pi*frequency*t) + math.Sin(2*math.Pi*frequency*1.5*t)) * envelope * 0.2
+		case "wave":
+			value = math.Sin(2*math.Pi*440*t) * envelope * 0.3
+		case "win":
+			value = math.Sin(2*math.Pi*880*t) * envelope * 0.3
+		default:
+			value = math.Sin(2*math.Pi*frequency*t) * envelope * 0.3
+		}
+
+		sample := int16(value * 32767)
+		samples[i*2] = byte(sample)
+		samples[i*2+1] = byte(sample >> 8)
+	}
+
+	return samples
+}
+
+func LoadSounds() map[int][]byte {
+	sounds := make(map[int][]byte)
+
+	// Generate procedural sounds
+	sounds[SoundShoot] = GenerateSound(600, 0.1, "shoot")
+	sounds[SoundHit] = GenerateSound(200, 0.15, "hit")
+	sounds[SoundBuild] = GenerateSound(800, 0.2, "build")
+	sounds[SoundWave] = GenerateSound(440, 0.3, "wave")
+	sounds[SoundGameOver] = GenerateSound(150, 0.5, "hit")
+	sounds[SoundWin] = GenerateSound(880, 0.4, "win")
+
+	return sounds
+}
+
+func PlaySound(g *Game, soundType int) {
+	if g.audioCtx == nil {
+		return
+	}
+
+	samples, ok := g.sounds[soundType]
+	if !ok || len(samples) == 0 {
+		return
+	}
+
+	player := g.audioCtx.NewPlayerFromBytes(samples)
+	player.SetVolume(0.4)
+	player.Play()
+}
+
+// ============================================================================
 // INITIALIZATION
 // ============================================================================
 
@@ -260,6 +345,8 @@ func NewGame() *Game {
 		lives:      MaxLives,
 		state:      StateMenu,
 		selectedTower: TowerArcher,
+		audioCtx:   InitAudio(),
+		sounds:     LoadSounds(),
 	}
 
 	// Initialize tiles
@@ -408,11 +495,13 @@ func (g *Game) updatePlaying() {
 	// Check game over
 	if g.lives <= 0 {
 		g.state = StateGameOver
+		PlaySound(g, SoundGameOver)
 	}
 
 	// Check win
 	if g.currentWave >= len(g.waves) && len(g.enemies) == 0 {
 		g.state = StateWon
+		PlaySound(g, SoundWin)
 	}
 }
 
@@ -431,6 +520,12 @@ func (g *Game) handleInput() {
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyDigit3) {
 		g.selectedTower = TowerMagic
+	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyDigit4) {
+		g.selectedTower = TowerIce
+	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyDigit5) {
+		g.selectedTower = TowerSniper
 	}
 
 	// Place tower on left click
@@ -502,11 +597,22 @@ func (g *Game) tryPlaceTower(mx, my int) {
 		tower.damage = 8
 		tower.fireRate = 10
 		tower.color = color.RGBA{150, 50, 255, 255}
+	case TowerIce:
+		tower.range_ = 140
+		tower.damage = 6
+		tower.fireRate = 20
+		tower.color = color.RGBA{50, 150, 255, 255} // Blue ice
+	case TowerSniper:
+		tower.range_ = 350 // Very long range!
+		tower.damage = 50
+		tower.fireRate = 90
+		tower.color = color.RGBA{255, 50, 50, 255} // Red sniper
 	}
 
 	g.towers = append(g.towers, tower)
 	g.gold -= cost
 	g.selectedTower = 0
+	PlaySound(g, SoundBuild)
 }
 
 func (g *Game) getTowerCost(towerType int) int {
@@ -517,6 +623,10 @@ func (g *Game) getTowerCost(towerType int) int {
 		return 100
 	case TowerMagic:
 		return 150
+	case TowerIce:
+		return 120
+	case TowerSniper:
+		return 200
 	}
 	return 50
 }
@@ -673,6 +783,7 @@ func (g *Game) fireProjectile(tower *Tower, target *Enemy) {
 		target: target,
 	}
 	g.projectiles = append(g.projectiles, proj)
+	PlaySound(g, SoundShoot)
 }
 
 func (g *Game) updateProjectiles() {
@@ -697,6 +808,12 @@ func (g *Game) updateProjectiles() {
 				if p.target.hp <= 0 {
 					g.gold += p.target.reward
 					g.score += p.target.reward * 10
+					PlaySound(g, SoundHit)
+				} else {
+					// Hit sound (quieter)
+					player := g.audioCtx.NewPlayerFromBytes(g.sounds[SoundHit])
+					player.SetVolume(0.2)
+					player.Play()
 				}
 			}
 			continue
@@ -730,6 +847,7 @@ func (g *Game) checkWaveProgress() {
 		wave.completed = true
 		g.currentWave++
 		g.gold += 50 // Wave completion bonus
+		PlaySound(g, SoundWave)
 	}
 }
 
@@ -786,6 +904,8 @@ func (g *Game) drawMenu(screen *ebiten.Image) {
 		"1 - Archer Tower (50g) - Fast, medium range",
 		"2 - Cannon Tower (100g) - Slow, high damage",
 		"3 - Magic Tower (150g) - Very fast, low damage",
+		"4 - Ice Tower (120g) - Slows enemies",
+		"5 - Sniper Tower (200g) - Extreme range",
 		"",
 		"Left Click - Place tower",
 		"Right Click - Cancel",
@@ -953,9 +1073,11 @@ func (g *Game) drawUI(screen *ebiten.Image) {
 	vector.DrawFilledRect(screen, 0, float32(panelY), ScreenWidth, 80, color.RGBA{0, 0, 0, 180}, false)
 
 	towerInfo := []string{
-		"[1] Archer: 50g - Fast shots",
-		"[2] Cannon: 100g - Heavy damage",
-		"[3] Magic: 150g - Rapid fire",
+		"[1] Archer: 50g - Fast",
+		"[2] Cannon: 100g - Heavy",
+		"[3] Magic: 150g - Rapid",
+		"[4] Ice: 120g - Slow",
+		"[5] Sniper: 200g - Range",
 	}
 	for i, info := range towerInfo {
 		if g.gameFont != nil {
@@ -963,7 +1085,7 @@ func (g *Game) drawUI(screen *ebiten.Image) {
 			if i+1 == g.selectedTower {
 				c = color.RGBA{100, 255, 100, 255}
 			}
-			text.Draw(screen, info, g.gameFont, 20+i*300, panelY+25, c)
+			text.Draw(screen, info, g.gameFont, 20+i*200, panelY+25, c)
 		}
 	}
 }
