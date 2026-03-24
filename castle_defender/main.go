@@ -137,11 +137,12 @@ type Projectile struct {
 
 // Wave - волна врагов
 type Wave struct {
-	number    int
-	enemies   int
-	spawned   int
-	spawnTime int
-	completed bool
+	number     int
+	enemies    int
+	spawned    int
+	spawnTime  int
+	completed  bool
+	isBossWave bool
 }
 
 // Game - основная игра
@@ -457,11 +458,24 @@ func (g *Game) GenerateLevel() {
 }
 
 func (g *Game) CreateWaves() {
+	// Продуманный баланс волн с прогрессией сложности
 	for i := 1; i <= MaxWave; i++ {
+		// Базовое количество врагов растёт с каждой волной
+		baseEnemies := 5 + i*2
+		
+		// Бонусные враги на босс-волнах (каждые 5)
+		if i%5 == 0 {
+			baseEnemies += 10
+		}
+		
+		// Время спавна уменьшается (быстрее = сложнее)
+		spawnTime := 60 - min(40, i)
+		
 		wave := &Wave{
-			number:  i,
-			enemies: 5 + i*2,
-			spawnTime: 60 - min(30, i*2),
+			number:    i,
+			enemies:   baseEnemies,
+			spawnTime: spawnTime,
+			isBossWave: i%5 == 0,
 		}
 		g.waves = append(g.waves, wave)
 	}
