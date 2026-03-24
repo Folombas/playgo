@@ -30,29 +30,37 @@ const (
 	TileSize     = 64
 
 	// Game constants
-	MaxLives     = 10
-	StartGold    = 150
-	MaxWave      = 20
+	MaxLives     = 15
+	StartGold    = 200
+	MaxWave      = 30  // Увеличено до 30 волн
 
 	// Tower types
 	TowerArcher  = 1
 	TowerCannon  = 2
 	TowerMagic   = 3
-	TowerIce     = 4  // Замедляет врагов
-	TowerSniper  = 5  // Очень большая дальность
+	TowerIce     = 4   // Замедляет врагов
+	TowerSniper  = 5   // Очень большая дальность
+	TowerLightning = 6 // Цепная молния
+	TowerPoison  = 7   // Отравляет врагов
 
 	// Enemy types
-	EnemyKnight  = 1
-	EnemyArcher  = 2
-	EnemyGiant   = 3
-	EnemyFast    = 4
-	EnemyBoss    = 5
+	EnemyKnight    = 1
+	EnemyArcher    = 2
+	EnemyGiant     = 3
+	EnemyFast      = 4
+	EnemyBoss      = 5
+	EnemyGhost     = 6  // Проходит сквозь башни
+	EnemyArmored   = 7  // Броня снижает урон
+	EnemyHealer    = 8  // Лечит других врагов
+	EnemyStealth   = 9  // Невидим до выстрела
+	EnemyDragon    = 10 // Летающий босс
 
 	// Game states
 	StateMenu     = 0
 	StatePlaying  = 1
 	StateGameOver = 2
 	StateWon      = 3
+	StatePaused   = 4
 
 	// Sound types
 	SoundShoot    = 0
@@ -61,6 +69,15 @@ const (
 	SoundWave     = 3
 	SoundGameOver = 4
 	SoundWin      = 5
+	SoundLightning = 6
+	SoundPoison    = 7
+	SoundHeal      = 8
+
+	// Special effects
+	EffectSlow    = 1
+	EffectPoison  = 2
+	EffectStun    = 3
+	EffectArmor   = 4
 )
 
 // ============================================================================
@@ -91,6 +108,19 @@ type Enemy struct {
 	damage    int
 	reward    int
 	slowTimer int
+	
+	// Special abilities
+	armor     int      // Снижение урона
+	regen     float32  // Регенерация HP
+	healRange float64  // Радиус лечения
+	stealth   bool     // Невидимость
+	visible   bool     // Видимый статус
+	flying    bool     // Летает (игнорирует препятствия)
+	
+	// Effects
+	poisoned  bool
+	poisonDmg int
+	stunned   int
 }
 
 // Projectile - снаряд
@@ -309,6 +339,9 @@ func LoadSounds() map[int][]byte {
 	sounds[SoundWave] = GenerateSound(440, 0.3, "wave")
 	sounds[SoundGameOver] = GenerateSound(150, 0.5, "hit")
 	sounds[SoundWin] = GenerateSound(880, 0.4, "win")
+	sounds[SoundLightning] = GenerateSound(300, 0.3, "hit") // Lightning sound
+	sounds[SoundPoison] = GenerateSound(500, 0.2, "shoot")  // Poison sound
+	sounds[SoundHeal] = GenerateSound(700, 0.25, "win")     // Heal sound
 
 	return sounds
 }
@@ -527,6 +560,12 @@ func (g *Game) handleInput() {
 	if inpututil.IsKeyJustPressed(ebiten.KeyDigit5) {
 		g.selectedTower = TowerSniper
 	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyDigit6) {
+		g.selectedTower = TowerLightning
+	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyDigit7) {
+		g.selectedTower = TowerPoison
+	}
 
 	// Place tower on left click
 	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
@@ -642,6 +681,16 @@ func (g *Game) tryPlaceTower(mx, my int) {
 		tower.damage = 50
 		tower.fireRate = 90
 		tower.color = color.RGBA{255, 50, 50, 255} // Red sniper
+	case TowerLightning:
+		tower.range_ = 200
+		tower.damage = 25
+		tower.fireRate = 40
+		tower.color = color.RGBA{255, 255, 0, 255} // Yellow lightning
+	case TowerPoison:
+		tower.range_ = 160
+		tower.damage = 4
+		tower.fireRate = 15
+		tower.color = color.RGBA{0, 255, 100, 255} // Green poison
 	}
 
 	g.towers = append(g.towers, tower)
@@ -662,6 +711,10 @@ func (g *Game) getTowerCost(towerType int) int {
 		return 120
 	case TowerSniper:
 		return 200
+	case TowerLightning:
+		return 250 // Chain lightning
+	case TowerPoison:
+		return 180 // Damage over time
 	}
 	return 50
 }
@@ -704,13 +757,24 @@ func (g *Game) spawnEnemies() {
 		enemyType := EnemyKnight
 		randVal := rand.Float32()
 
-		if wave.number >= 15 && randVal < 0.1 {
+		// New enemy types with special abilities
+		if wave.number >= 25 && randVal < 0.05 {
+			enemyType = EnemyDragon  // Ultimate boss
+		} else if wave.number >= 20 && randVal < 0.1 {
+			enemyType = EnemyStealth  // Invisible until shot
+		} else if wave.number >= 18 && randVal < 0.12 {
+			enemyType = EnemyHealer   // Heals nearby enemies
+		} else if wave.number >= 15 && randVal < 0.15 {
+			enemyType = EnemyArmored  // Armor reduces damage
+		} else if wave.number >= 12 && randVal < 0.18 {
+			enemyType = EnemyGhost    // Flies over obstacles
+		} else if wave.number >= 15 && randVal < 0.2 {
 			enemyType = EnemyBoss
-		} else if wave.number >= 10 && randVal < 0.2 {
+		} else if wave.number >= 10 && randVal < 0.25 {
 			enemyType = EnemyGiant
-		} else if wave.number >= 5 && randVal < 0.3 {
+		} else if wave.number >= 5 && randVal < 0.35 {
 			enemyType = EnemyFast
-		} else if wave.number >= 3 && randVal < 0.4 {
+		} else if wave.number >= 3 && randVal < 0.45 {
 			enemyType = EnemyArcher
 		}
 
@@ -735,6 +799,26 @@ func (g *Game) spawnEnemies() {
 			hp = hp * 5
 			speed = 0.7
 			reward = 100
+		case EnemyGhost:
+			hp = int(float64(hp) * 0.7)
+			speed = 1.3
+			reward = 20
+		case EnemyArmored:
+			hp = hp * 2
+			speed = 0.8
+			reward = 25
+		case EnemyHealer:
+			hp = int(float64(hp) * 0.8)
+			speed = 0.9
+			reward = 30
+		case EnemyStealth:
+			hp = int(float64(hp) * 0.6)
+			speed = 1.6
+			reward = 25
+		case EnemyDragon:
+			hp = hp * 8
+			speed = 0.5
+			reward = 150
 		}
 
 		enemy := &Enemy{
@@ -1173,23 +1257,25 @@ func (g *Game) drawUI(screen *ebiten.Image) {
 	vector.DrawFilledRect(screen, 0, float32(panelY), ScreenWidth, 80, color.RGBA{0, 0, 0, 180}, false)
 
 	towerInfo := []string{
-		"[1] Archer: 50g - Fast",
-		"[2] Cannon: 100g - Heavy",
-		"[3] Magic: 150g - Rapid",
-		"[4] Ice: 120g - Slow",
-		"[5] Sniper: 200g - Range",
+		"[1] Arch: 50g",
+		"[2] Cann: 100g",
+		"[3] Mag: 150g",
+		"[4] Ice: 120g",
+		"[5] Snip: 200g",
+		"[6] Ltng: 250g",
+		"[7] Pois: 180g",
 		" [U] Upgrade",
 	}
 	for i, info := range towerInfo {
 		if g.gameFont != nil {
 			c := color.RGBA{200, 200, 200, 255}
-			if i < 5 && i+1 == g.selectedTower {
+			if i < 7 && i+1 == g.selectedTower {
 				c = color.RGBA{100, 255, 100, 255}
 			}
-			if i == 5 {
+			if i == 7 {
 				c = color.RGBA{255, 215, 0, 255} // Gold for upgrade
 			}
-			text.Draw(screen, info, g.gameFont, 20+i*165, panelY+25, c)
+			text.Draw(screen, info, g.gameFont, 20+i*125, panelY+25, c)
 		}
 	}
 }
