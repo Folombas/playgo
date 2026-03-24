@@ -37,6 +37,10 @@ const (
 	StateTown       = 6
 	StateDialogue   = 7
 	StateSettings   = 8
+	StateFishing    = 9
+	StateMining     = 10
+	StateFestival   = 11
+	StateRomance    = 12
 
 	// Crop types
 	CropWheat    = 1
@@ -47,6 +51,11 @@ const (
 	CropPumpkin  = 6
 	CropBerry    = 7
 	CropMagic    = 8
+	CropStrawberry = 9
+	CropGrape    = 10
+	CropSunflower = 11
+	CropCoffee   = 12
+	CropAncient  = 13  // Rare ancient fruit
 
 	// Tool types
 	ToolHoe      = 1
@@ -55,6 +64,8 @@ const (
 	ToolPickaxe  = 4
 	ToolSword    = 5
 	ToolStaff    = 6
+	ToolFishing  = 7
+	ToolMagic    = 8
 
 	// Enemy types
 	EnemySlime   = 1
@@ -63,6 +74,9 @@ const (
 	EnemyGhost   = 4
 	EnemyDemon   = 5
 	EnemyBoss    = 6
+	EnemyDragon  = 7  // Ultimate boss
+	EnemyWisp    = 8  // Magical enemy
+	EnemyGolem   = 9  // Mining area enemy
 
 	// Seasons
 	SeasonSpring = 1
@@ -149,6 +163,8 @@ type Player struct {
 	x, y       float64
 	energy     int
 	maxEnergy  int
+	mana       int
+	maxMana    int
 	gold       int
 	tools      []*Tool
 	inventory  []*Item
@@ -158,6 +174,9 @@ type Player struct {
 	attack     int
 	defense    int
 	speed      float64
+	luck       float32
+	fishingRod *Tool
+	pickaxeLevel int
 }
 
 type Dungeon struct {
@@ -250,6 +269,28 @@ type GameState struct {
 	combo      int
 	critChance float32
 	critDamage float32
+	mana       int      // Magic system
+	maxMana    int
+	luck       float32  // Affects crits, fishing, mining
+	
+	// Fishing
+	fishingRod   *Tool
+	fishingActive bool
+	fishingProgress int
+	fishingMinigame float32
+	
+	// Mining
+	pickaxeLevel int
+	miningNodes  []*MiningNode
+	
+	// Romance
+	romanceLevel map[int]int  // NPC ID -> romance level
+	married      bool
+	spouseID     int
+	
+	// Festival
+	currentFestival string
+	festivalTimer   int
 	
 	// Time system
 	day        int
@@ -302,6 +343,33 @@ type DamageNumber struct {
 	value    int
 	life     int
 	isCrit   bool
+}
+
+type MiningNode struct {
+	x, y      float64
+	oreType   int
+	hp        int
+	maxHp     int
+	depleted  bool
+}
+
+type Spell struct {
+	id        int
+	name      string
+	manaCost  int
+	damage    int
+	effect    string
+	color     color.RGBA
+}
+
+type Festival struct {
+	id        string
+	name      string
+	season    int
+	day       int
+	description string
+	minigame  string
+	rewards   []*Item
 }
 
 type Particle struct {
@@ -390,12 +458,15 @@ func NewGameState() *GameState {
 			y: TileSize * 5,
 			energy: 100,
 			maxEnergy: 100,
+			mana: 50,
+			maxMana: 50,
 			gold: 500,
 			hp: 50,
 			maxHp: 50,
 			attack: 10,
 			defense: 5,
 			speed: 3.0,
+			luck: 0.1,
 			tools: make([]*Tool, 0),
 			inventory: make([]*Item, 0),
 		},
@@ -420,6 +491,14 @@ func NewGameState() *GameState {
 	g.player.tools = append(g.player.tools, &Tool{toolType: ToolHoe, name: "Мотыга", level: 1, durability: 100, maxDurability: 100})
 	g.player.tools = append(g.player.tools, &Tool{toolType: ToolWatering, name: "Лейка", level: 1, durability: 100, maxDurability: 100})
 	g.player.tools = append(g.player.tools, &Tool{toolType: ToolSword, name: "Меч", level: 1, durability: 50, maxDurability: 50})
+	g.player.tools = append(g.player.tools, &Tool{toolType: ToolPickaxe, name: "Кирка", level: 1, durability: 100, maxDurability: 100})
+	g.player.tools = append(g.player.tools, &Tool{toolType: ToolFishing, name: "Удочка", level: 1, durability: 100, maxDurability: 100})
+	g.player.tools = append(g.player.tools, &Tool{toolType: ToolMagic, name: "Посох", level: 1, durability: 50, maxDurability: 50})
+	g.player.fishingRod = g.player.tools[len(g.player.tools)-2]
+	g.player.pickaxeLevel = 1
+	
+	// Initialize romance
+	g.romanceLevel = make(map[int]int)
 
 	// Initialize farm
 	for x := 0; x < 15; x++ {
@@ -481,6 +560,24 @@ func NewGameState() *GameState {
 	g.ores = append(g.ores, &Ore{id: 2, name: "Железо", value: 50, toolLevel: 2})
 	g.ores = append(g.ores, &Ore{id: 3, name: "Золото", value: 100, toolLevel: 3})
 	g.ores = append(g.ores, &Ore{id: 4, name: "Алмаз", value: 200, toolLevel: 4})
+	
+	// Initialize spells
+	spells := []*Spell{
+		{id: 1, name: "Огненный шар", manaCost: 10, damage: 30, effect: "fire", color: color.RGBA{255, 100, 50, 255}},
+		{id: 2, name: "Ледяная стрела", manaCost: 8, damage: 20, effect: "ice", color: color.RGBA{50, 200, 255, 255}},
+		{id: 3, name: "Лечение", manaCost: 15, damage: 0, effect: "heal", color: color.RGBA{50, 255, 100, 255}},
+		{id: 4, name: "Молния", manaCost: 12, damage: 25, effect: "lightning", color: color.RGBA{255, 255, 0, 255}},
+	}
+	_ = spells // Store for later use
+	
+	// Initialize festivals
+	festivals := []*Festival{
+		{id: "spring_flower", name: "Праздник цветов", season: SeasonSpring, day: 15, description: "Соберите 10 цветов", minigame: "collect", rewards: []*Item{{id: 201, name: "Редкие семена", value: 100}}},
+		{id: "summer_luau", name: "Луау", season: SeasonSummer, day: 15, description: "Принесите рыбу", minigame: "cook", rewards: []*Item{{id: 202, name: "Трофей", value: 200}}},
+		{id: "fall_harvest", name: "Праздник урожая", season: SeasonFall, day: 15, description: "Выставка урожая", minigame: "contest", rewards: []*Item{{id: 203, name: "Золотая тыква", value: 500}}},
+		{id: "winter_star", name: "Звезда зимы", season: SeasonWinter, day: 25, description: "Подарки друзьям", minigame: "gift", rewards: []*Item{{id: 204, name: "Зимний подарок", value: 300}}},
+	}
+	_ = festivals // Store for later use
 
 	// Initialize shop prices
 	g.shops[1] = 20  // Wheat seeds
@@ -855,7 +952,7 @@ func (g *GameState) attack() {
 	// Combo system
 	g.combo++
 	critRoll := rand.Float32()
-	isCrit := critRoll < g.critChance
+	isCrit := critRoll < (g.critChance + g.luck*0.1)
 	
 	for _, enemy := range g.dungeon.enemies {
 		if !enemy.alive {
@@ -907,6 +1004,47 @@ func (g *GameState) attack() {
 	// Combo decay
 	if g.combo > 0 {
 		g.combo--
+	}
+}
+
+func (g *GameState) startFishing() {
+	g.state = StateFishing
+	g.fishingActive = true
+	g.fishingProgress = 0
+	PlaySound(g, 5)
+}
+
+func (g *GameState) updateFishing() {
+	// Fishing minigame - keep bar in position
+	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
+		g.fishingMinigame = 0.5 // Reset position
+	}
+	
+	g.fishingProgress++
+	
+	// Catch fish after some time
+	if g.fishingProgress > 180 { // 3 seconds
+		// Determine catch based on luck and season
+		catchChance := 0.3 + g.luck*0.2
+		if rand.Float32() < catchChance {
+			// Got a fish!
+			fish := g.fishing[rand.Intn(len(g.fishing))]
+			g.player.inventory = append(g.player.inventory, &Item{
+				id: fish.id,
+				name: fish.name,
+				itemType: 5, // fish
+				value: fish.value,
+				quantity: 1,
+			})
+			g.fishCaught++
+			g.damageNumbers = append(g.damageNumbers, &DamageNumber{
+				x: float64(ScreenWidth/2), y: float64(ScreenHeight/2),
+				value: fish.value, life: 60, isCrit: false,
+			})
+			PlaySound(g, 4)
+		}
+		g.state = StateFarm
+		g.fishingActive = false
 	}
 }
 
