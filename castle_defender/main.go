@@ -676,6 +676,27 @@ func (g *Game) spawnEnemies() {
 		return
 	}
 
+	// Spawn boss at the end of every 5th wave
+	isBossWave := (wave.number % 5 == 0) && wave.spawned == wave.enemies-1
+	
+	if isBossWave && wave.spawned == wave.enemies-1 {
+		wave.spawned++
+		boss := &Enemy{
+			x: 0,
+			y: float64(2 * TileSize),
+			enemyType: EnemyBoss,
+			hp: 200 + wave.number * 20,
+			maxHp: 200 + wave.number * 20,
+			speed: 0.6,
+			damage: 3,
+			reward: 200,
+			pathIndex: 0,
+		}
+		g.enemies = append(g.enemies, boss)
+		PlaySound(g, SoundWave) // Boss spawn sound
+		return
+	}
+
 	if g.frameCount%wave.spawnTime == 0 {
 		wave.spawned++
 
@@ -1062,19 +1083,41 @@ func (g *Game) drawTowers(screen *ebiten.Image) {
 
 func (g *Game) drawEnemies(screen *ebiten.Image) {
 	for _, e := range g.enemies {
+		isBoss := e.enemyType == EnemyBoss
+		size := float32(14)
+		if isBoss {
+			size = float32(25) // Bigger boss
+		}
+		
 		if img, ok := g.enemyImages[e.enemyType]; ok && img != nil {
 			op := &ebiten.DrawImageOptions{}
-			op.GeoM.Translate(e.x-16, e.y-16)
+			scale := float64(size) / float64(14)
+			op.GeoM.Scale(scale, scale)
+			op.GeoM.Translate(e.x-16*float64(size)/float64(14), e.y-16*float64(size)/float64(14))
 			screen.DrawImage(img, op)
 		} else {
 			c := color.RGBA{200, 50, 50, 255}
-			vector.DrawFilledCircle(screen, float32(e.x), float32(e.y), 14, c, false)
+			if isBoss {
+				c = color.RGBA{255, 0, 100, 255} // Red boss
+			}
+			vector.DrawFilledCircle(screen, float32(e.x), float32(e.y), size, c, false)
 		}
 
 		// Health bar
 		hpPercent := float32(e.hp) / float32(e.maxHp)
-		vector.DrawFilledRect(screen, float32(e.x)-15, float32(e.y)-25, 30, 4, color.RGBA{100, 0, 0, 255}, false)
-		vector.DrawFilledRect(screen, float32(e.x)-15, float32(e.y)-25, 30*hpPercent, 4, color.RGBA{0, 255, 0, 255}, false)
+		barWidth := float32(30)
+		barY := float32(e.y) - 25
+		if isBoss {
+			barWidth = float32(50)
+			barY = float32(e.y) - 40
+		}
+		vector.DrawFilledRect(screen, float32(e.x)-barWidth/2, barY, barWidth, 4, color.RGBA{100, 0, 0, 255}, false)
+		vector.DrawFilledRect(screen, float32(e.x)-barWidth/2, barY, barWidth*hpPercent, 4, color.RGBA{0, 255, 0, 255}, false)
+		
+		// Boss label
+		if isBoss && g.gameFont != nil {
+			text.Draw(screen, "👑 BOSS", g.gameFont, int(e.x)-30, int(barY)-15, color.RGBA{255, 0, 100, 255})
+		}
 	}
 }
 
