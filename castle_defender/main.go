@@ -533,10 +533,45 @@ func (g *Game) handleInput() {
 		g.tryPlaceTower(mx, my)
 	}
 
+	// Upgrade tower on 'U' key + click
+	if inpututil.IsKeyJustPressed(ebiten.KeyU) {
+		g.tryUpgradeTower(mx, my)
+	}
+
 	// Cancel on right click
 	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonRight) {
 		g.selectedTower = 0
 	}
+}
+
+func (g *Game) tryUpgradeTower(mx, my int) {
+	tx := mx / TileSize
+	ty := my / TileSize
+
+	// Find tower at position
+	for _, tower := range g.towers {
+		if tower.x == tx && tower.y == ty {
+			// Check if can upgrade
+			upgradeCost := g.getUpgradeCost(tower)
+			if tower.level >= 3 {
+				return // Max level
+			}
+			if g.gold >= upgradeCost {
+				g.gold -= upgradeCost
+				tower.level++
+				tower.damage = tower.damage * 150 / 100 // +50% damage
+				tower.range_ = tower.range_ * 110 / 100 // +10% range
+				tower.fireRate = tower.fireRate * 90 / 100 // -10% cooldown
+				PlaySound(g, SoundBuild)
+			}
+			return
+		}
+	}
+}
+
+func (g *Game) getUpgradeCost(tower *Tower) int {
+	baseCost := g.getTowerCost(tower.towerType)
+	return baseCost * tower.level // Level 1: 100%, Level 2: 200%, etc.
 }
 
 func (g *Game) tryPlaceTower(mx, my int) {
@@ -907,6 +942,8 @@ func (g *Game) drawMenu(screen *ebiten.Image) {
 		"4 - Ice Tower (120g) - Slows enemies",
 		"5 - Sniper Tower (200g) - Extreme range",
 		"",
+		"U + Click - Upgrade tower (50% more damage)",
+		"",
 		"Left Click - Place tower",
 		"Right Click - Cancel",
 		"",
@@ -995,10 +1032,30 @@ func (g *Game) drawTowers(screen *ebiten.Image) {
 			vector.DrawFilledCircle(screen, float32(drawX), float32(drawY), 20, tower.color, false)
 		}
 
+		// Draw level stars
+		for i := 0; i < tower.level; i++ {
+			starX := float32(drawX) - 15 + float32(i*10)
+			starY := float32(drawY) - 25
+			vector.DrawFilledCircle(screen, starX, starY, 3, color.RGBA{255, 215, 0, 255}, false)
+		}
+
 		// Draw range indicator on hover
 		mx, my := ebiten.CursorPosition()
 		if mx/TileSize == tower.x && my/TileSize == tower.y {
 			vector.StrokeCircle(screen, float32(drawX), float32(drawY), float32(tower.range_), 2, color.RGBA{255, 255, 255, 100}, false)
+			
+			// Show upgrade cost if can upgrade
+			if tower.level < 3 {
+				upgradeCost := g.getUpgradeCost(tower)
+				if g.gameFont != nil {
+					costText := fmt.Sprintf("U: %dg", upgradeCost)
+					text.Draw(screen, costText, g.gameFont, int(drawX)-20, int(drawY)-45, color.RGBA{100, 255, 100, 255})
+				}
+			} else if tower.level == 3 {
+				if g.gameFont != nil {
+					text.Draw(screen, "MAX", g.gameFont, int(drawX)-15, int(drawY)-45, color.RGBA{255, 215, 0, 255})
+				}
+			}
 		}
 	}
 }
@@ -1078,14 +1135,18 @@ func (g *Game) drawUI(screen *ebiten.Image) {
 		"[3] Magic: 150g - Rapid",
 		"[4] Ice: 120g - Slow",
 		"[5] Sniper: 200g - Range",
+		" [U] Upgrade",
 	}
 	for i, info := range towerInfo {
 		if g.gameFont != nil {
 			c := color.RGBA{200, 200, 200, 255}
-			if i+1 == g.selectedTower {
+			if i < 5 && i+1 == g.selectedTower {
 				c = color.RGBA{100, 255, 100, 255}
 			}
-			text.Draw(screen, info, g.gameFont, 20+i*200, panelY+25, c)
+			if i == 5 {
+				c = color.RGBA{255, 215, 0, 255} // Gold for upgrade
+			}
+			text.Draw(screen, info, g.gameFont, 20+i*165, panelY+25, c)
 		}
 	}
 }
