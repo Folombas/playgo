@@ -79,6 +79,7 @@ type Card struct {
 }
 
 var cardDatabase = map[int]Card{
+	// === COMMON CARDS ===
 	1:  {id: 1, name: "Удар", description: "Нанесите 6 урона", cardType: CardAttack, cost: 1, damage: 6, rarity: Common},
 	2:  {id: 2, name: "Защита", description: "Получите 5 блока", cardType: CardDefense, cost: 1, block: 5, rarity: Common},
 	3:  {id: 3, name: "Мощный удар", description: "Нанесите 12 урона", cardType: CardAttack, cost: 2, damage: 12, rarity: Uncommon},
@@ -91,6 +92,21 @@ var cardDatabase = map[int]Card{
 	10: {id: 10, name: "Неуязвимость", description: "Получите 25 блока и неуязвимость", cardType: CardDefense, cost: 3, block: 25, effect: "invincible", rarity: Rare},
 	11: {id: 11, name: "Кровожадность", description: "Нанесите 8 урона, получите 5 HP", cardType: CardAttack, cost: 2, damage: 8, effect: "lifesteal", rarity: Rare},
 	12: {id: 12, name: "Контратака", description: "Получите 8 блока, отразите урон", cardType: CardDefense, cost: 1, block: 8, effect: "reflect", rarity: Uncommon},
+	
+	// === NEW CARDS ===
+	13: {id: 13, name: "Смерч", description: "Нанесите 8 урона всем врагам 3 раза", cardType: CardAttack, cost: 3, damage: 8, effect: "aoe_3x", rarity: Legendary},
+	14: {id: 14, name: "Каменная кожа", description: "Получите 15 блока, +5 блок каждый ход", cardType: CardDefense, cost: 2, block: 15, effect: "growing_block", rarity: Rare},
+	15: {id: 15, name: "Ярость", description: "Получите 1 энергию, наносите +50% урона", cardType: CardBuff, cost: 0, effect: "rage", rarity: Rare},
+	16: {id: 16, name: "Слабость", description: "Враг наносит на 40% меньше урона", cardType: CardDebuff, cost: 1, effect: "weak", rarity: Common},
+	17: {id: 17, name: "Уязвимость", description: "Враг получает на 50% больше урона", cardType: CardDebuff, cost: 2, effect: "vulnerable", rarity: Uncommon},
+	18: {id: 18, name: "Молния", description: "Нанесите 10 урона, игнорируя блок", cardType: CardAttack, cost: 2, damage: 10, effect: "pierce", rarity: Uncommon},
+	19: {id: 19, name: "Вампиризм", description: "Нанесите 12 урона, украдите 6 HP", cardType: CardAttack, cost: 3, damage: 12, effect: "steal_hp", rarity: Rare},
+	20: {id: 20, name: "Благословение", description: "Получите 20 блока и 5 HP", cardType: CardBuff, cost: 2, block: 20, effect: "heal_5", rarity: Uncommon},
+	21: {id: 21, name: "Двойной удар", description: "Нанесите 5 урона дважды", cardType: CardAttack, cost: 1, damage: 5, effect: "double_strike", rarity: Common},
+	22: {id: 22, name: "Ледяная броня", description: "Получите 10 блока, заморозьте врага", cardType: CardDefense, cost: 2, block: 10, effect: "freeze", rarity: Rare},
+	23: {id: 23, name: "Тёмная магия", description: "Нанесите 25 урона, получите 5 урона", cardType: CardAttack, cost: 2, damage: 25, effect: "self_damage", rarity: Rare},
+	24: {id: 24, name: "Медитация", description: "Получите 2 энергии, пропустите ход", cardType: CardBuff, cost: 0, effect: "meditate", rarity: Rare},
+	25: {id: 25, name: "Божественный щит", description: "Получите 99 блока", cardType: CardDefense, cost: 5, block: 99, rarity: Legendary},
 }
 
 // ============================================================================
@@ -108,6 +124,36 @@ type Player struct {
 	poisonTurns  int
 	invincible   bool
 	reflect      bool
+	
+	// Relics & Effects
+	weak         int      // Уменьшение урона (ходы)
+	vulnerable   int      // Увеличение получаемого урона
+	frozen       int      // Пропуск хода
+	growingBlock int      // Растущий блок за ход
+	rage         bool     // +50% урона
+	extraEnergy  int      // Дополнительная энергия
+	
+	// Relics owned
+	relics       []Relic
+}
+
+type Relic struct {
+	id          int
+	name        string
+	description string
+	effect      string
+	stacks      int
+}
+
+var relicDatabase = map[int]Relic{
+	1: {id: 1, name: "Кровавый череп", description: "+1 урона за каждую сыгранную карту", effect: "damage_per_card"},
+	2: {id: 2, name: "Перо орла", description: "Начинайте бой с 5 блока", effect: "start_block"},
+	3: {id: 3, name: "Амулет жизни", description: "+10 максимального HP", effect: "max_hp"},
+	4: {id: 4, name: "Кольцо силы", description: "+2 к начальной энергии", effect: "max_energy"},
+	5: {id: 5, name: "Щит предков", description: "Шанс 25% получить 10 блока", effect: "block_chance"},
+	6: {id: 6, name: "Книга магии", description: "Карты стоят на 1 меньше (минимум 0)", effect: "cost_reduce"},
+	7: {id: 7, name: "Сердце дракона", description: "Наносите +2 урона всеми атаками", effect: "flat_damage"},
+	8: {id: 8, name: "Сапоги скорости", description: "Берите +1 карту в начале хода", effect: "draw_extra"},
 }
 
 type Enemy struct {
@@ -120,6 +166,7 @@ type Enemy struct {
 	intentValue int
 	image       *ebiten.Image
 	poison      int
+	vulnerable  int    // Увеличенный получаемый урон
 }
 
 type GameState struct {
@@ -583,29 +630,127 @@ func (g *GameState) updateEndScreen() {
 
 func (g *GameState) playCard(cardIndex int) {
 	card := g.hand[cardIndex]
-	if g.energy < card.cost {
+	
+	// Calculate cost with relics
+	cost := card.cost
+	for _, relic := range g.player.relics {
+		if relic.effect == "cost_reduce" {
+			cost--
+		}
+	}
+	if cost < 0 {
+		cost = 0
+	}
+	
+	if g.energy < cost {
 		return // Not enough energy
 	}
 
-	g.energy -= card.cost
+	g.energy -= cost
 	PlaySound(g, 0)
+	
+	// Relic: Damage per card
+	damageBonus := 0
+	for _, relic := range g.player.relics {
+		if relic.effect == "flat_damage" {
+			damageBonus += 2
+		}
+	}
 
 	// Apply card effects
 	switch card.cardType {
 	case CardAttack:
-		damage := card.damage + g.player.damageBuff
+		damage := card.damage + g.player.damageBuff + damageBonus
+		
+		// Rage effect
+		if g.player.rage {
+			damage = damage * 150 / 100
+		}
+		
 		if len(g.enemies) > 0 {
-			g.enemies[0].health -= damage
+			target := g.enemies[0]
+			
+			// Pierce effect - ignore block
+			if card.effect == "pierce" {
+				target.health -= damage
+			} else {
+				// Normal damage calculation
+				actualDamage := damage
+				if target.block > 0 {
+					if target.block >= actualDamage {
+						target.block -= actualDamage
+						actualDamage = 0
+					} else {
+						actualDamage -= target.block
+						target.block = 0
+					}
+				}
+				
+				// Vulnerable effect
+				if target.vulnerable > 0 {
+					actualDamage = actualDamage * 150 / 100
+				}
+				
+				target.health -= actualDamage
+			}
+			
 			g.screenShake = 5
 			g.damageNumbers = append(g.damageNumbers, &DamageNumber{
 				x: float64(ScreenWidth/2), y: float64(ScreenHeight/3),
 				value: damage, life: 60,
 			})
 			g.spawnParticles(float64(ScreenWidth/2), float64(ScreenHeight/3), 10, color.RGBA{255, 0, 0, 255})
+			
+			// Lifesteal
+			if card.effect == "lifesteal" || card.effect == "steal_hp" {
+				heal := 5
+				if card.effect == "steal_hp" {
+					heal = 6
+				}
+				g.player.health = min(g.player.health+heal, g.player.maxHealth)
+				g.damageNumbers = append(g.damageNumbers, &DamageNumber{
+					x: float64(ScreenWidth/4), y: float64(ScreenHeight/2),
+					value: heal, life: 60, isHeal: true,
+				})
+			}
+			
+			// Double strike
+			if card.effect == "double_strike" {
+				target.health -= damage
+				g.damageNumbers = append(g.damageNumbers, &DamageNumber{
+					x: float64(ScreenWidth/2), y: float64(ScreenHeight/3),
+					value: damage, life: 60,
+				})
+			}
+			
+			// AOE 3x
+			if card.effect == "aoe_3x" {
+				for i := 0; i < 2; i++ {
+					target.health -= damage
+					g.spawnParticles(float64(ScreenWidth/2), float64(ScreenHeight/3), 5, color.RGBA{255, 100, 0, 255})
+				}
+			}
+			
+			// Self damage
+			if card.effect == "self_damage" {
+				g.player.health -= 5
+				g.damageNumbers = append(g.damageNumbers, &DamageNumber{
+					x: float64(ScreenWidth/4), y: float64(ScreenHeight/2),
+					value: 5, life: 60,
+				})
+			}
 		}
+		
 	case CardDefense:
 		g.player.block += card.block
+		
+		// Growing block
+		if card.effect == "growing_block" {
+			g.player.growingBlock = 5
+		}
+		
 		g.spawnParticles(float64(ScreenWidth/4), float64(ScreenHeight/2), 8, color.RGBA{0, 100, 255, 255})
+		
 	case CardBuff:
 		switch card.effect {
 		case "buff_attack":
@@ -617,12 +762,35 @@ func (g *GameState) playCard(cardIndex int) {
 				x: float64(ScreenWidth/4), y: float64(ScreenHeight/2),
 				value: 10, life: 60, isHeal: true,
 			})
+		case "heal_5":
+			g.player.health = min(g.player.health+5, g.player.maxHealth)
+			PlaySound(g, 2)
+			g.damageNumbers = append(g.damageNumbers, &DamageNumber{
+				x: float64(ScreenWidth/4), y: float64(ScreenHeight/2),
+				value: 5, life: 60, isHeal: true,
+			})
+		case "rage":
+			g.player.rage = true
+			g.player.extraEnergy = 1
+		case "meditate":
+			g.player.extraEnergy = 2
+		case "invincible":
+			g.player.invincible = true
+		case "reflect":
+			g.player.reflect = true
 		}
+		
 	case CardDebuff:
 		if len(g.enemies) > 0 {
 			switch card.effect {
 			case "poison":
 				g.enemies[0].poison = 3
+			case "weak":
+				g.enemies[0].damage = g.enemies[0].damage * 60 / 100
+			case "vulnerable":
+				g.enemies[0].vulnerable = 3
+			case "freeze":
+				g.enemies[0].damage = 0 // Frozen for 1 turn
 			}
 		}
 	}
@@ -646,11 +814,23 @@ func (g *GameState) endTurn() {
 				x: float64(ScreenWidth/2), y: float64(ScreenHeight/3),
 				value: enemy.poison, life: 60,
 			})
+			enemy.poison--
+		}
+		
+		// Apply vulnerable decay
+		if enemy.vulnerable > 0 {
+			enemy.vulnerable--
 		}
 
 		// Enemy attack
-		if enemy.intent == "attack" {
+		if enemy.intent == "attack" && enemy.damage > 0 {
 			damage := enemy.damage
+			
+			// Weak effect on enemy
+			if enemy.damage < g.enemies[0].damage {
+				damage = damage * 60 / 100
+			}
+			
 			if g.player.block > 0 {
 				if g.player.block >= damage {
 					g.player.block -= damage
@@ -663,10 +843,40 @@ func (g *GameState) endTurn() {
 			if g.player.invincible {
 				damage = 0
 			}
+			
+			// Reflect damage
+			if g.player.reflect && damage > 0 {
+				enemy.health -= damage / 2
+				damage = damage / 2
+			}
+			
 			g.player.health -= damage
-			g.screenShake = 10
-			g.spawnParticles(float64(ScreenWidth/4), float64(ScreenHeight/2), 15, color.RGBA{255, 0, 0, 255})
+			if damage > 0 {
+				g.screenShake = 10
+				g.spawnParticles(float64(ScreenWidth/4), float64(ScreenHeight/2), 15, color.RGBA{255, 0, 0, 255})
+			}
 		}
+	}
+
+	// Start of player turn
+	// Apply growing block
+	if g.player.growingBlock > 0 {
+		g.player.block += g.player.growingBlock
+	}
+	
+	// Apply rage decay
+	g.player.rage = false
+	g.player.extraEnergy = 0
+	
+	// Apply weak/vulnerable decay
+	if g.player.weak > 0 {
+		g.player.weak--
+	}
+	if g.player.vulnerable > 0 {
+		g.player.vulnerable--
+	}
+	if g.player.frozen > 0 {
+		g.player.frozen--
 	}
 
 	// Reset player
@@ -674,20 +884,39 @@ func (g *GameState) endTurn() {
 	g.player.damageBuff = 0
 	g.player.invincible = false
 	g.player.reflect = false
+	
+	// Calculate energy
 	g.energy = g.player.maxEnergy
+	for _, relic := range g.player.relics {
+		if relic.effect == "max_energy" {
+			g.energy += 2
+		}
+	}
 
 	// Draw new cards
 	for _, card := range g.hand {
 		g.discard = append(g.discard, card)
 	}
 	g.hand = make([]*Card, 0)
-	g.DrawCards(MaxHandSize)
+	
+	drawCount := MaxHandSize
+	for _, relic := range g.player.relics {
+		if relic.effect == "draw_extra" {
+			drawCount++
+		}
+	}
+	g.DrawCards(drawCount)
 
 	// Enemy intent for next turn
 	for _, enemy := range g.enemies {
 		if enemy.health > 0 {
 			intents := []string{"attack", "defend", "buff"}
 			enemy.intent = intents[rand.Intn(len(intents))]
+			if enemy.intent == "defend" {
+				enemy.block += 10
+			} else if enemy.intent == "buff" {
+				enemy.damage = enemy.damage * 120 / 100
+			}
 		}
 	}
 
@@ -701,15 +930,26 @@ func (g *GameState) victory() {
 	g._floor++
 	PlaySound(g, 5)
 
-	// Add reward card
-	if len(g.deck) < MaxDeckSize {
-		rewardCards := []int{3, 4, 5, 7, 8, 10, 11, 12}
+	// Add reward card OR relic
+	if len(g.deck) < MaxDeckSize && rand.Float32() < 0.7 {
+		// 70% chance: new card
+		rewardCards := []int{3, 4, 5, 7, 8, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25}
 		cardID := rewardCards[rand.Intn(len(rewardCards))]
 		if card, ok := cardDatabase[cardID]; ok {
 			cardCopy := card
 			g.deck = append(g.deck, &cardCopy)
 		}
+	} else if len(g.player.relics) < 5 {
+		// 30% chance: new relic
+		relicID := rand.Intn(8) + 1
+		if relic, ok := relicDatabase[relicID]; ok {
+			relicCopy := relic
+			g.player.relics = append(g.player.relics, relicCopy)
+		}
 	}
+	
+	// Heal player after victory
+	g.player.health = min(g.player.health+20, g.player.maxHealth)
 }
 
 func (g *GameState) spawnParticles(x, y float64, count int, c color.RGBA) {
@@ -1054,8 +1294,8 @@ func (g *GameState) drawHand(screen *ebiten.Image) {
 
 func (g *GameState) drawStatsPanel(screen *ebiten.Image) {
 	// Panel background
-	vector.DrawFilledRect(screen, 20, 20, 250, 150, color.RGBA{0, 0, 0, 180}, false)
-	vector.StrokeRect(screen, 20, 20, 250, 150, 2, color.RGBA{100, 100, 100, 255}, false)
+	vector.DrawFilledRect(screen, 20, 20, 320, 200, color.RGBA{0, 0, 0, 180}, false)
+	vector.StrokeRect(screen, 20, 20, 320, 200, 2, color.RGBA{100, 100, 100, 255}, false)
 
 	if g.gameFont != nil {
 		// Health
@@ -1074,11 +1314,27 @@ func (g *GameState) drawStatsPanel(screen *ebiten.Image) {
 
 		// Floor
 		floorText := fmt.Sprintf("🏰 Этаж %d", g._floor)
-		text.Draw(screen, floorText, g.gameFont, 150, 50, color.RGBA{200, 150, 100, 255})
+		text.Draw(screen, floorText, g.gameFont, 180, 50, color.RGBA{200, 150, 100, 255})
 
 		// Score
 		scoreText := fmt.Sprintf("⭐ %d", g.score)
-		text.Draw(screen, scoreText, g.gameFont, 150, 80, color.RGBA{150, 100, 255, 255})
+		text.Draw(screen, scoreText, g.gameFont, 180, 80, color.RGBA{150, 100, 255, 255})
+		
+		// Relics count
+		if len(g.player.relics) > 0 {
+			relicText := fmt.Sprintf("🎁 Реликвий: %d", len(g.player.relics))
+			text.Draw(screen, relicText, g.smallFont, 35, 145, color.RGBA{255, 150, 50, 255})
+		}
+		
+		// Active effects
+		y := 170
+		if g.player.rage {
+			text.Draw(screen, "⚔️ Ярость", g.smallFont, 35, y, color.RGBA{255, 50, 50, 255})
+			y += 20
+		}
+		if g.player.growingBlock > 0 {
+			text.Draw(screen, "🛡️ Растущий блок", g.smallFont, 35, y, color.RGBA{50, 150, 255, 255})
+		}
 	}
 }
 
@@ -1187,16 +1443,27 @@ func (g *GameState) drawVictory(screen *ebiten.Image) {
 
 	if g.gameFont != nil {
 		title := "🏆 ПОБЕДА!"
-		text.Draw(screen, title, g.gameFont, ScreenWidth/2-120, ScreenHeight/2-100, color.RGBA{255, 215, 0, 255})
+		text.Draw(screen, title, g.gameFont, ScreenWidth/2-120, ScreenHeight/2-150, color.RGBA{255, 215, 0, 255})
 
 		scoreText := fmt.Sprintf("Счёт: %d", g.score)
-		text.Draw(screen, scoreText, g.gameFont, ScreenWidth/2-60, ScreenHeight/2-40, color.RGBA{255, 255, 255, 255})
+		text.Draw(screen, scoreText, g.gameFont, ScreenWidth/2-60, ScreenHeight/2-90, color.RGBA{255, 255, 255, 255})
 
 		floorText := fmt.Sprintf("Этаж: %d", g._floor)
-		text.Draw(screen, floorText, g.gameFont, ScreenWidth/2-50, ScreenHeight/2, color.RGBA{255, 255, 255, 255})
-
+		text.Draw(screen, floorText, g.gameFont, ScreenWidth/2-50, ScreenHeight/2-50, color.RGBA{255, 255, 255, 255})
+		
+		// Show reward
+		rewardText := "✨ Награда получена! ✨"
+		text.Draw(screen, rewardText, g.smallFont, ScreenWidth/2-120, ScreenHeight/2-10, color.RGBA{100, 255, 100, 255})
+		
 		nextText := "Следующий этаж разблокирован!"
-		text.Draw(screen, nextText, g.smallFont, ScreenWidth/2-140, ScreenHeight/2+50, color.RGBA{100, 255, 100, 255})
+		text.Draw(screen, nextText, g.smallFont, ScreenWidth/2-140, ScreenHeight/2+20, color.RGBA{100, 255, 100, 255})
+		
+		// Show relics
+		if len(g.player.relics) > 0 {
+			relic := g.player.relics[len(g.player.relics)-1]
+			relicName := fmt.Sprintf("🎁 %s", relic.name)
+			text.Draw(screen, relicName, g.smallFont, ScreenWidth/2-100, ScreenHeight/2+55, color.RGBA{255, 150, 50, 255})
+		}
 	}
 
 	// Continue button
