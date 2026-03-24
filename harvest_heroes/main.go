@@ -56,8 +56,34 @@ const (
 	CropSunflower = 11
 	CropCoffee   = 12
 	CropAncient  = 13  // Rare ancient fruit
+)
 
-	// Tool types
+// CropBalance содержит сбалансированные данные о культурах
+var CropBalance = map[int]struct {
+	name       string
+	growTime   int      // дней до созревания
+	baseValue  int      // базовая цена
+	season     int      // лучший сезон
+	waterNeed  int      // потребность в воде
+	regrows    bool     // растёт ли после сбора
+}{
+	CropWheat:     {"Пшеница", 3, 30, SeasonSpring, 2, false},
+	CropCorn:      {"Кукуруза", 4, 45, SeasonSummer, 3, false},
+	CropTomato:    {"Томат", 5, 60, SeasonSummer, 4, true},
+	CropPotato:    {"Картофель", 4, 40, SeasonFall, 2, false},
+	CropCarrot:    {"Морковь", 5, 55, SeasonFall, 3, false},
+	CropPumpkin:   {"Тыква", 7, 80, SeasonFall, 4, false},
+	CropBerry:     {"Ягода", 6, 90, SeasonSpring, 3, true},
+	CropMagic:     {"Магия", 10, 150, SeasonSummer, 5, false},
+	CropStrawberry:{"Клубника", 5, 70, SeasonSpring, 3, true},
+	CropGrape:     {"Виноград", 8, 100, SeasonFall, 4, true},
+	CropSunflower: {"Подсолнух", 6, 65, SeasonSummer, 2, false},
+	CropCoffee:    {"Кофе", 7, 95, SeasonFall, 3, true},
+	CropAncient:   {"Древний фрукт", 14, 250, 0, 4, false},
+}
+
+// Tool types
+const (
 	ToolHoe      = 1
 	ToolWatering = 2
 	ToolAxe      = 3
@@ -904,7 +930,7 @@ func (g *GameState) collectAnimalProducts() {
 
 func (g *GameState) interactWithPlot(plot *Plot) {
 	tool := g.player.tools[g.selectedTool]
-	
+
 	switch tool.toolType {
 	case ToolHoe:
 		if plot.tile == TileGrass {
@@ -912,18 +938,44 @@ func (g *GameState) interactWithPlot(plot *Plot) {
 			g.spawnParticles(float64(plot.x*TileSize), float64(plot.y*TileSize), 10, color.RGBA{139, 69, 19, 255})
 			g.player.energy -= 5
 		} else if plot.tile == TileSoil && plot.crop == nil {
-			// Plant seeds (simplified - auto plant wheat)
+			// Plant based on season and player choice (simplified: auto-plant best for season)
+			cropType := g.getBestCropForSeason()
+			cropData := CropBalance[cropType]
+			
 			plot.crop = &Crop{
-				cropType: CropWheat,
+				cropType: cropType,
 				growth: 0,
 				maxGrowth: 100,
-				growTime: 3,
-				value: 30,
+				growTime: cropData.growTime,
+				value: cropData.baseValue,
+				watered: false,
+				ready: false,
 			}
 			g.player.energy -= 3
+			g.cropsHarvested++
 			PlaySound(g, 4)
+			g.checkAchievements()
+		} else if plot.tile == TileSoil && plot.crop != nil && plot.crop.ready {
+			// Harvest crop
+			g.player.gold += plot.crop.value
+			g.totalGold += plot.crop.value
+			g.cropsHarvested++
+			
+			// Check if crop regrows
+			cropData := CropBalance[plot.crop.cropType]
+			if cropData.regrows {
+				plot.crop.growth = 0
+				plot.crop.ready = false
+				plot.crop.watered = false
+			} else {
+				plot.crop = nil
+			}
+			
+			g.spawnParticles(float64(plot.x*TileSize), float64(plot.y*TileSize), 15, color.RGBA{255, 215, 0, 255})
+			PlaySound(g, 1)
+			g.checkAchievements()
 		}
-		
+
 	case ToolWatering:
 		if plot.tile == TileSoil && plot.crop != nil && !plot.crop.watered {
 			plot.crop.watered = true
@@ -933,6 +985,21 @@ func (g *GameState) interactWithPlot(plot *Plot) {
 			PlaySound(g, 5)
 		}
 	}
+}
+
+func (g *GameState) getBestCropForSeason() int {
+	// Return best crop for current season
+	switch g.season {
+	case SeasonSpring:
+		return CropStrawberry
+	case SeasonSummer:
+		return CropTomato
+	case SeasonFall:
+		return CropPumpkin
+	case SeasonWinter:
+		return CropMagic
+	}
+	return CropWheat
 }
 
 func (g *GameState) updateDungeon() {
