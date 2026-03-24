@@ -182,6 +182,54 @@ type Recipe struct {
 	name       string
 	ingredients map[int]int
 	result     *Item
+	category   int  // 1=food, 2=potion, 3=tool, 4=weapon
+}
+
+type Quest struct {
+	id          int
+	name        string
+	description string
+	objective   string
+	target      int
+	current     int
+	completed   bool
+	reward      int
+	giver       *NPC
+}
+
+type Achievement struct {
+	id          string
+	name        string
+	description string
+	unlocked    bool
+	progress    int
+	requirement int
+}
+
+type Animal struct {
+	id        int
+	name      string
+	x, y      float64
+	animalType int  // 1=chicken, 2=cow, 3=sheep
+	products   int  // eggs, milk, wool
+	happiness  int
+	fed        bool
+}
+
+type Fish struct {
+	id        int
+	name      string
+	rarity    int  // 1-5
+	value     int
+	season    int  // available seasons
+	weather   int  // available weather
+}
+
+type Ore struct {
+	id        int
+	name      string
+	value     int
+	toolLevel int  // required pickaxe level
 }
 
 type GameState struct {
@@ -191,7 +239,17 @@ type GameState struct {
 	dungeon    *Dungeon
 	npcs       []*NPC
 	recipes    []*Recipe
+	quests     []*Quest
+	achievements map[string]*Achievement
+	animals    []*Animal
+	fishing    []*Fish
+	ores       []*Ore
 	shops      map[int]int  // itemID -> price
+	
+	// Combat stats
+	combo      int
+	critChance float32
+	critDamage float32
 	
 	// Time system
 	day        int
@@ -206,6 +264,9 @@ type GameState struct {
 	cropsHarvested int
 	enemiesDefeated int
 	dungeonFloor   int
+	fishCaught     int
+	oresMined      int
+	questsCompleted int
 	
 	// UI
 	selectedTool   int
@@ -213,6 +274,9 @@ type GameState struct {
 	hoveredElement string
 	dialogueIndex  int
 	currentNPC     *NPC
+	currentQuest   *Quest
+	showCrafting   bool
+	showFishing    bool
 	
 	// Settings
 	soundEnabled bool
@@ -222,6 +286,7 @@ type GameState struct {
 	// Visual effects
 	particles    []*Particle
 	screenShake  int
+	damageNumbers []*DamageNumber
 	
 	// Assets
 	gameFont     font.Face
@@ -230,6 +295,13 @@ type GameState struct {
 	// Audio
 	audioCtx     *audio.Context
 	sounds       map[int][]byte
+}
+
+type DamageNumber struct {
+	x, y     float64
+	value    int
+	life     int
+	isCrit   bool
 }
 
 type Particle struct {
@@ -374,9 +446,41 @@ func NewGameState() *GameState {
 	}})
 
 	// Initialize recipes
-	g.recipes = append(g.recipes, &Recipe{id: 1, name: "Хлеб", ingredients: map[int]int{1: 3}, result: &Item{id: 101, name: "Хлеб", value: 50}})
-	g.recipes = append(g.recipes, &Recipe{id: 2, name: "Салат", ingredients: map[int]int{3: 2, 5: 1}, result: &Item{id: 102, name: "Салат", value: 80}})
-	g.recipes = append(g.recipes, &Recipe{id: 3, name: "Зелье", ingredients: map[int]int{8: 2}, result: &Item{id: 103, name: "Зелье маны", value: 150}})
+	g.recipes = append(g.recipes, &Recipe{id: 1, name: "Хлеб", ingredients: map[int]int{1: 3}, result: &Item{id: 101, name: "Хлеб", value: 50}, category: 1})
+	g.recipes = append(g.recipes, &Recipe{id: 2, name: "Салат", ingredients: map[int]int{3: 2, 5: 1}, result: &Item{id: 102, name: "Салат", value: 80}, category: 1})
+	g.recipes = append(g.recipes, &Recipe{id: 3, name: "Зелье здоровья", ingredients: map[int]int{8: 2, 7: 1}, result: &Item{id: 103, name: "Зелье здоровья", value: 150}, category: 2})
+	g.recipes = append(g.recipes, &Recipe{id: 4, name: "Зелье энергии", ingredients: map[int]int{8: 1, 3: 2}, result: &Item{id: 104, name: "Зелье энергии", value: 120}, category: 2})
+	g.recipes = append(g.recipes, &Recipe{id: 5, name: "Тыквенный пирог", ingredients: map[int]int{6: 3, 1: 1}, result: &Item{id: 105, name: "Тыквенный пирог", value: 200}, category: 1})
+	
+	// Initialize quests
+	g.quests = append(g.quests, &Quest{id: 1, name: "Первый урожай", description: "Соберите 10 культур", objective: "harvest", target: 10, current: 0, completed: false, reward: 100})
+	g.quests = append(g.quests, &Quest{id: 2, name: "Охотник на монстров", description: "Победите 20 врагов", objective: "kill", target: 20, current: 0, completed: false, reward: 200})
+	g.quests = append(g.quests, &Quest{id: 3, name: "Шахтёр", description: "Достигните 5 этажа подземелья", objective: "floor", target: 5, current: 0, completed: false, reward: 150})
+	g.quests = append(g.quests, &Quest{id: 4, name: "Богач", description: "Накопите 1000 золота", objective: "gold", target: 1000, current: 0, completed: false, reward: 300})
+	
+	// Initialize achievements
+	g.achievements = make(map[string]*Achievement)
+	g.achievements["first_harvest"] = &Achievement{id: "first_harvest", name: "Первый урожай", description: "Соберите первую культуру", unlocked: false, requirement: 1}
+	g.achievements["master_farmer"] = &Achievement{id: "master_farmer", name: "Мастер фермер", description: "Соберите 100 культур", unlocked: false, requirement: 100}
+	g.achievements["demon_slayer"] = &Achievement{id: "demon_slayer", name: "Убийца демонов", description: "Победите 50 врагов", unlocked: false, requirement: 50}
+	g.achievements["deep_diver"] = &Achievement{id: "deep_diver", name: "Глубоководник", description: "Достигните 10 этажа", unlocked: false, requirement: 10}
+	g.achievements["rich"] = &Achievement{id: "rich", name: "Богач", description: "Накопите 5000 золота", unlocked: false, requirement: 5000}
+	
+	// Initialize animals
+	g.animals = append(g.animals, &Animal{id: 1, name: "Курица", animalType: 1, x: 200, y: 300, products: 0, happiness: 50, fed: false})
+	g.animals = append(g.animals, &Animal{id: 2, name: "Корова", animalType: 2, x: 300, y: 300, products: 0, happiness: 50, fed: false})
+	
+	// Initialize fishing
+	g.fishing = append(g.fishing, &Fish{id: 1, name: "Карась", rarity: 1, value: 20, season: 0, weather: 0})
+	g.fishing = append(g.fishing, &Fish{id: 2, name: "Щука", rarity: 2, value: 40, season: 0, weather: WeatherRainy})
+	g.fishing = append(g.fishing, &Fish{id: 3, name: "Лосось", rarity: 3, value: 80, season: SeasonSummer, weather: 0})
+	g.fishing = append(g.fishing, &Fish{id: 4, name: "Золотая рыбка", rarity: 5, value: 200, season: 0, weather: WeatherSunny})
+	
+	// Initialize ores
+	g.ores = append(g.ores, &Ore{id: 1, name: "Медь", value: 30, toolLevel: 1})
+	g.ores = append(g.ores, &Ore{id: 2, name: "Железо", value: 50, toolLevel: 2})
+	g.ores = append(g.ores, &Ore{id: 3, name: "Золото", value: 100, toolLevel: 3})
+	g.ores = append(g.ores, &Ore{id: 4, name: "Алмаз", value: 200, toolLevel: 4})
 
 	// Initialize shop prices
 	g.shops[1] = 20  // Wheat seeds
@@ -748,7 +852,11 @@ func (g *GameState) updateDungeon() {
 func (g *GameState) attack() {
 	PlaySound(g, 2)
 	
-	// Check enemy hits
+	// Combo system
+	g.combo++
+	critRoll := rand.Float32()
+	isCrit := critRoll < g.critChance
+	
 	for _, enemy := range g.dungeon.enemies {
 		if !enemy.alive {
 			continue
@@ -759,7 +867,27 @@ func (g *GameState) attack() {
 		dist := math.Sqrt(dx*dx + dy*dy)
 		
 		if dist < float64(TileSize)*1.5 {
-			enemy.hp -= g.player.attack
+			damage := g.player.attack
+			
+			// Combo bonus
+			damage += g.combo
+			
+			// Critical hit
+			if isCrit {
+				damage = int(float64(damage) * float64(g.critDamage))
+				g.damageNumbers = append(g.damageNumbers, &DamageNumber{
+					x: enemy.x, y: enemy.y,
+					value: damage, life: 60, isCrit: true,
+				})
+				g.screenShake = 10
+			} else {
+				g.damageNumbers = append(g.damageNumbers, &DamageNumber{
+					x: enemy.x, y: enemy.y,
+					value: damage, life: 40, isCrit: false,
+				})
+			}
+			
+			enemy.hp -= damage
 			g.spawnParticles(enemy.x, enemy.y, 10, color.RGBA{255, 0, 0, 255})
 			
 			if enemy.hp <= 0 {
@@ -767,8 +895,49 @@ func (g *GameState) attack() {
 				g.player.gold += enemy.reward
 				g.totalGold += enemy.reward
 				g.enemiesDefeated++
+				g.combo = 0 // Reset combo on kill
 				PlaySound(g, 4)
+				
+				// Check achievements
+				g.checkAchievements()
 			}
+		}
+	}
+	
+	// Combo decay
+	if g.combo > 0 {
+		g.combo--
+	}
+}
+
+func (g *GameState) checkAchievements() {
+	for id, ach := range g.achievements {
+		if ach.unlocked {
+			continue
+		}
+		
+		unlocked := false
+		switch id {
+		case "first_harvest":
+			unlocked = g.cropsHarvested >= 1
+		case "master_farmer":
+			unlocked = g.cropsHarvested >= 100
+		case "demon_slayer":
+			unlocked = g.enemiesDefeated >= 50
+		case "deep_diver":
+			unlocked = g.dungeonFloor >= 10
+		case "rich":
+			unlocked = g.totalGold >= 5000
+		}
+		
+		if unlocked {
+			ach.unlocked = true
+			g.achievements[id] = ach
+			g.damageNumbers = append(g.damageNumbers, &DamageNumber{
+				x: float64(ScreenWidth/2), y: 100,
+				value: 0, life: 180, isCrit: true,
+			})
+			PlaySound(g, 6)
 		}
 	}
 }
@@ -1132,6 +1301,12 @@ func (g *GameState) drawDungeon(screen *ebiten.Image) {
 	// Draw player
 	vector.DrawFilledCircle(screen, float32(g.player.x)+float32(TileSize)/2, float32(g.player.y)+float32(TileSize)/2, float32(TileSize)/2-5, color.RGBA{50, 150, 255, 255}, false)
 	
+	// Draw damage numbers
+	g.drawDamageNumbers(screen)
+	
+	// Draw particles
+	g.drawParticles(screen)
+	
 	// UI
 	g.drawUI(screen)
 	
@@ -1139,6 +1314,12 @@ func (g *GameState) drawDungeon(screen *ebiten.Image) {
 	if g.gameFont != nil {
 		floorText := fmt.Sprintf("Этаж %d", g.dungeon.floor)
 		text.Draw(screen, floorText, g.gameFont, ScreenWidth-150, 20, color.RGBA{255, 215, 0, 255})
+		
+		// Combo display
+		if g.combo > 1 {
+			comboText := fmt.Sprintf("🔥 Комбо x%d!", g.combo)
+			text.Draw(screen, comboText, g.smallFont, ScreenWidth-150, 50, color.RGBA{255, 100, 50, 255})
+		}
 	}
 	
 	// Back button
@@ -1148,12 +1329,38 @@ func (g *GameState) drawDungeon(screen *ebiten.Image) {
 	}
 }
 
+func (g *GameState) drawDamageNumbers(screen *ebiten.Image) {
+	for i := len(g.damageNumbers) - 1; i >= 0; i-- {
+		d := g.damageNumbers[i]
+		d.y -= 0.5
+		d.life--
+		
+		if d.life <= 0 {
+			g.damageNumbers = append(g.damageNumbers[:i], g.damageNumbers[i+1:]...)
+			continue
+		}
+		
+		c := color.RGBA{255, 255, 255, 255}
+		if d.isCrit {
+			c = color.RGBA{255, 215, 0, 255}
+		}
+		
+		if g.smallFont != nil {
+			numText := fmt.Sprintf("%d", d.value)
+			if d.isCrit {
+				numText = fmt.Sprintf("💥 %d!", d.value)
+			}
+			text.Draw(screen, numText, g.smallFont, int(d.x), int(d.y), c)
+		}
+	}
+}
+
 func (g *GameState) drawUI(screen *ebiten.Image) {
 	// Top bar
-	vector.DrawFilledRect(screen, 0, 0, ScreenWidth, 70, color.RGBA{0, 0, 0, 200}, false)
+	vector.DrawFilledRect(screen, 0, 0, ScreenWidth, 90, color.RGBA{0, 0, 0, 200}, false)
 	
 	if g.gameFont != nil {
-		// Stats
+		// Stats row 1
 		text.Draw(screen, fmt.Sprintf("❤️ %d/%d", g.player.hp, g.player.maxHp), g.smallFont, 20, 25, color.RGBA{255, 100, 100, 255})
 		text.Draw(screen, fmt.Sprintf("⚡ %d/%d", g.player.energy, g.player.maxEnergy), g.smallFont, 20, 45, color.RGBA{255, 255, 0, 255})
 		text.Draw(screen, fmt.Sprintf("💰 %d", g.player.gold), g.smallFont, 200, 25, color.RGBA{255, 215, 0, 255})
@@ -1169,6 +1376,11 @@ func (g *GameState) drawUI(screen *ebiten.Image) {
 		// Weather
 		weatherIcons := []string{"", "☀️", "🌧️", "⛈️", "❄️"}
 		text.Draw(screen, weatherIcons[g.weather], g.smallFont, 850, 25, color.RGBA{255, 255, 255, 255})
+		
+		// Stats row 2
+		text.Draw(screen, fmt.Sprintf("🌾 Урожай: %d", g.cropsHarvested), g.smallFont, 20, 65, color.RGBA{100, 255, 100, 255})
+		text.Draw(screen, fmt.Sprintf("⚔️ Врагов: %d", g.enemiesDefeated), g.smallFont, 200, 65, color.RGBA{255, 100, 100, 255})
+		text.Draw(screen, fmt.Sprintf("📜 Квесты: %d/%d", g.questsCompleted, len(g.quests)), g.smallFont, 400, 65, color.RGBA{255, 215, 0, 255})
 	}
 	
 	// Navigation buttons
@@ -1183,6 +1395,13 @@ func (g *GameState) drawUI(screen *ebiten.Image) {
 		vector.DrawFilledRect(screen, float32(ScreenWidth-150), 80, 130, 40, townBtn, false)
 		if g.smallFont != nil {
 			text.Draw(screen, "🏘️ Город", g.smallFont, ScreenWidth-130, 102, color.RGBA{255, 255, 255, 255})
+		}
+		
+		// Quests button
+		questsBtn := color.RGBA{50, 100, 150, 255}
+		vector.DrawFilledRect(screen, float32(ScreenWidth-300), 20, 130, 40, questsBtn, false)
+		if g.smallFont != nil {
+			text.Draw(screen, "📜 Квесты", g.smallFont, ScreenWidth-295, 42, color.RGBA{255, 255, 255, 255})
 		}
 	}
 }
