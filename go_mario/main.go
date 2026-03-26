@@ -1,9 +1,10 @@
-// Go365 Day 86 - GO MARIO: SUPER PLATFORMER v6.0.0
-// Красочный 2D платформер с МНОЖЕСТВОМ спрайтов!
+// Go365 Day 87 - GO MARIO: SUPER PLATFORMER v7.0.0
+// Красочный 2D платформер с БОССАМИ, ЗВУКАМИ и МИРАМИ!
 
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"image/color"
 	"log"
@@ -28,6 +29,8 @@ const (
 	Gravity      = 0.6
 	JumpForce    = -12.0
 	PlayerSpeed  = 5.0
+	MaxWorld     = 3
+	LevelsPerWorld = 3
 )
 
 // ============================================================================
@@ -255,6 +258,32 @@ type Particle struct {
 	size         float32
 }
 
+type Boss struct {
+	x, y         float64
+	vx, vy       float64
+	width        float32
+	height       float32
+	health       int
+	maxHealth    int
+	phase        int
+	attackTimer  int
+	attackType   int
+	alive        bool
+	animFrame    int
+}
+
+type SaveData struct {
+	World        int `json:"world"`
+	Level        int `json:"level"`
+	Health       int `json:"health"`
+	MaxHealth    int `json:"maxHealth"`
+	Coins        int `json:"coins"`
+	Gems         int `json:"gems"`
+	Score        int `json:"score"`
+	Lives        int `json:"lives"`
+	TotalScore   int `json:"totalScore"`
+}
+
 type Game struct {
 	player      *Player
 	tiles       []*Tile
@@ -263,12 +292,17 @@ type Game struct {
 	gems        []*Gem
 	decorations []*Decoration
 	particles   []*Particle
+	boss        *Boss
 	cameraX     float64
-	state       int // 0=menu, 1=playing, 2=gameover, 3=win
+	state       int // 0=menu, 1=playing, 2=gameover, 3=win, 4=boss
 	frame       int
 	levelWidth  int
 	flagX       float64
 	bgOffset    float64
+	world       int
+	level       int
+	hasBoss     bool
+	saveFile    string
 }
 
 // ============================================================================
@@ -291,16 +325,81 @@ func NewGame() *Game {
 			lives: 3,
 		},
 		state: 0,
+		world: 1,
+		level: 1,
 		tiles: make([]*Tile, 0),
 		enemies: make([]*Enemy, 0),
 		coins: make([]*Coin, 0),
 		gems: make([]*Gem, 0),
 		decorations: make([]*Decoration, 0),
 		particles: make([]*Particle, 0),
+		boss: nil,
+		saveFile: "savegame.json",
 	}
 
 	g.GenerateLevel()
 	return g
+}
+
+func (g *Game) SpawnBoss() {
+	g.hasBoss = true
+	g.state = 4 // Boss fight
+	g.boss = &Boss{
+		x: float64(g.levelWidth*TileSize - 200),
+		y: 200,
+		width: 100,
+		height: 100,
+		maxHealth: 200 + g.world*100,
+		health: 200 + g.world*100,
+		phase: 1,
+		alive: true,
+	}
+}
+
+func (g *Game) SaveGame() {
+	data := SaveData{
+		World: g.world,
+		Level: g.level,
+		Health: g.player.health,
+		MaxHealth: g.player.maxHealth,
+		Coins: g.player.coins,
+		Gems: g.player.gems,
+		Score: g.player.score,
+		Lives: g.player.lives,
+		TotalScore: g.player.score,
+	}
+	
+	file, err := os.Create(g.saveFile)
+	if err != nil {
+		return
+	}
+	defer file.Close()
+	
+	json.NewEncoder(file).Encode(data)
+}
+
+func (g *Game) LoadGame() bool {
+	file, err := os.Open(g.saveFile)
+	if err != nil {
+		return false
+	}
+	defer file.Close()
+	
+	var data SaveData
+	if err := json.NewDecoder(file).Decode(&data); err != nil {
+		return false
+	}
+	
+	g.world = data.World
+	g.level = data.Level
+	g.player.health = data.Health
+	g.player.maxHealth = data.MaxHealth
+	g.player.coins = data.Coins
+	g.player.gems = data.Gems
+	g.player.score = data.Score
+	g.player.lives = data.Lives
+	
+	return true
 }
 
 func (g *Game) GenerateLevel() {
@@ -432,13 +531,42 @@ func (g *Game) Update() error {
 	switch g.state {
 	case 0: // Menu
 		if inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
+			// Try load game or start new
+			if !g.LoadGame() {
+				g.world = 1
+				g.level = 1
+			}
 			g.state = 1
+			g.GenerateLevel()
+		}
+		if inpututil.IsKeyJustPressed(ebiten.KeyS) {
+			g.SaveGame()
 		}
 		return nil
 
 	case 2, 3: // GameOver/Win
 		if inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
 			g.state = 0
+		}
+		return nil
+	
+	case 4: // Boss fight
+		g.updatePlayer()
+		g.updateCamera()
+		g.updateBoss()
+		g.updateParticles()
+		if g.boss == nil || !g.boss.alive {
+			// Boss defeated!
+			g.hasBoss = false
+			g.state = 1
+			g.player.score += 5000
+			g.world++
+			if g.world > MaxWorld {
+				g.state = 3 // Victory!
+			} else {
+				g.level = 1
+				g.GenerateLevel()
+			}
 		}
 		return nil
 	}
@@ -596,6 +724,104 @@ func (g *Game) updateEnemies() {
 	}
 }
 
+func (g *Game) updateBoss() {
+	b := g.boss
+	if b == nil || !b.alive {
+		return
+	}
+	
+	p := g.player
+	b.animFrame++
+	
+	// Move towards player
+	if p.x > b.x {
+		b.vx = 2
+	} else {
+		b.vx = -2
+	}
+	
+	// Jump occasionally
+	if rand.Float32() < 0.02 && b.y >= 200 {
+		b.vy = -10
+	}
+	
+	// Gravity
+	b.vy += 0.4
+	if b.vy > 8 {
+		b.vy = 8
+	}
+	
+	b.x += b.vx
+	b.y += b.vy
+	
+	// Floor collision
+	if b.y > 500 {
+		b.y = 500
+		b.vy = 0
+	}
+	
+	// Attack patterns
+	b.attackTimer--
+	if b.attackTimer <= 0 {
+		b.attackTimer = 60
+		b.attackType = rand.Intn(3)
+		
+		switch b.attackType {
+		case 0: // Shoot projectile
+			angle := math.Atan2(p.y-b.y, p.x-b.x)
+			g.particles = append(g.particles, &Particle{
+				x: b.x + float64(b.width)/2,
+				y: b.y + float64(b.height)/2,
+				vx: math.Cos(angle) * 6,
+				vy: math.Sin(angle) * 6,
+				life: 120,
+				color: color.RGBA{255, 50, 50, 255},
+				size: 10,
+			})
+		case 1: // Charge
+			b.vx = float64(p.x-b.x) * 0.1
+		case 2: // Jump attack
+			b.vy = -15
+		}
+	}
+	
+	// Collision with player
+	if p.x < b.x+float64(b.width)-20 &&
+		p.x+float64(p.width) > b.x+20 &&
+		p.y < b.y+float64(b.height)-20 &&
+		p.y+float64(p.height) > b.y+20 {
+		
+		if p.vy > 0 && p.y+float64(p.height) < b.y+float64(b.height)/2 {
+			// Jump on boss!
+			b.health -= 20
+			p.vy = JumpForce
+			g.spawnHitParticles(b.x+float64(b.width)/2, b.y+20)
+			if b.health <= 0 {
+				b.alive = false
+				g.spawnHitParticles(b.x+float64(b.width)/2, b.y+float64(b.height)/2)
+			}
+		} else {
+			// Boss hurts player
+			p.health -= 20
+			p.vy = -8
+			if p.x < b.x {
+				p.vx = -8
+			} else {
+				p.vx = 8
+			}
+			if p.health <= 0 {
+				g.state = 2
+			}
+		}
+	}
+	
+	// Check phase
+	if b.health < b.maxHealth/2 && b.phase == 1 {
+		b.phase = 2
+		b.attackTimer = 30 // Faster attacks
+	}
+}
+
 func (g *Game) updateCoins() {
 	p := g.player
 
@@ -655,8 +881,30 @@ func (g *Game) updateParticles() {
 
 func (g *Game) checkWin() {
 	if g.player.x >= g.flagX {
-		g.state = 3
-		g.player.score += 1000
+		if g.level < LevelsPerWorld && !g.hasBoss {
+			// Spawn boss on last level of each world
+			if g.level == LevelsPerWorld {
+				g.SpawnBoss()
+			} else {
+				// Next level
+				g.level++
+				g.player.health = g.player.maxHealth
+				g.GenerateLevel()
+			}
+		} else if g.hasBoss {
+			// Boss already spawned, wait for boss defeat
+			return
+		} else {
+			// Level complete without boss
+			g.level++
+			if g.level > LevelsPerWorld {
+				// Spawn boss!
+				g.SpawnBoss()
+			} else {
+				g.player.health = g.player.maxHealth
+				g.GenerateLevel()
+			}
+		}
 	}
 }
 
@@ -897,6 +1145,15 @@ func (g *Game) drawGame(screen *ebiten.Image) {
 		screen.DrawImage(flagImg, op)
 	}
 
+	// Boss
+	if g.boss != nil && g.boss.alive {
+		vector.DrawFilledRect(screen, float32(g.boss.x-camX), float32(g.boss.y), float32(g.boss.width), float32(g.boss.height), color.RGBA{255, 50, 50, 255}, true)
+		vector.StrokeRect(screen, float32(g.boss.x-camX), float32(g.boss.y), float32(g.boss.width), float32(g.boss.height), 3, color.RGBA{255, 200, 50, 255}, true)
+		// Boss eyes
+		vector.DrawFilledCircle(screen, float32(g.boss.x-camX+30), float32(g.boss.y+30), 15, color.RGBA{255, 255, 0, 255}, true)
+		vector.DrawFilledCircle(screen, float32(g.boss.x-camX+70), float32(g.boss.y+30), 15, color.RGBA{255, 255, 0, 255}, true)
+	}
+
 	// Player
 	g.drawPlayer(screen, camX)
 
@@ -949,11 +1206,25 @@ func (g *Game) drawHUD(screen *ebiten.Image) {
 	vector.DrawFilledRect(screen, 0, 0, ScreenWidth, 55, color.RGBA{0, 0, 0, 180}, true)
 
 	if gameAssets.gameFont != nil {
-		text.Draw(screen, fmt.Sprintf("HP: %d", g.player.health), gameAssets.gameFont, 20, 18, color.RGBA{255, 100, 100, 255})
-		text.Draw(screen, fmt.Sprintf("Lives: %d", g.player.lives), gameAssets.gameFont, 180, 18, color.RGBA{100, 255, 100, 255})
-		text.Draw(screen, fmt.Sprintf("Coins: %d", g.player.coins), gameAssets.gameFont, 350, 18, color.RGBA{255, 215, 0, 255})
-		text.Draw(screen, fmt.Sprintf("Gems: %d", g.player.gems), gameAssets.gameFont, 550, 18, color.RGBA{100, 200, 255, 255})
-		text.Draw(screen, fmt.Sprintf("Score: %d", g.player.score), gameAssets.gameFont, 750, 18, color.White)
+		text.Draw(screen, fmt.Sprintf("World %d-%d", g.world, g.level), gameAssets.gameFont, 20, 18, color.RGBA{100, 200, 255, 255})
+		text.Draw(screen, fmt.Sprintf("HP: %d", g.player.health), gameAssets.gameFont, 180, 18, color.RGBA{255, 100, 100, 255})
+		text.Draw(screen, fmt.Sprintf("Lives: %d", g.player.lives), gameAssets.gameFont, 320, 18, color.RGBA{100, 255, 100, 255})
+		text.Draw(screen, fmt.Sprintf("Coins: %d", g.player.coins), gameAssets.gameFont, 480, 18, color.RGBA{255, 215, 0, 255})
+		text.Draw(screen, fmt.Sprintf("Score: %d", g.player.score), gameAssets.gameFont, 650, 18, color.White)
+		
+		// Save hint
+		text.Draw(screen, "[S] Save", gameAssets.gameFont, 850, 18, color.RGBA{150, 150, 150, 255})
+	}
+	
+	// Boss health bar
+	if g.boss != nil && g.boss.alive {
+		vector.DrawFilledRect(screen, ScreenWidth/2-200, 70, 400, 20, color.RGBA{80, 0, 0, 255}, true)
+		if g.boss.maxHealth > 0 {
+			vector.DrawFilledRect(screen, ScreenWidth/2-200, 70, 400*float32(g.boss.health)/float32(g.boss.maxHealth), 20, color.RGBA{255, 50, 50, 255}, true)
+		}
+		if gameAssets.gameFont != nil {
+			text.Draw(screen, "BOSS", gameAssets.gameFont, ScreenWidth/2-30, 85, color.White)
+		}
 	}
 }
 
