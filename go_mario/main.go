@@ -258,6 +258,20 @@ type Particle struct {
 	size         float32
 }
 
+type PowerUp struct {
+	x, y      float64
+	id        int // 0=mushroom, 1=star, 2=flower, 3=1up
+	alive     bool
+	animFrame int
+}
+
+type Achievement struct {
+	id          string
+	name        string
+	description string
+	unlocked    bool
+}
+
 type Boss struct {
 	x, y         float64
 	vx, vy       float64
@@ -290,6 +304,7 @@ type Game struct {
 	enemies     []*Enemy
 	coins       []*Coin
 	gems        []*Gem
+	powerUps    []*PowerUp
 	decorations []*Decoration
 	particles   []*Particle
 	boss        *Boss
@@ -303,6 +318,7 @@ type Game struct {
 	level       int
 	hasBoss     bool
 	saveFile    string
+	achievements map[string]*Achievement
 }
 
 // ============================================================================
@@ -331,14 +347,28 @@ func NewGame() *Game {
 		enemies: make([]*Enemy, 0),
 		coins: make([]*Coin, 0),
 		gems: make([]*Gem, 0),
+		powerUps: make([]*PowerUp, 0),
 		decorations: make([]*Decoration, 0),
 		particles: make([]*Particle, 0),
 		boss: nil,
 		saveFile: "savegame.json",
+		achievements: make(map[string]*Achievement),
 	}
+	
+	g.initAchievements()
 
 	g.GenerateLevel()
 	return g
+}
+
+func (g *Game) initAchievements() {
+	g.achievements = map[string]*Achievement{
+		"first_blood": {id: "first_blood", name: "Первая кровь", description: "Победите первого врага", unlocked: false},
+		"coin_master": {id: "coin_master", name: "Мастер монет", description: "Соберите 50 монет", unlocked: false},
+		"boss_slayer": {id: "boss_slayer", name: "Убийца боссов", description: "Победите босса", unlocked: false},
+		"world_conqueror": {id: "world_conqueror", name: "Завоеватель", description: "Пройдите все миры", unlocked: false},
+		"survivor": {id: "survivor", name: "Выживший", description: "Достигните 3 мира", unlocked: false},
+	}
 }
 
 func (g *Game) SpawnBoss() {
@@ -516,6 +546,19 @@ func (g *Game) GenerateLevel() {
 			})
 		}
 	}
+	
+	// Spawn power-ups randomly
+	for x := 0; x < g.levelWidth; x++ {
+		if rand.Float32() < 0.02 { // 2% chance
+			puType := rand.Intn(4) // 0=mushroom, 1=star, 2=flower, 3=1up
+			g.powerUps = append(g.powerUps, &PowerUp{
+				x: float64(x*TileSize + 15),
+				y: float64(rand.Intn(6)+5) * TileSize,
+				id: puType,
+				alive: true,
+			})
+		}
+	}
 
 	// Flag at end
 	g.flagX = float64((g.levelWidth - 5) * TileSize)
@@ -578,6 +621,8 @@ func (g *Game) Update() error {
 	g.updateCoins()
 	g.updateGems()
 	g.updateParticles()
+	g.updatePowerUps()
+	g.checkAchievements()
 	g.checkWin()
 
 	return nil
@@ -879,6 +924,81 @@ func (g *Game) updateParticles() {
 	}
 }
 
+func (g *Game) updatePowerUps() {
+	p := g.player
+	
+	for i := range g.powerUps {
+		pu := g.powerUps[i]
+		if !pu.alive {
+			continue
+		}
+		
+		pu.animFrame++
+		
+		// Magnet effect
+		dist := math.Hypot(pu.x-p.x, pu.y-p.y)
+		if dist < 100 {
+			pu.x += (p.x - pu.x) * 0.05
+			pu.y += (p.y - pu.y) * 0.05
+		}
+		
+		// Collection
+		if dist < 40 {
+			pu.alive = false
+			g.applyPowerUp(pu)
+		}
+	}
+}
+
+func (g *Game) applyPowerUp(pu *PowerUp) {
+	p := g.player
+	
+	switch pu.id {
+	case 0: // Mushroom - +20 max HP + heal
+		p.maxHealth += 20
+		p.health = p.maxHealth
+		g.spawnCollectParticles(pu.x, pu.y, color.RGBA{255, 100, 100, 255})
+	case 1: // Star - +500 score
+		p.score += 500
+		g.spawnCollectParticles(pu.x, pu.y, color.RGBA{255, 255, 0, 255})
+	case 2: // Flower - +10 coins
+		p.coins += 10
+		g.spawnCollectParticles(pu.x, pu.y, color.RGBA{100, 255, 100, 255})
+	case 3: // 1UP - extra life
+		p.lives++
+		g.spawnCollectParticles(pu.x, pu.y, color.RGBA{0, 255, 0, 255})
+	}
+}
+
+func (g *Game) checkAchievements() {
+	p := g.player
+	
+	// First blood
+	if p.score >= 100 && !g.achievements["first_blood"].unlocked {
+		g.achievements["first_blood"].unlocked = true
+	}
+	
+	// Coin master
+	if p.coins >= 50 && !g.achievements["coin_master"].unlocked {
+		g.achievements["coin_master"].unlocked = true
+	}
+	
+	// Boss slayer
+	if g.boss != nil && !g.boss.alive && !g.achievements["boss_slayer"].unlocked {
+		g.achievements["boss_slayer"].unlocked = true
+	}
+	
+	// Survivor
+	if g.world >= 3 && !g.achievements["survivor"].unlocked {
+		g.achievements["survivor"].unlocked = true
+	}
+	
+	// World conqueror
+	if g.world > MaxWorld && !g.achievements["world_conqueror"].unlocked {
+		g.achievements["world_conqueror"].unlocked = true
+	}
+}
+
 func (g *Game) checkWin() {
 	if g.player.x >= g.flagX {
 		if g.level < LevelsPerWorld && !g.hasBoss {
@@ -1111,6 +1231,26 @@ func (g *Game) drawGame(screen *ebiten.Image) {
 		}
 	}
 
+	// PowerUps
+	for _, pu := range g.powerUps {
+		if !pu.alive {
+			continue
+		}
+		var img *ebiten.Image
+		switch pu.id {
+		case 0: img = gameAssets.mushroomRed
+		case 1: img = gameAssets.star
+		case 2: img = gameAssets.flower1
+		case 3: img = gameAssets.mushroomBrown
+		}
+		if img != nil {
+			op := &ebiten.DrawImageOptions{}
+			bob := math.Sin(float64(pu.animFrame)*0.1) * 5
+			op.GeoM.Translate(pu.x-camX, pu.y+bob)
+			screen.DrawImage(img, op)
+		}
+	}
+
 	// Enemies
 	for _, e := range g.enemies {
 		if !e.alive {
@@ -1211,11 +1351,11 @@ func (g *Game) drawHUD(screen *ebiten.Image) {
 		text.Draw(screen, fmt.Sprintf("Lives: %d", g.player.lives), gameAssets.gameFont, 320, 18, color.RGBA{100, 255, 100, 255})
 		text.Draw(screen, fmt.Sprintf("Coins: %d", g.player.coins), gameAssets.gameFont, 480, 18, color.RGBA{255, 215, 0, 255})
 		text.Draw(screen, fmt.Sprintf("Score: %d", g.player.score), gameAssets.gameFont, 650, 18, color.White)
-		
+
 		// Save hint
 		text.Draw(screen, "[S] Save", gameAssets.gameFont, 850, 18, color.RGBA{150, 150, 150, 255})
 	}
-	
+
 	// Boss health bar
 	if g.boss != nil && g.boss.alive {
 		vector.DrawFilledRect(screen, ScreenWidth/2-200, 70, 400, 20, color.RGBA{80, 0, 0, 255}, true)
@@ -1224,6 +1364,18 @@ func (g *Game) drawHUD(screen *ebiten.Image) {
 		}
 		if gameAssets.gameFont != nil {
 			text.Draw(screen, "BOSS", gameAssets.gameFont, ScreenWidth/2-30, 85, color.White)
+		}
+	}
+	
+	// Show unlocked achievements (bottom right)
+	y := ScreenHeight - 100
+	for _, ach := range g.achievements {
+		if ach.unlocked {
+			if gameAssets.gameFont != nil {
+				vector.DrawFilledRect(screen, ScreenWidth-300, float32(y), 290, 20, color.RGBA{0, 0, 0, 150}, true)
+				text.Draw(screen, fmt.Sprintf("🏆 %s", ach.name), gameAssets.gameFont, ScreenWidth-290, y+15, color.RGBA{255, 215, 0, 255})
+			}
+			y -= 25
 		}
 	}
 }
