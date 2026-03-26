@@ -1,5 +1,5 @@
-// Go365 Day 86 - GO MARIO: PLATFORMER v5.0.0
-// Классический 2D платформер с использованием готовых спрайтов
+// Go365 Day 86 - GO MARIO: SUPER PLATFORMER v6.0.0
+// Красочный 2D платформер с МНОЖЕСТВОМ спрайтов!
 
 package main
 
@@ -31,39 +31,77 @@ const (
 )
 
 // ============================================================================
-// ASSETS
+// ASSETS - МНОЖЕСТВО СПРАЙТОВ!
 // ============================================================================
 
 type Assets struct {
-	// Player
+	// Player - Green Alien
 	playerStand  *ebiten.Image
 	playerWalk1  *ebiten.Image
 	playerWalk2  *ebiten.Image
 	playerJump   *ebiten.Image
+	playerDuck   *ebiten.Image
 
-	// Tiles
+	// Enemies - РАЗНЫЕ ВРАГИ!
+	slimeGreen   *ebiten.Image
+	slimeBlue    *ebiten.Image
+	slimePurple  *ebiten.Image
+	bee          *ebiten.Image
+	frog         *ebiten.Image
+	mouse        *ebiten.Image
+	fly          *ebiten.Image
+	snail        *ebiten.Image
+
+	// Tiles - РАЗНЫЕ ТАЙЛЫ!
 	grassTile    *ebiten.Image
 	dirtTile     *ebiten.Image
 	brickTile    *ebiten.Image
+	stoneTile    *ebiten.Image
+	sandTile     *ebiten.Image
+	snowTile     *ebiten.Image
 	platformTile *ebiten.Image
+	questionTile *ebiten.Image
+	usedTile     *ebiten.Image
+	spikeTile    *ebiten.Image
 
-	// Decorations
+	// Decorations - УКРАШЕНИЯ!
 	tree1        *ebiten.Image
 	tree2        *ebiten.Image
 	bush1        *ebiten.Image
+	bush2        *ebiten.Image
 	cloud1       *ebiten.Image
 	cloud2       *ebiten.Image
+	cloud3       *ebiten.Image
+	rock1        *ebiten.Image
+	rock2        *ebiten.Image
+	flower1      *ebiten.Image
+	flower2      *ebiten.Image
+	mushroom     *ebiten.Image
+	cactus       *ebiten.Image
 
-	// Background
-	bgSky        *ebiten.Image
+	// Items - ПРЕДМЕТЫ!
+	coinGold     *ebiten.Image
+	coinSilver   *ebiten.Image
+	coinBronze   *ebiten.Image
+	gemRed       *ebiten.Image
+	gemBlue      *ebiten.Image
+	gemGreen     *ebiten.Image
+	flagGreen    *ebiten.Image
+	flagRed      *ebiten.Image
+	flagBlue     *ebiten.Image
+	mushroomRed  *ebiten.Image
+	mushroomBrown *ebiten.Image
+	star         *ebiten.Image
+	keyGold      *ebiten.Image
+	bomb         *ebiten.Image
+
+	// Backgrounds - ФОНЫ!
 	bgMountains  *ebiten.Image
-
-	// Items
-	coinSprite   *ebiten.Image
-	flagSprite   *ebiten.Image
+	bgHills      *ebiten.Image
 
 	// Font
 	gameFont     font.Face
+	largeFont    font.Face
 }
 
 var gameAssets *Assets
@@ -77,27 +115,64 @@ func LoadAssets() *Assets {
 	assets.playerWalk1, _, _ = ebitenutil.NewImageFromFile("assets/PNG/Players/128x256/Green/alienGreen_walk1.png")
 	assets.playerWalk2, _, _ = ebitenutil.NewImageFromFile("assets/PNG/Players/128x256/Green/alienGreen_walk2.png")
 	assets.playerJump, _, _ = ebitenutil.NewImageFromFile("assets/PNG/Players/128x256/Green/alienGreen_jump.png")
+	assets.playerDuck, _, _ = ebitenutil.NewImageFromFile("assets/PNG/Players/128x256/Green/alienGreen_duck.png")
+
+	// Enemies
+	assets.slimeGreen, _, _ = ebitenutil.NewImageFromFile("assets/PNG/Enemies/slimeGreen.png")
+	assets.slimeBlue, _, _ = ebitenutil.NewImageFromFile("assets/PNG/Enemies/slimeBlue.png")
+	assets.slimePurple, _, _ = ebitenutil.NewImageFromFile("assets/PNG/Enemies/slimePurple.png")
+	assets.bee, _, _ = ebitenutil.NewImageFromFile("assets/PNG/Enemies/bee.png")
+	assets.frog, _, _ = ebitenutil.NewImageFromFile("assets/PNG/Enemies/frog.png")
+	assets.mouse, _, _ = ebitenutil.NewImageFromFile("assets/PNG/Enemies/mouse.png")
+	assets.fly, _, _ = ebitenutil.NewImageFromFile("assets/PNG/Enemies/fly.png")
+	assets.snail, _, _ = ebitenutil.NewImageFromFile("assets/PNG/Enemies/snail.png")
 
 	// Tiles
 	assets.grassTile, _, _ = ebitenutil.NewImageFromFile("assets/PNG/Grass/grass.png")
 	assets.dirtTile, _, _ = ebitenutil.NewImageFromFile("assets/PNG/Tiles/brickGrey.png")
 	assets.brickTile, _, _ = ebitenutil.NewImageFromFile("assets/PNG/Tiles/brickBrown.png")
+	assets.stoneTile, _, _ = ebitenutil.NewImageFromFile("assets/PNG/Ground/Stone/stone.png")
+	assets.sandTile, _, _ = ebitenutil.NewImageFromFile("assets/PNG/Ground/Sand/sand.png")
+	assets.snowTile, _, _ = ebitenutil.NewImageFromFile("assets/PNG/Ground/Snow/snow.png")
 	assets.platformTile, _, _ = ebitenutil.NewImageFromFile("assets/PNG/Tiles/bridgeA.png")
+	assets.questionTile, _, _ = ebitenutil.NewImageFromFile("assets/PNG/Tiles/boxItem.png")
+	assets.usedTile, _, _ = ebitenutil.NewImageFromFile("assets/PNG/Tiles/boxItem_disabled.png")
+	assets.spikeTile, _, _ = ebitenutil.NewImageFromFile("assets/PNG/Tiles/spikes.png")
 
 	// Decorations
 	assets.tree1, _, _ = ebitenutil.NewImageFromFile("assets/PNG/Tiles/cactus.png")
 	assets.bush1, _, _ = ebitenutil.NewImageFromFile("assets/PNG/Tiles/bush.png")
 	assets.cloud1, _, _ = ebitenutil.NewImageFromFile("assets/PNG/Items/cloud1.png")
 	assets.cloud2, _, _ = ebitenutil.NewImageFromFile("assets/PNG/Items/cloud2.png")
+	assets.cloud3, _, _ = ebitenutil.NewImageFromFile("assets/PNG/Items/cloud3.png")
+	assets.rock1, _, _ = ebitenutil.NewImageFromFile("assets/PNG/Tiles/rock.png")
+	assets.flower1, _, _ = ebitenutil.NewImageFromFile("assets/PNG/Tiles/plantPurple.png")
+	assets.mushroom, _, _ = ebitenutil.NewImageFromFile("assets/PNG/Tiles/mushroomBrown.png")
 
 	// Items
-	assets.coinSprite, _, _ = ebitenutil.NewImageFromFile("assets/PNG/Items/coinGold.png")
-	assets.flagSprite, _, _ = ebitenutil.NewImageFromFile("assets/PNG/Items/flagGreen1.png")
+	assets.coinGold, _, _ = ebitenutil.NewImageFromFile("assets/PNG/Items/coinGold.png")
+	assets.coinSilver, _, _ = ebitenutil.NewImageFromFile("assets/PNG/Items/coinSilver.png")
+	assets.coinBronze, _, _ = ebitenutil.NewImageFromFile("assets/PNG/Items/coinBronze.png")
+	assets.gemRed, _, _ = ebitenutil.NewImageFromFile("assets/PNG/Items/gemRed.png")
+	assets.gemBlue, _, _ = ebitenutil.NewImageFromFile("assets/PNG/Items/gemBlue.png")
+	assets.gemGreen, _, _ = ebitenutil.NewImageFromFile("assets/PNG/Items/gemGreen.png")
+	assets.flagGreen, _, _ = ebitenutil.NewImageFromFile("assets/PNG/Items/flagGreen1.png")
+	assets.flagRed, _, _ = ebitenutil.NewImageFromFile("assets/PNG/Items/flagRed1.png")
+	assets.flagBlue, _, _ = ebitenutil.NewImageFromFile("assets/PNG/Items/flagBlue1.png")
+	assets.mushroomRed, _, _ = ebitenutil.NewImageFromFile("assets/PNG/Items/mushroomRed.png")
+	assets.mushroomBrown, _, _ = ebitenutil.NewImageFromFile("assets/PNG/Items/mushroomBrown.png")
+	assets.star, _, _ = ebitenutil.NewImageFromFile("assets/PNG/Items/star.png")
+	assets.keyGold, _, _ = ebitenutil.NewImageFromFile("assets/PNG/Items/keyGold.png")
+	assets.bomb, _, _ = ebitenutil.NewImageFromFile("assets/PNG/Items/bomb.png")
 
 	// Font
 	assets.gameFont, err = loadFont("assets/fonts/SuperAdorable-MAvyp.ttf", 24)
 	if err != nil {
 		assets.gameFont = nil
+	}
+	assets.largeFont, err = loadFont("assets/fonts/SuperAdorable-MAvyp.ttf", 48)
+	if err != nil {
+		assets.largeFont = nil
 	}
 
 	return assets
@@ -133,14 +208,14 @@ type Player struct {
 	health    int
 	maxHealth int
 	coins     int
+	gems      int
 	score     int
+	lives     int
 }
 
 type Tile struct {
 	x, y  int
 	id    int
-	width float32
-	height float32
 }
 
 type Enemy struct {
@@ -150,18 +225,34 @@ type Enemy struct {
 	height    float32
 	enemyType int
 	alive     bool
+	animFrame int
 }
 
 type Coin struct {
 	x, y      float64
+	id        int // 0=bronze, 1=silver, 2=gold
+	collected bool
+	animFrame int
+}
+
+type Gem struct {
+	x, y      float64
+	id        int // 0=red, 1=blue, 2=green
 	collected bool
 	animFrame int
 }
 
 type Decoration struct {
-	x, y   float64
-	id     int
+	x, y      float64
+	id        int
 	animFrame int
+}
+
+type Particle struct {
+	x, y, vx, vy float64
+	life         int
+	color        color.RGBA
+	size         float32
 }
 
 type Game struct {
@@ -169,12 +260,15 @@ type Game struct {
 	tiles       []*Tile
 	enemies     []*Enemy
 	coins       []*Coin
+	gems        []*Gem
 	decorations []*Decoration
+	particles   []*Particle
 	cameraX     float64
 	state       int // 0=menu, 1=playing, 2=gameover, 3=win
 	frame       int
 	levelWidth  int
 	flagX       float64
+	bgOffset    float64
 }
 
 // ============================================================================
@@ -194,12 +288,15 @@ func NewGame() *Game {
 			facing: 1,
 			maxHealth: 100,
 			health: 100,
+			lives: 3,
 		},
 		state: 0,
 		tiles: make([]*Tile, 0),
 		enemies: make([]*Enemy, 0),
 		coins: make([]*Coin, 0),
+		gems: make([]*Gem, 0),
 		decorations: make([]*Decoration, 0),
+		particles: make([]*Particle, 0),
 	}
 
 	g.GenerateLevel()
@@ -207,72 +304,118 @@ func NewGame() *Game {
 }
 
 func (g *Game) GenerateLevel() {
-	g.levelWidth = 100 // tiles
+	g.levelWidth = 150 // tiles
 
-	// Generate ground
+	// Generate varied terrain
 	for x := 0; x < g.levelWidth; x++ {
-		// Ground tiles (2 rows)
-		g.tiles = append(g.tiles, &Tile{x: x, y: 14, id: 1}) // Grass
-		g.tiles = append(g.tiles, &Tile{x: x, y: 15, id: 2}) // Dirt
+		// Ground with variations
+		tileType := 1 // grass
+		if x > 50 && x < 80 {
+			tileType = 4 // stone
+		} else if x > 100 {
+			tileType = 5 // snow
+		}
 
-		// Random platforms
-		if x > 5 && rand.Float32() < 0.15 {
+		// Ground tiles
+		g.tiles = append(g.tiles, &Tile{x: x, y: 14, id: tileType})
+		g.tiles = append(g.tiles, &Tile{x: x, y: 15, id: 2}) // dirt below
+
+		// Random platforms with different tiles
+		if x > 5 && rand.Float32() < 0.12 {
 			platY := rand.Intn(4) + 8
-			for bx := 0; bx < rand.Intn(3)+2; bx++ {
+			platTile := rand.Intn(3) + 1 // brick, stone, or platform
+			for bx := 0; bx < rand.Intn(4)+2; bx++ {
 				if x+bx < g.levelWidth {
-					g.tiles = append(g.tiles, &Tile{x: x+bx, y: platY, id: 3})
+					g.tiles = append(g.tiles, &Tile{x: x+bx, y: platY, id: platTile})
 				}
+			}
+			// Question block
+			if rand.Float32() < 0.3 {
+				g.tiles = append(g.tiles, &Tile{x: x + 1, y: platY - 1, id: 8}) // question
 			}
 		}
 
-		// Random coins
-		if x > 5 && rand.Float32() < 0.2 {
+		// Random coins (different types)
+		if x > 5 && rand.Float32() < 0.25 {
 			coinY := float64(rand.Intn(8)+4) * TileSize
+			coinType := rand.Intn(3) // bronze, silver, gold
 			g.coins = append(g.coins, &Coin{
 				x: float64(x*TileSize + 15),
 				y: coinY,
+				id: coinType,
 			})
 		}
 
-		// Random enemies
+		// Random gems
 		if x > 10 && rand.Float32() < 0.08 {
+			gemY := float64(rand.Intn(6)+5) * TileSize
+			gemType := rand.Intn(3)
+			g.gems = append(g.gems, &Gem{
+				x: float64(x*TileSize + 15),
+				y: gemY,
+				id: gemType,
+			})
+		}
+
+		// Random enemies (different types!)
+		if x > 10 && rand.Float32() < 0.06 {
+			enemyType := rand.Intn(4) // slime, bee, frog, mouse
+			enY := float64(13 * TileSize)
+			if enemyType == 1 { // bee flies
+				enY = float64(rand.Intn(5)+6) * TileSize
+			}
 			g.enemies = append(g.enemies, &Enemy{
 				x: float64(x * TileSize),
-				y: float64(13 * TileSize),
+				y: enY,
 				vx: -1.5,
 				width: 40,
 				height: 40,
-				enemyType: 1,
+				enemyType: enemyType,
 				alive: true,
 			})
 		}
+
+		// Spikes
+		if x > 20 && rand.Float32() < 0.03 {
+			g.tiles = append(g.tiles, &Tile{x: x, y: 13, id: 10}) // spike
+		}
 	}
 
-	// Add decorations (trees, bushes, clouds)
+	// Add decorations
 	for x := 0; x < g.levelWidth; x++ {
+		// Trees/bushes on ground
+		if rand.Float32() < 0.08 {
+			decType := rand.Intn(3) + 1
+			g.decorations = append(g.decorations, &Decoration{
+				x: float64(x*TileSize),
+				y: float64(13*TileSize - 60),
+				id: decType,
+			})
+		}
+		// Flowers on ground
 		if rand.Float32() < 0.1 {
 			g.decorations = append(g.decorations, &Decoration{
-				x: float64(x*TileSize),
-				y: float64(13*TileSize - 80),
-				id: 1, // Tree
+				x: float64(x*TileSize + rand.Intn(30)),
+				y: float64(13*TileSize - 20),
+				id: rand.Intn(2) + 4,
 			})
 		}
-		if rand.Float32() < 0.15 {
+		// Clouds in sky
+		if rand.Float32() < 0.05 {
 			g.decorations = append(g.decorations, &Decoration{
 				x: float64(x*TileSize),
-				y: float64(13*TileSize - 30),
-				id: 2, // Bush
+				y: float64(rand.Intn(150) + 50),
+				id: rand.Intn(3) + 7,
 			})
 		}
-	}
-
-	// Clouds in background
-	for i := 0; i < 20; i++ {
-		g.decorations = append(g.decorations, &Decoration{
-			x: float64(rand.Intn(g.levelWidth * TileSize)),
-			y: float64(rand.Intn(200) + 50),
-			id: 3, // Cloud
-		})
+		// Rocks
+		if rand.Float32() < 0.06 {
+			g.decorations = append(g.decorations, &Decoration{
+				x: float64(x*TileSize),
+				y: float64(13*TileSize - 25),
+				id: rand.Intn(2) + 10,
+			})
+		}
 	}
 
 	// Flag at end
@@ -290,20 +433,6 @@ func (g *Game) Update() error {
 	case 0: // Menu
 		if inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
 			g.state = 1
-			g.player.health = g.player.maxHealth
-			g.player.x = 100
-			g.player.y = 300
-			g.player.vx = 0
-			g.player.vy = 0
-			g.cameraX = 0
-			// Reset coins
-			for _, c := range g.coins {
-				c.collected = false
-			}
-			// Reset enemies
-			for _, e := range g.enemies {
-				e.alive = true
-			}
 		}
 		return nil
 
@@ -319,6 +448,8 @@ func (g *Game) Update() error {
 	g.updateCamera()
 	g.updateEnemies()
 	g.updateCoins()
+	g.updateGems()
+	g.updateParticles()
 	g.checkWin()
 
 	return nil
@@ -343,17 +474,21 @@ func (g *Game) updatePlayer() {
 	if (ebiten.IsKeyPressed(ebiten.KeySpace) || ebiten.IsKeyPressed(ebiten.KeyArrowUp) || ebiten.IsKeyPressed(ebiten.KeyW)) && p.onGround {
 		p.vy = JumpForce
 		p.onGround = false
+		g.spawnJumpParticles(p.x+float64(p.width)/2, p.y+float64(p.height))
 	}
 
 	// Physics
 	p.vy += Gravity
+	if p.vy > 10 {
+		p.vy = 10
+	}
 	p.x += p.vx
 	p.y += p.vy
 
 	// Collision with tiles
 	g.checkTileCollision()
 
-	// Screen boundaries
+	// Boundaries
 	if p.x < 0 {
 		p.x = 0
 	}
@@ -361,7 +496,7 @@ func (g *Game) updatePlayer() {
 		p.x = float64(g.levelWidth*TileSize) - float64(p.width)
 	}
 
-	// Death by falling
+	// Death
 	if p.y > ScreenHeight {
 		p.health = 0
 		if p.health <= 0 {
@@ -378,27 +513,26 @@ func (g *Game) checkTileCollision() {
 		tileX := float64(tile.x * TileSize)
 		tileY := float64(tile.y * TileSize)
 
-		// AABB collision
-		if p.x < tileX+float64(TileSize) &&
-			p.x+float64(p.width) > tileX &&
+		if p.x < tileX+float64(TileSize)-5 &&
+			p.x+float64(p.width) > tileX+5 &&
 			p.y < tileY+float64(TileSize) &&
 			p.y+float64(p.height) > tileY {
 
-			// Landing on top
+			// Landing
 			if p.vy >= 0 && p.y+float64(p.height) <= tileY+20 {
 				p.y = tileY - float64(p.height)
 				p.vy = 0
 				p.onGround = true
 			}
-			// Hitting ceiling
+			// Ceiling
 			if p.vy < 0 && p.y >= tileY {
 				p.y = tileY + float64(TileSize)
 				p.vy = 0
 			}
-			// Side collision
-			if p.vx > 0 {
+			// Sides
+			if p.vx > 0 && p.x < tileX {
 				p.x = tileX - float64(p.width)
-			} else if p.vx < 0 {
+			} else if p.vx < 0 && p.x+float64(p.width) > tileX+float64(TileSize) {
 				p.x = tileX + float64(TileSize)
 			}
 		}
@@ -406,13 +540,15 @@ func (g *Game) checkTileCollision() {
 }
 
 func (g *Game) updateCamera() {
-	g.cameraX = g.player.x - ScreenWidth/3
+	targetX := g.player.x - ScreenWidth/2
+	g.cameraX += (targetX - g.cameraX) * 0.1
 	if g.cameraX < 0 {
 		g.cameraX = 0
 	}
 	if g.cameraX > float64(g.levelWidth*TileSize)-ScreenWidth {
 		g.cameraX = float64(g.levelWidth*TileSize) - ScreenWidth
 	}
+	g.bgOffset = g.cameraX * 0.3
 }
 
 func (g *Game) updateEnemies() {
@@ -424,26 +560,34 @@ func (g *Game) updateEnemies() {
 		}
 
 		e.x += e.vx
+		e.animFrame++
 
-		// Simple patrol
+		// Patrol
 		if rand.Float32() < 0.02 {
 			e.vx *= -1
 		}
 
 		// Collision with player
-		if p.x < e.x+float64(e.width) &&
-			p.x+float64(p.width) > e.x &&
-			p.y < e.y+float64(e.height) &&
-			p.y+float64(p.height) > e.y {
+		if p.x < e.x+float64(e.width)-10 &&
+			p.x+float64(p.width) > e.x+10 &&
+			p.y < e.y+float64(e.height)-10 &&
+			p.y+float64(p.height) > e.y+10 {
 
-			// Jump on enemy
 			if p.vy > 0 && p.y+float64(p.height) < e.y+float64(e.height)/2 {
+				// Stomp!
 				e.alive = false
 				p.vy = JumpForce / 2
 				p.score += 100
+				g.spawnHitParticles(e.x+float64(e.width)/2, e.y+float64(e.height)/2)
 			} else {
-				p.health -= 10
+				// Hurt!
+				p.health -= 15
 				p.vy = -5
+				if p.vx > 0 {
+					p.vx = -5
+				} else {
+					p.vx = 5
+				}
 				if p.health <= 0 {
 					g.state = 2
 				}
@@ -462,14 +606,49 @@ func (g *Game) updateCoins() {
 
 		c.animFrame++
 
-		// Collection
 		if p.x < c.x+20 &&
 			p.x+float64(p.width) > c.x &&
 			p.y < c.y+20 &&
 			p.y+float64(p.height) > c.y {
 			c.collected = true
 			p.coins++
-			p.score += 10
+			p.score += (c.id + 1) * 10
+			g.spawnCollectParticles(c.x+10, c.y+10, color.RGBA{255, 215, 0, 255})
+		}
+	}
+}
+
+func (g *Game) updateGems() {
+	p := g.player
+
+	for _, gem := range g.gems {
+		if gem.collected {
+			continue
+		}
+
+		gem.animFrame++
+
+		if p.x < gem.x+20 &&
+			p.x+float64(p.width) > gem.x &&
+			p.y < gem.y+20 &&
+			p.y+float64(p.height) > gem.y {
+			gem.collected = true
+			p.gems++
+			p.score += (gem.id + 1) * 50
+			g.spawnCollectParticles(gem.x+10, gem.y+10, color.RGBA{100, 255, 100, 255})
+		}
+	}
+}
+
+func (g *Game) updateParticles() {
+	for i := len(g.particles) - 1; i >= 0; i-- {
+		p := g.particles[i]
+		p.x += p.vx
+		p.y += p.vy
+		p.vy += 0.3
+		p.life--
+		if p.life <= 0 {
+			g.particles = append(g.particles[:i], g.particles[i+1:]...)
 		}
 	}
 }
@@ -478,6 +657,52 @@ func (g *Game) checkWin() {
 	if g.player.x >= g.flagX {
 		g.state = 3
 		g.player.score += 1000
+	}
+}
+
+// ============================================================================
+// PARTICLES
+// ============================================================================
+
+func (g *Game) spawnJumpParticles(x, y float64) {
+	for i := 0; i < 8; i++ {
+		g.particles = append(g.particles, &Particle{
+			x: x + (rand.Float64()-0.5)*20,
+			y: y,
+			vx: (rand.Float64() - 0.5) * 3,
+			vy: rand.Float64() * 2,
+			life: 20,
+			color: color.RGBA{200, 200, 200, 255},
+			size: 3,
+		})
+	}
+}
+
+func (g *Game) spawnHitParticles(x, y float64) {
+	for i := 0; i < 15; i++ {
+		g.particles = append(g.particles, &Particle{
+			x: x,
+			y: y,
+			vx: (rand.Float64() - 0.5) * 8,
+			vy: (rand.Float64() - 0.5) * 8,
+			life: 25,
+			color: color.RGBA{255, 100, 100, 255},
+			size: 4,
+		})
+	}
+}
+
+func (g *Game) spawnCollectParticles(x, y float64, c color.RGBA) {
+	for i := 0; i < 10; i++ {
+		g.particles = append(g.particles, &Particle{
+			x: x,
+			y: y,
+			vx: (rand.Float64() - 0.5) * 5,
+			vy: (rand.Float64() - 0.5) * 5,
+			life: 20,
+			color: c,
+			size: 3,
+		})
 	}
 }
 
@@ -503,26 +728,31 @@ func (g *Game) drawMenu(screen *ebiten.Image) {
 		vector.DrawFilledRect(screen, 0, float32(y), ScreenWidth, 1, color.RGBA{r, g, b, 255}, true)
 	}
 
-	if gameAssets.gameFont != nil {
-		text.Draw(screen, "GO MARIO PLATFORMER", gameAssets.gameFont, ScreenWidth/2-180, 200, color.White)
-		text.Draw(screen, "Press ENTER to start", gameAssets.gameFont, ScreenWidth/2-140, 350, color.White)
+	if gameAssets.largeFont != nil {
+		text.Draw(screen, "GO MARIO", gameAssets.largeFont, ScreenWidth/2-120, 180, color.White)
+		text.Draw(screen, "SUPER PLATFORMER", gameAssets.gameFont, ScreenWidth/2-140, 250, color.RGBA{100, 255, 100, 255})
+	}
 
+	if gameAssets.gameFont != nil {
 		controls := []string{
 			"Arrow Keys / WASD - Move",
 			"Space / W / Up - Jump",
-			"Jump on enemies to defeat them!",
-			"Collect coins and reach the flag!",
+			"Collect coins and gems!",
+			"Jump on enemies!",
+			"Reach the flag!",
+			"",
+			"Press ENTER to start",
 		}
-		y := 420
+		y := 350
 		for _, line := range controls {
-			text.Draw(screen, line, gameAssets.gameFont, ScreenWidth/2-150, y, color.RGBA{200, 200, 200, 255})
-			y += 30
+			text.Draw(screen, line, gameAssets.gameFont, ScreenWidth/2-120, y, color.White)
+			y += 28
 		}
 	}
 }
 
 func (g *Game) drawGame(screen *ebiten.Image) {
-	// Sky background
+	// Sky
 	for y := 0; y < ScreenHeight; y++ {
 		r := uint8(135 - y/10)
 		g := uint8(206 - y/10)
@@ -532,22 +762,24 @@ func (g *Game) drawGame(screen *ebiten.Image) {
 
 	camX := g.cameraX
 
-	// Draw decorations (background - clouds)
+	// Background decorations (parallax clouds)
 	for _, d := range g.decorations {
-		if d.id == 3 { // Cloud
-			img := gameAssets.cloud1
-			if g.frame%120 < 60 {
-				img = gameAssets.cloud2
+		if d.id >= 7 && d.id <= 9 { // Clouds
+			var img *ebiten.Image
+			switch d.id {
+			case 7: img = gameAssets.cloud1
+			case 8: img = gameAssets.cloud2
+			case 9: img = gameAssets.cloud3
 			}
 			if img != nil {
 				op := &ebiten.DrawImageOptions{}
-				op.GeoM.Translate(d.x-camX*0.3, d.y) // Parallax
+				op.GeoM.Translate(d.x-g.bgOffset, d.y)
 				screen.DrawImage(img, op)
 			}
 		}
 	}
 
-	// Draw tiles
+	// Tiles
 	for _, tile := range g.tiles {
 		if float64(tile.x*TileSize) < camX-100 || float64(tile.x*TileSize) > camX+ScreenWidth+100 {
 			continue
@@ -555,12 +787,16 @@ func (g *Game) drawGame(screen *ebiten.Image) {
 
 		var img *ebiten.Image
 		switch tile.id {
-		case 1:
-			img = gameAssets.grassTile
-		case 2:
-			img = gameAssets.dirtTile
-		case 3:
-			img = gameAssets.brickTile
+		case 1: img = gameAssets.grassTile
+		case 2: img = gameAssets.dirtTile
+		case 3: img = gameAssets.brickTile
+		case 4: img = gameAssets.stoneTile
+		case 5: img = gameAssets.sandTile
+		case 6: img = gameAssets.snowTile
+		case 7: img = gameAssets.platformTile
+		case 8: img = gameAssets.questionTile
+		case 9: img = gameAssets.usedTile
+		case 10: img = gameAssets.spikeTile
 		}
 
 		if img != nil {
@@ -570,16 +806,18 @@ func (g *Game) drawGame(screen *ebiten.Image) {
 		}
 	}
 
-	// Draw decorations (foreground - trees, bushes)
+	// Foreground decorations
 	for _, d := range g.decorations {
-		if d.id == 1 || d.id == 2 {
+		if d.id < 7 || d.id > 9 {
 			var img *ebiten.Image
-			if d.id == 1 {
-				img = gameAssets.tree1
-			} else {
-				img = gameAssets.bush1
+			switch d.id {
+			case 1: img = gameAssets.tree1
+			case 2: img = gameAssets.bush1
+			case 3: img = gameAssets.mushroom
+			case 4, 5: img = gameAssets.flower1
+			case 10, 11: img = gameAssets.rock1
 			}
-			if img != nil && gameAssets != nil {
+			if img != nil {
 				op := &ebiten.DrawImageOptions{}
 				op.GeoM.Translate(d.x-camX, d.y)
 				screen.DrawImage(img, op)
@@ -587,41 +825,90 @@ func (g *Game) drawGame(screen *ebiten.Image) {
 		}
 	}
 
-	// Draw coins
+	// Coins
 	for _, c := range g.coins {
 		if c.collected {
 			continue
 		}
-		if gameAssets.coinSprite != nil {
+		var img *ebiten.Image
+		switch c.id {
+		case 0: img = gameAssets.coinBronze
+		case 1: img = gameAssets.coinSilver
+		case 2: img = gameAssets.coinGold
+		}
+		if img != nil {
 			op := &ebiten.DrawImageOptions{}
-			op.GeoM.Translate(c.x-camX, c.y+math.Sin(float64(c.animFrame)*0.1)*5)
-			screen.DrawImage(gameAssets.coinSprite, op)
+			bob := math.Sin(float64(c.animFrame)*0.1) * 5
+			op.GeoM.Translate(c.x-camX, c.y+bob)
+			screen.DrawImage(img, op)
 		}
 	}
 
-	// Draw enemies
+	// Gems
+	for _, gem := range g.gems {
+		if gem.collected {
+			continue
+		}
+		var img *ebiten.Image
+		switch gem.id {
+		case 0: img = gameAssets.gemRed
+		case 1: img = gameAssets.gemBlue
+		case 2: img = gameAssets.gemGreen
+		}
+		if img != nil {
+			op := &ebiten.DrawImageOptions{}
+			bob := math.Sin(float64(gem.animFrame)*0.15) * 5
+			op.GeoM.Translate(gem.x-camX, gem.y+bob)
+			screen.DrawImage(img, op)
+		}
+	}
+
+	// Enemies
 	for _, e := range g.enemies {
 		if !e.alive {
 			continue
 		}
-		// Draw enemy as red circle for now
-		vector.DrawFilledCircle(screen, float32(e.x-camX+20), float32(e.y+20), 20, color.RGBA{255, 50, 50, 255}, true)
+		var img *ebiten.Image
+		switch e.enemyType {
+		case 0: img = gameAssets.slimeGreen
+		case 1: img = gameAssets.bee
+		case 2: img = gameAssets.frog
+		case 3: img = gameAssets.mouse
+		}
+		if img != nil {
+			op := &ebiten.DrawImageOptions{}
+			op.GeoM.Translate(e.x-camX, e.y)
+			screen.DrawImage(img, op)
+		} else {
+			vector.DrawFilledCircle(screen, float32(e.x-camX+20), float32(e.y+20), 20, color.RGBA{255, 50, 50, 255}, true)
+		}
 	}
 
-	// Draw flag
-	if gameAssets.flagSprite != nil {
+	// Flag
+	var flagImg *ebiten.Image
+	if g.frame%180 < 90 {
+		flagImg = gameAssets.flagGreen
+	} else {
+		flagImg = gameAssets.flagRed
+	}
+	if flagImg != nil {
 		op := &ebiten.DrawImageOptions{}
 		op.GeoM.Translate(g.flagX-camX, g.flagX)
-		screen.DrawImage(gameAssets.flagSprite, op)
+		screen.DrawImage(flagImg, op)
 	}
 
-	// Draw player
+	// Player
 	g.drawPlayer(screen, camX)
 
-	// Draw HUD
+	// Particles
+	for _, p := range g.particles {
+		vector.DrawFilledCircle(screen, float32(p.x-camX), float32(p.y), p.size, p.color, true)
+	}
+
+	// HUD
 	g.drawHUD(screen)
 
-	// Game Over / Win screens
+	// Overlays
 	if g.state == 2 {
 		g.drawGameOver(screen)
 	} else if g.state == 3 {
@@ -655,37 +942,35 @@ func (g *Game) drawPlayer(screen *ebiten.Image, camX float64) {
 			op.GeoM.Scale(0.5, 0.5)
 		}
 		screen.DrawImage(img, op)
-	} else {
-		// Fallback
-		vector.DrawFilledRect(screen, float32(p.x-camX), float32(p.y), float32(p.width), float32(p.height), color.RGBA{0, 255, 100, 255}, true)
 	}
 }
 
 func (g *Game) drawHUD(screen *ebiten.Image) {
-	// Background
-	vector.DrawFilledRect(screen, 0, 0, ScreenWidth, 50, color.RGBA{0, 0, 0, 150}, true)
+	vector.DrawFilledRect(screen, 0, 0, ScreenWidth, 55, color.RGBA{0, 0, 0, 180}, true)
 
 	if gameAssets.gameFont != nil {
-		text.Draw(screen, fmt.Sprintf("HP: %d/%d", g.player.health, g.player.maxHealth), gameAssets.gameFont, 20, 15, color.RGBA{255, 100, 100, 255})
-		text.Draw(screen, fmt.Sprintf("Coins: %d", g.player.coins), gameAssets.gameFont, 250, 15, color.RGBA{255, 215, 0, 255})
-		text.Draw(screen, fmt.Sprintf("Score: %d", g.player.score), gameAssets.gameFont, 450, 15, color.White)
+		text.Draw(screen, fmt.Sprintf("HP: %d", g.player.health), gameAssets.gameFont, 20, 18, color.RGBA{255, 100, 100, 255})
+		text.Draw(screen, fmt.Sprintf("Lives: %d", g.player.lives), gameAssets.gameFont, 180, 18, color.RGBA{100, 255, 100, 255})
+		text.Draw(screen, fmt.Sprintf("Coins: %d", g.player.coins), gameAssets.gameFont, 350, 18, color.RGBA{255, 215, 0, 255})
+		text.Draw(screen, fmt.Sprintf("Gems: %d", g.player.gems), gameAssets.gameFont, 550, 18, color.RGBA{100, 200, 255, 255})
+		text.Draw(screen, fmt.Sprintf("Score: %d", g.player.score), gameAssets.gameFont, 750, 18, color.White)
 	}
 }
 
 func (g *Game) drawGameOver(screen *ebiten.Image) {
-	vector.DrawFilledRect(screen, 0, 0, ScreenWidth, ScreenHeight, color.RGBA{0, 0, 0, 180}, true)
-	if gameAssets.gameFont != nil {
-		text.Draw(screen, "GAME OVER", gameAssets.gameFont, ScreenWidth/2-80, ScreenHeight/2, color.RGBA{255, 50, 50, 255})
-		text.Draw(screen, "Press ENTER", gameAssets.gameFont, ScreenWidth/2-70, ScreenHeight/2+50, color.White)
+	vector.DrawFilledRect(screen, 0, 0, ScreenWidth, ScreenHeight, color.RGBA{0, 0, 0, 200}, true)
+	if gameAssets.largeFont != nil {
+		text.Draw(screen, "GAME OVER", gameAssets.largeFont, ScreenWidth/2-120, ScreenHeight/2-30, color.RGBA{255, 50, 50, 255})
+		text.Draw(screen, "Press ENTER", gameAssets.gameFont, ScreenWidth/2-80, ScreenHeight/2+50, color.White)
 	}
 }
 
 func (g *Game) drawWin(screen *ebiten.Image) {
-	vector.DrawFilledRect(screen, 0, 0, ScreenWidth, ScreenHeight, color.RGBA{0, 100, 0, 180}, true)
-	if gameAssets.gameFont != nil {
-		text.Draw(screen, "YOU WIN!", gameAssets.gameFont, ScreenWidth/2-60, ScreenHeight/2, color.RGBA{255, 215, 0, 255})
+	vector.DrawFilledRect(screen, 0, 0, ScreenWidth, ScreenHeight, color.RGBA{0, 100, 0, 200}, true)
+	if gameAssets.largeFont != nil {
+		text.Draw(screen, "YOU WIN!", gameAssets.largeFont, ScreenWidth/2-100, ScreenHeight/2-30, color.RGBA{255, 215, 0, 255})
 		text.Draw(screen, fmt.Sprintf("Score: %d", g.player.score), gameAssets.gameFont, ScreenWidth/2-80, ScreenHeight/2+50, color.White)
-		text.Draw(screen, "Press ENTER", gameAssets.gameFont, ScreenWidth/2-70, ScreenHeight/2+100, color.White)
+		text.Draw(screen, "Press ENTER", gameAssets.gameFont, ScreenWidth/2-80, ScreenHeight/2+100, color.White)
 	}
 }
 
@@ -695,7 +980,7 @@ func (g *Game) Layout(w, h int) (int, int) {
 
 func main() {
 	ebiten.SetWindowSize(ScreenWidth, ScreenHeight)
-	ebiten.SetWindowTitle("GO MARIO: PLATFORMER - Go365 Day 86")
+	ebiten.SetWindowTitle("GO MARIO: SUPER PLATFORMER - Go365 Day 86")
 
 	if err := ebiten.RunGame(NewGame()); err != nil {
 		log.Fatal(err)
