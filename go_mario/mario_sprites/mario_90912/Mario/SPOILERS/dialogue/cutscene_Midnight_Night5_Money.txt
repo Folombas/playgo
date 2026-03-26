@@ -1,0 +1,85 @@
+{"DIALOGUE":
+	[
+		["That's all I had-a to do!", "Mario"],
+		["_skip"],
+		["Pretty simple! Can't-a wait to tell Lu about this one-", "Mario"],
+		["_delay", 120],
+		["_func", [["playSound", "sfxPhoneRing", 10, true]]],
+		["...", "Mario"],
+		["_delay", 360],
+		["...Do I-a have to pick up?", "Mario"],
+		["_delay", 200],
+		["...Ugh, mamma mia.", "Mario"],
+		["_func",
+			[
+				["stopSound", "sfxPhoneRing"],
+				["playSound", "sfxPhonePickup", 10, false]
+			]
+		],
+		
+		["_delay", 120],
+		["WAAAAAAAAAAHH!!", "The Boss"],
+		["_effect", 0, 99, "Shake"],
+		["_func", [["playMusic", "musMidnight_TheBoss", 0.5]]],
+		["...", "Mario"],
+		["SAY ANYTHING, LOUSY RED LUMP! I NEED HELP!", "The Boss"],
+		["_effect", 30, 42, "Shake"],
+		["Fine. What's-a going on?", "Mario"],
+		["I've been SCAMMED! SWINDLED! HOODWINKED!", "The Boss"],
+		["_effect", 10, 99, "Shake"],
+		["When were you gonna tell me about these FILES, huh!?", "The Boss"],
+		["_effect", 40, 46, "Shake"],
+		["Files? Like-a the ones on the camera thingy, or...", "Mario"],
+		["...No, they're not \"ripping you off\". How many times are you gonna say that to other people's games?", "Mario"],
+		["NOT THOSE! The PAPER ones I found in your office, CRUMMY PLUMBER! I took a look through them, and as it turns out...", "The Boss"],
+		["Those jerks who sold me the company were hiding MILLIONS in property RIGHT UNDER MY NOSE!", "The Boss"],
+		["Look, you're...UNFORTUNATELY the only chump I can trust with this, so shut your insignificantly-mustached trap and listen up!", "The Boss"],
+		["According to these files, there's a secret bunker out there in the middle of the woods.", "The Boss"],
+		["And, more importantly...the place is stuffed to the brim with animatronics that could make me RRRRRRRICH!!", "The Boss"],
+		["_effect", 94, 128, "Shake"],
+		["_split", false, "IsGoodOrEvil", false,
+			[
+				["Are-a you sure I've-a gotta do this? I've already gotten everything I needed here.", "Mario"],
+				["Grrr...FINE! I'll sweeten the deal.", "The Boss"],
+				["If you do this for me, I'll take you out that fancy steakhouse out in Diamond City. My treat!", "The Boss"],
+				["(...If it's to help...)", "Mario"],
+				["...Okay, fine. That steak better be-a worth it!", "Mario"],
+				["Wahaha, excellent! I never thought I could convince THE red chump!", "The Boss"],
+				["Now MOVE IT!! Time is money!", "The Boss"],
+				["_effect", 4, 13, "Shake"]
+			],
+			[
+				["I need you to crawl down there and retrieve those bots! And it better be NOW!", "The Boss"],
+				["...Oh, and if you do, I'll, uh...take you out to dinner or something. My treat!", "The Boss"],
+				["I BETTER see you there!", "The Boss"]
+			]
+		],
+		["_delay", 120],
+		["_func",
+			[
+				["stopSound", "musMidnight_TheBoss"],
+				["playSound", "sfxPhonePickup", 10, false]
+			]
+		],
+		
+		["_split", false, "IsGoodOrEvil", true,
+			[
+				["...Well, you can't do two things at once. You've got a choice to make here.", ""],
+				["Who will you along with?", ""],
+				["_option", ["Help the Boss", "ChoiceConfirm_Money"]],
+				["_split", false, "IsGood", true,
+					[
+						["_option", ["Help Michael", "ChoiceConfirm_Good"]]
+					],
+					[
+						["_option", ["Help the Rabbit", "ChoiceConfirm_Evil"]]
+					]
+				]
+			],
+			[
+				["...Why do I keep-a going along with this...?", "Mario"],
+				["_func", [["salvage"]]]
+			]
+		]
+	]
+}

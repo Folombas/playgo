@@ -1,0 +1,35 @@
+{
+	"player_height": 44,
+	"player_sneak_height": 12,
+	
+	"theme_intro": ["musIntro.ogg", 1],
+	"theme_game_over": ["sfxGameOver.ogg", 1],
+	"theme_victory": ["sfxVictory.ogg", 1],
+	"theme_victory_night5": ["sfxVictory5.ogg", 1],
+	"theme_victory_night6": ["sfxVictory6.ogg", 1],
+	
+	"music_player":
+	[
+		["Mario - Mr. Video Game", "musIntro.ogg", 102, "World Map 2", "Super Mario World"],
+		["Mario - Game Over", "sfxGameOver.ogg", 0, "Too Bad", "Super Paper Mario"],
+		["Mario - Night Cleared!", "sfxVictory.ogg", 120, "Shine Get!", "Super Mario Sunshine"],
+		["Mario - Power's in Your Hands (Night 5)", "sfxVictory5.ogg", 126, "Grand Star Obtained", "Super Mario Galaxy 2"],
+		["Mario - Minimum Wage's End (Night 6)", "sfxVictory6.ogg", 150, "Mario Win Theme", "Fortune Street"]
+	],
+
+	"maze_rules_poster": [["...Well, not the craziest thing a kid can-a do, right?", "Mario"]],
+	"maze_newspaper_1": [["Ah. Okay!", "Mario"]],
+	"maze_newspaper_2": [["...They can just-a do that?", "Mario"]],
+	"maze_newspaper_3": [["Haha, yeah. That is-a kinda funny!", "Mario"]],
+	
+	"upgrade_cadet_story": [["Uh...Look, I love the stories, but-a that one sounds a little familiar.", "Mario"],
+		["YOU ASKED FOR A STORY. I AM TELLING YOU A STORY. I DO NOT SEE THE ISSUE.", "Upgrade Cadet"],
+		["I'm-a using my paycheck...", "Mario"],
+		["IT IS A GOOD STORY. ANY ALTERATIONS WOULD DISTRACT FROM ITS MESSAGE.", "Upgrade Cadet"],
+		["Ah, well. A story's a story!", "Mario"]],
+	"withered_bonnie": "pequeño fontanero rojo",
+	"bb_quiz_answer": "Helping your brother",
+	"helpy": [["_skip"], ["Oh, uh, yeah, sorry, I'm-a-", "Mario"]],
+	"psy_friend_fredbear_house": [["The... \"Boss\" chose someone's house?", "Mario"]],
+	"dreadbear": [["YOU! RED 'STACHE!", "Dreadbear"]]
+}

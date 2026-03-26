@@ -1,0 +1,44 @@
+{"DIALOGUE":
+	[
+		["...Hey, it's-a her again!", "Mario"],
+		["_func",
+			[
+				["addActor", 1, "sTalksprites_Vanny"], 
+				["playMusic", "musMidnight_Vanny", 1], 
+				["fadeMusic", "musMidnight_Vanny", 1, 0]
+			]
+		],
+		
+		["Well, well, well! Look at you, my hero! You actually pulled through!", "White Rabbit"],
+		["_func", [["setActor", 2]]],
+		["Mweeheehee, I can't say I was expecting you to fail! I mean, of course you wouldn't, you're Mario!", "White Rabbit"],
+		["This is-a no biggie! I can handle something this simple!", "Mario"],
+		["_func", [["setActor", 3]]],
+		["I already know I can count on you~! So, say, why don't we have a little storytime if you can bring another one back?", "White Rabbit"],
+		["Storytime? What kind of story?", "Mario"],
+		["_func", [["setActor", 1]]],
+		["Mweeheehee, a real interesting one, I can tell you that much!", "White Rabbit"],
+		["Does any part of it involve wherever the-a pizza went? I'm-a feeling hungry...", "Mario"],
+		["_func", [["setActor", 1]]],
+		["Oh, you're funny!", "White Rabbit"],
+		["_func", [["setActor", 1]]],
+		["Anyway, would love to stick around and chat, but I've got more planning to do on your reward for the help!", "White Rabbit"],
+		["_func", [["setActor", 3]]],
+		["Boy, I can't wait to show you all the effort in practice!", "White Rabbit"],
+		["And I can't-a wait to see it!", "Mario"],
+
+		["_func", [["setActor", 1]]],
+		["It won't disappoint you, Mustache~! See ya tomorrow night!", "White Rabbit"],
+		["_func",
+			[
+				["removeActor"], 
+				["fadeMusic", "musMidnight_Vanny", 0, 1000]
+			]
+		],
+		
+		["And so, the white rabbit disappeared into the darkness yet again.", ""],
+		["Storytime, huh? Interesting!", "Mario"],
+		["...", "Mario"],
+		["_func", [["salvage"]]]
+	]
+} 

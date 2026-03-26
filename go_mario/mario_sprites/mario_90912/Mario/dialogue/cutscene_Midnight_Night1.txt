@@ -1,0 +1,46 @@
+{"DIALOGUE":
+	[
+		["Look at that! One night gone already!", "Mario"],
+		["Those ghosts were a little more...Real than I-a thought! No wackiness here.", "Mario"],
+		["_skip"],
+		["I guess it's-a time to report back to the prof-", "Mario"],
+		["_delay", 120],
+		["_func", [["playSound", "sfxPhoneRing", 10, true]]],
+		["Oh...? Who's-a this, now?", "Mario"],
+		["_func",
+			[
+				["stopSound", "sfxPhoneRing"],
+				["playSound", "sfxPhonePickup", 10, false]
+			]
+		],
+		["_delay", 120],
+		
+		["Ring ring! Hey, is this stupid thing on?", "The Boss"],
+		["...There's-a no chance that's who I think it is.", "Mario"],
+		["_func", [["playMusic", "musMidnight_TheBoss", 0.5]]],
+		["Hey, stooge! Great work tonight or whatever.", "The Boss"],
+		["Big news! Your good-for-nothing coworker isn't picking up his calls, so it looks like you get to work overtime!", "The Boss"],
+		["_skip"],
+		["What's the big idea this-a time, Wario? Bills too hard to pay or-", "Mario"],
+		["YOU CALL ME BOSS WHEN YOU'RE ON THE JOB, CHUMP!", "The Boss"],
+		["_effect", 0, 47, "Shake"],
+		["...Mamma mia. How low do the standards-a go...", "Mario"],
+		["Bah, WHATEVER! As much as I hate to say it, you're getting paid, so shut your capped yap and get out of that lousy parking lot!", "The Boss"],
+		["Go to the address I sent you! Some other chump will explain the rest when you get there.", "The Boss"],
+		["Bad luck to you! Have a rotten shift! WAAAHAHAHAHAAAA!!!", "The Boss"],
+		["_effect", 48, 56, "Shake"],
+		["_skip", true],
+		["Are you seriously gonna act like-", "Mario"],
+		["_delay", 120],
+		["_func",
+			[
+				["stopSound", "musMidnight_TheBoss"],
+				["playSound", "sfxPhonePickup", 10, false]
+			]
+		],
+		
+		["...Now I've-a got a hunch that the professor was joking...", "Mario"],
+		["Ugh. Can't-a back out now. Let's-a get this done.", "Mario"],
+		["_func", [["salvage"]]]
+	]
+} 

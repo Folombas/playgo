@@ -1,0 +1,66 @@
+{"DIALOGUE":
+	[
+		["...He's-a back again!", "Mario"],
+		["_func",
+			[
+				["addActor", 0, "sTalksprites_Michael"], 
+				["playMusic", "musMidnight_Michael", 1], 
+				["fadeMusic", "musMidnight_Michael", 1, 0]
+			]
+		],
+		
+		["Ah, good to see you again. You found the third one.", "Michael"],
+		["_func", [["setActor", 4]]],
+		["...Which should mean only one remains. As much as I would like to say it's smooth sailing from here, you know how things are with this company by now.", "Michael"],
+		["I've-a pushed through this much and it hasn't been a challenge! I know for sure it's smooth sailing!", "Mario"],
+		["...That said, what's-a actually the big idea of these things? Why are you collecting them?", "Mario"],
+		["_func", [["setActor", 1]]],
+		["...Yes, I suppose I owe you that much for getting this far.", "Michael"],
+		["_func", [["setActor", 0]]],
+		["I imagine you're quite familiar with the...reputation this company has garnered by now, yes?", "Michael"],
+		["Ah, well, I've-a gotten the basics, but I'm not sure about most of it.", "Mario"],
+		["_func", [["setActor", 4]]],
+		["A fair few unfortunate events have happened across these locations...I'd be the first to tell you as much.", "Michael"],
+		["_func", [["setActor", 5]]],
+		["Disaster after disaster, tragedy after tragedy...it wouldn't be an exaggeration to say this company has been damned since its inception.", "Michael"],
+		["_func", [["setActor", 0]]],
+		["...And every time a tragedy occurs, those there to witness it become...tainted. As do the objects and places surrounding them.", "Michael"],
+		["_func", [["setActor", 1]]],
+		["In fact, I've no doubt you've experienced this phenomenon already. All those props at the last location you visited...", "Michael"],
+		["_func", [["setActor", 3]]],
+		["...Surely you noticed how heavy the atmosphere around them felt, yes?", "Michael"],
+		["_func", [["setActor", 5]]],
+		["And one particular tragedy...one which I myself was there to witness...", "Michael"],
+		["_func", [["setActor", 4]]],
+		["...Nowhere was it seen closer than through the eyeholes of those masks.", "Michael"],
+		["...I see.", "Mario"],
+		["So these are...possessed?", "Mario"],
+		
+		["_func", [["setActor", 1]]],
+		["Well, no, not quite. These masks just seem to be imbued with some sort of strong, emotional energy.", "Michael"],
+		
+		["_func", [["setActor", 2]]],
+		["One's potent despair, their fear, their...agony, some might call it.", "Michael"],
+		["Hmmm...I gotcha.", "Mario"],
+		["_func", [["setActor", 0]]],
+		["That's, er...your entire reaction?", "Michael"],
+		["Well, can't-a say this is exactly out of my league!", "Mario"],
+		["The ghosts are a little less...fantastical than normal? But-a whatever they look like doesn't matter- I can still handle them!", "Mario"],
+		["_func", [["setActor", 2]]],
+		["...Right.", "Michael"],
+		["_func", [["setActor", 4]]],
+		["Just don't get too confident. We don't want you messing this up.", "Michael"],
+		["_func",
+			[
+				["removeActor"], 
+				["fadeMusic", "musMidnight_Michael", 0, 1000]
+			]
+		],
+		
+		["...And so, Michael vanished once more.", ""],
+		["None of that is even the most confusing-a thing about this, to be honest.", "Mario"],
+		["I'm-a more focused on why the doors need power!", "Mario"],
+		["...Also, none of those anima-thingies can make any pizza? In the PIZZARIA? Makes-a you think...", "Mario"],
+		["_func", [["salvage"]]]
+	]
+}

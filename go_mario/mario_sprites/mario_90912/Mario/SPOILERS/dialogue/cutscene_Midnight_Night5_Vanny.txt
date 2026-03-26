@@ -1,0 +1,60 @@
+{"DIALOGUE":
+	[
+		["_func",
+			[
+				["addActor", 1, "sTalksprites_Vanny"], 
+				["playMusic", "musMidnight_Vanny", 1], 
+				["fadeMusic", "musMidnight_Vanny", 1, 0]
+			]
+		],
+		
+		["...Oh, you beautiful, BEAUTIFUL little thing, you!", "White Rabbit"],
+		["_func", [["setActor", 3]]],
+		["You really got them...ALL of them...", "White Rabbit"],
+		["_func", [["setActor", 1]]],
+		["Oh, I'm so happy, I could KISS you!", "White Rabbit"],
+		["Uh...thanks?", "Mario"],
+		["Well, you DID say there was a reward, right?", "Mario"],
+		["_func", [["setActor", 4]]],
+		["...Reward?", "White Rabbit"],
+		["_func", [["setActor", 1]]],
+		["OH, right! Teehee, I nearly forgot!", "White Rabbit"],
+		["_func", [["setActor", 6]]],
+		["Yes, yes...I've got all the pieces I need now...I should be able to get it together for you in no time!", "White Rabbit"],
+		["_func", [["setActor", 5]]],
+		["...If you can give me a day.", "White Rabbit"],
+		["I-a kinda thought it'd just be a nice dinner...?", "Mario"],
+		["(Mamma mia. The bad feeling I had just-a got a lot worse.)", "Mario"],
+		["_func", [["setActor", 2]]],
+		["Dinner? Fahaha, don't make me laugh! It's something WAY better than that!", "White Rabbit"],
+		["_func", [["setActor", 6]]],
+		["Once you get it, you'll feel like your whole life has been leading up to it! It's...it's priceless!", "White Rabbit"],
+		["_func", [["setActor", 5]]],
+		["I'd even go as far to say it's to DIE for!", "White Rabbit"],
+		["...This feels a teensy bit on-a-the-nose.", "Mario"],
+		["_func", [["setActor", 2]]],
+		["Oh, calm down, it's only a joke...", "White Rabbit"],
+		["_func", [["setActor", 0]]],
+		["Really though, come back here tomorrow, 12 AM. You will NOT wanna miss what I have for you.", "White Rabbit"],
+		["_func",
+			[
+				["removeActor"], 
+				["fadeMusic", "musMidnight_Vanny", 0, 1000]
+			]
+		],
+		
+		["And so, the white rabbit disappeared into the darkness...for what may be the final time.", ""],
+		["...I have everything I need...this place isn't even-a open tomorrow.", "Mario"],
+		["But I stuck with her this long. Whatever she has planned couldn't be bad!", "Mario"],
+		["...I... Hope.", "Mario"],
+		
+		["_split", false, "HasTalbert", true, 
+			[
+				["_money"]
+			],	
+			[
+				["_func", [["night6", "vanny"]]]
+			]
+		]
+	]
+} 

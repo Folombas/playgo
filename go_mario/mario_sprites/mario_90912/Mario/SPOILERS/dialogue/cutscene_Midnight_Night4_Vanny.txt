@@ -1,0 +1,74 @@
+{"DIALOGUE":
+	[
+		["Aaaaand right on-a queue!", "Mario"],
+		["_func",
+			[
+				["addActor", 1, "sTalksprites_Vanny"], 
+				["playMusic", "musMidnight_Vanny", 1], 
+				["fadeMusic", "musMidnight_Vanny", 1, 0]
+			]
+		],
+		
+		["Third verse, same as the first! I'm so happy, I could burst!", "White Rabbit"],
+		["Yep! Here's-a that clown! She was a little more hidden than the others...", "Mario"],
+		["_func", [["setActor", 0]]],
+		["Ohh, so THAT'S where she was hiding!", "White Rabbit"],
+		["_func", [["setActor", 5]]],
+		["Heehee, well, I'm sure she'll be happy to be back with family now!", "White Rabbit"],
+		["Sure! Oh, also, about what you-a said last night!", "Mario"],
+		["_func", [["setActor", 2]]],
+		["Eh?", "White Rabbit"],
+		["The whole storytime thing!", "Mario"],
+		["I'm a little invested, gotta say!", "Mario"],
+		["_func", [["setActor", 0]]],
+		["Ooh, THAT! Of course, of course! I did promise you, didn't I?", "White Rabbit"],
+		["_func", [["setActor", 5]]],
+		["And, haha...someone would have to be a real JERK to break a promise, wouldn't they?", "White Rabbit"],
+		["_func", [["setActor", 2]]],
+		["...So, uh...which one did you wanna learn about?", "White Rabbit"],
+		["Whichever one's your-a favorite! Seems like that rabbit was one you liked.", "Mario"],
+		
+		["_func", [["setActor", 1]]],
+		["Well, well, don't you know me well? You couldn't have picked a better one to ask about!", "White Rabbit"],
+		["_func", [["setActor", 6]]],
+		["The other two have been through a lot, but Springtrap? Hoo BOY, Springtrap, he's seen it ALL!", "White Rabbit"],
+		["_func", [["setActor", 3]]],
+		["He's half the duo that started this whole company! Always a sideshow...but boy, what a sideshow it was!", "White Rabbit"],
+		["_func", [["setActor", 5]]],
+		["He might not have been the face of the place, but real Fazbear aficionados like me know the truth...he was the REAL backbone of all of this.", "White Rabbit"],
+		["_func", [["setActor", 6]]],
+		["Nobody put things into action like he did! Knew things like he did! Reshaped the world to his very own like he did!", "White Rabbit"],
+		["_func", [["setActor", 1]]],
+		["Ahhh, he's so dreamy...", "White Rabbit"],
+		["(...Y'know what, sure. Let's-a let a girl have dreams!)", "Mario"],
+		["_func", [["setActor", 0]]],
+		["I think that he's so, so much more than just an animatronic...", "White Rabbit"],
+		["_func", [["setActor", 2]]],
+		["It's really a shame though, isn't it? He spent so long in the big guy's shadow, he never got a chance to shine...", "White Rabbit"],
+		["Oh, yeah, he was a part of a duo. Is his partner the last one you-a need for your collection?", "Mario"],
+
+		["_func", [["setActor", 0]]],
+		["Oh, pfft, nah. Nobody knows what happened to that one. Not even me!", "White Rabbit"],
+		["_func", [["setActor", 3]]],
+		["HE'S not the important one here, though...mweeheehee...", "White Rabbit"],
+		["_func", [["setActor", 5]]],
+		["Anyway, have I talked your ear off enough now? Don't forget, you still have one more to find!", "White Rabbit"],
+		["_func", [["setActor", 3]]],
+		["Just one more, and it'll alllll come together...", "White Rabbit"],
+		["_func", [["setActor", 1]]],
+		["...So I hope you're looking forward to tomorrow as much as I am! Mwwwwwah!", "White Rabbit"],
+		["_func",
+			[
+				["removeActor"], 
+				["fadeMusic", "musMidnight_Vanny", 0, 1000]
+			]
+		],
+		
+		["And so, the white rabbit disappeared into the darkness yet again.", ""],
+		["...I have a feeling that-a she's a little less focused on me than she was.", "Mario"],
+		["Is the idea to reuse these things? Give them another chance?", "Mario"],
+		["Well. Better used there than-a sitting in her room or something!", "Mario"],
+		["Wonder what the last one will-a be like...", "Mario"],
+		["_func", [["salvage"]]]
+	]
+} 
