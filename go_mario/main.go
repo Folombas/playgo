@@ -1,6 +1,6 @@
-// Go365 Day 86 - GO MARIO SURVIVOR v2.0.0
-// Roguelite Survivor (Vampire Survivors-style)
-// Авто-атака, волны врагов, прокачка, выбор апгрейдов
+// Go365 Day 86 - GO MARIO: CARD BATTLES v3.0.0
+// Карточный Roguelike (Slay the Spire-style)
+// Колода, карты, ходы, враги, реликвии
 
 package main
 
@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"image/color"
 	"log"
-	"math"
 	"math/rand"
 	"os"
 	"time"
@@ -30,16 +29,14 @@ const (
 	ScreenWidth  = 1024
 	ScreenHeight = 768
 
-	// Physics
-	Gravity      = 0.5
-	PlayerSpeed  = 4.0
+	// Card dimensions
+	CardWidth  = 140
+	CardHeight = 200
 
-	// Combat
-	BaseAttackCooldown = 40
-	MaxLevel           = 99
-
-	// Tile
-	TileSize = 48
+	// Game
+	MaxHandSize  = 5
+	MaxDeckSize  = 30
+	MaxEnergy    = 3
 )
 
 // ============================================================================
@@ -47,17 +44,23 @@ const (
 // ============================================================================
 
 var (
-	ColorUIBg        = color.RGBA{0, 0, 0, 200}
-	ColorHealth      = color.RGBA{220, 50, 50, 255}
-	ColorExp         = color.RGBA{100, 255, 100, 255}
-	ColorGold        = color.RGBA{255, 215, 0, 255}
-	ColorWeapon1     = color.RGBA{100, 200, 255, 255}
-	ColorWeapon2     = color.RGBA{255, 100, 150, 255}
-	ColorWeapon3     = color.RGBA{150, 255, 100, 255}
-	ColorEnemyBasic  = color.RGBA{200, 80, 80, 255}
-	ColorEnemyFast   = color.RGBA{255, 150, 50, 255}
-	ColorEnemyTank   = color.RGBA{150, 50, 200, 255}
-	ColorEnemyBoss   = color.RGBA{255, 50, 50, 255}
+	ColorBG            = color.RGBA{20, 25, 35, 255}
+	ColorCardBG        = color.RGBA{40, 50, 70, 255}
+	ColorCardBorder    = color.RGBA{100, 120, 150, 255}
+	ColorEnergy        = color.RGBA{0, 200, 255, 255}
+	ColorHealth        = color.RGBA{220, 50, 50, 255}
+	ColorBlock         = color.RGBA{100, 150, 255, 255}
+	ColorGold          = color.RGBA{255, 215, 0, 255}
+	ColorCardAttack    = color.RGBA{200, 80, 80, 255}
+	ColorCardSkill     = color.RGBA{80, 120, 200, 255}
+	ColorCardPower     = color.RGBA{180, 80, 200, 255}
+	ColorCardCommon    = color.RGBA{150, 150, 150, 255}
+	ColorCardUncommon  = color.RGBA{100, 200, 100, 255}
+	ColorCardRare      = color.RGBA{255, 200, 50, 255}
+	ColorEnemyBG       = color.RGBA{80, 40, 40, 255}
+	ColorButtonNormal  = color.RGBA{60, 80, 100, 255}
+	ColorButtonHover   = color.RGBA{80, 120, 160, 255}
+	ColorButtonActive  = color.RGBA{100, 180, 255, 255}
 )
 
 // ============================================================================
@@ -66,12 +69,10 @@ var (
 
 type Assets struct {
 	playerStand  *ebiten.Image
-	playerWalk1  *ebiten.Image
-	playerWalk2  *ebiten.Image
 	slimeGreen   *ebiten.Image
 	slimeBlue    *ebiten.Image
-	coinSprite   *ebiten.Image
-	gemRed       *ebiten.Image
+	frog         *ebiten.Image
+	bee          *ebiten.Image
 	gameFont     font.Face
 	largeFont    font.Face
 }
@@ -82,14 +83,12 @@ func LoadAssets() *Assets {
 	assets := &Assets{}
 
 	assets.playerStand, _, _ = ebitenutil.NewImageFromFile("assets/PNG/Players/128x256/Green/alienGreen_stand.png")
-	assets.playerWalk1, _, _ = ebitenutil.NewImageFromFile("assets/PNG/Players/128x256/Green/alienGreen_walk1.png")
-	assets.playerWalk2, _, _ = ebitenutil.NewImageFromFile("assets/PNG/Players/128x256/Green/alienGreen_walk2.png")
 	assets.slimeGreen, _, _ = ebitenutil.NewImageFromFile("assets/PNG/Enemies/slimeGreen.png")
 	assets.slimeBlue, _, _ = ebitenutil.NewImageFromFile("assets/PNG/Enemies/slimeBlue.png")
-	assets.coinSprite, _, _ = ebitenutil.NewImageFromFile("assets/PNG/Items/coinGold.png")
-	assets.gemRed, _, _ = ebitenutil.NewImageFromFile("assets/PNG/Items/gemRed.png")
+	assets.frog, _, _ = ebitenutil.NewImageFromFile("assets/PNG/Enemies/frog.png")
+	assets.bee, _, _ = ebitenutil.NewImageFromFile("assets/PNG/Enemies/bee.png")
 
-	assets.gameFont, _ = loadFont("assets/fonts/SuperAdorable-MAvyp.ttf", 20)
+	assets.gameFont, _ = loadFont("assets/fonts/SuperAdorable-MAvyp.ttf", 18)
 	assets.largeFont, _ = loadFont("assets/fonts/SuperAdorable-MAvyp.ttf", 48)
 
 	return assets
@@ -111,75 +110,65 @@ func loadFont(path string, size int) (font.Face, error) {
 }
 
 // ============================================================================
-// UPGRADES
+// CARD TYPES
 // ============================================================================
 
-type UpgradeType int
+type CardType int
 
 const (
-	UpgradeDamage UpgradeType = iota
-	UpgradeAttackSpeed
-	UpgradeMaxHealth
-	UpgradeMoveSpeed
-	UpgradeProjectileSize
-	UpgradePierce
-	UpgradeNewWeapon
+	CardAttack CardType = iota
+	CardSkill
+	CardPower
 )
 
-type Upgrade struct {
-	id          UpgradeType
+type CardRarity int
+
+const (
+	Common CardRarity = iota
+	Uncommon
+	Rare
+)
+
+type Card struct {
+	id          int
 	name        string
 	description string
-	icon        string
-	tier        int
-}
-
-var upgradePool = []Upgrade{
-	{UpgradeDamage, "Сила атаки", "+20% урона", "⚔️", 1},
-	{UpgradeAttackSpeed, "Скорость атаки", "+15% скорости атаки", "⚡", 1},
-	{UpgradeMaxHealth, "Макс. здоровье", "+20 HP", "❤️", 1},
-	{UpgradeMoveSpeed, "Скорость бега", "+10% скорости", "👟", 1},
-	{UpgradeProjectileSize, "Размер снарядов", "+25% размер", "📏", 2},
-	{UpgradePierce, "Проникновение", "+1 цель", "🎯", 2},
+	cardType    CardType
+	rarity      CardRarity
+	cost        int
+	damage      int
+	block       int
+	magic       int
+	isSelected  bool
+	isHovered   bool
+	x, y        float64
 }
 
 // ============================================================================
-// WEAPONS
+// CARD DATABASE
 // ============================================================================
 
-type WeaponType int
-
-const (
-	WeaponMagicMissile WeaponType = iota
-	WeaponFireball
-	WeaponLightning
-	WeaponAura
-)
-
-type Weapon struct {
-	wType      WeaponType
-	name       string
-	damage     int
-	cooldown   int
-	timer      int
-	level      int
-	projectiles int
-	pierce     int
-	sizeMult   float64
-}
-
-func NewWeapon(wType WeaponType) *Weapon {
-	switch wType {
-	case WeaponMagicMissile:
-		return &Weapon{wType: wType, name: "Magic Missile", damage: 15, cooldown: 40, timer: 0, projectiles: 1, pierce: 1, sizeMult: 1.0}
-	case WeaponFireball:
-		return &Weapon{wType: wType, name: "Fireball", damage: 25, cooldown: 60, timer: 0, projectiles: 1, pierce: 1, sizeMult: 1.5}
-	case WeaponLightning:
-		return &Weapon{wType: wType, name: "Lightning", damage: 30, cooldown: 80, timer: 0, projectiles: 1, pierce: 2, sizeMult: 1.0}
-	case WeaponAura:
-		return &Weapon{wType: wType, name: "Aura", damage: 10, cooldown: 20, timer: 0, projectiles: 1, pierce: 0, sizeMult: 2.0}
-	}
-	return &Weapon{wType: wType, name: "Unknown", damage: 10, cooldown: 40, timer: 0, projectiles: 1, pierce: 1, sizeMult: 1.0}
+var cardDatabase = []Card{
+	// Attack cards
+	{0, "Удар", "Нанесите 6 урона", CardAttack, Common, 1, 6, 0, 0, false, false, 0, 0},
+	{1, "Сильный удар", "Нанесите 10 урона", CardAttack, Common, 2, 10, 0, 0, false, false, 0, 0},
+	{2, "Критический удар", "Нанесите 8 урона. Если у врага меньше 10 HP, убивает", CardAttack, Uncommon, 1, 8, 0, 0, false, false, 0, 0},
+	{3, "Огненный шар", "Нанесите 12 урона всем врагам", CardAttack, Rare, 2, 12, 0, 0, false, false, 0, 0},
+	{4, "Смертельный бросок", "Нанесите 15 урона. Получите 2 урона", CardAttack, Common, 1, 15, 0, 0, false, false, 0, 0},
+	
+	// Skill cards
+	{5, "Защита", "Получите 5 блока", CardSkill, Common, 1, 0, 5, 0, false, false, 0, 0},
+	{6, "Сильная защита", "Получите 12 блока", CardSkill, Common, 2, 0, 12, 0, false, false, 0, 0},
+	{7, "Уклонение", "Получите 8 блока. Возьмите 1 карту", CardSkill, Uncommon, 1, 0, 8, 0, false, false, 0, 0},
+	{8, "Медитация", "Получите 2 энергии. В конце хода потеряйте 1 HP", CardSkill, Rare, 0, 0, 0, 0, false, false, 0, 0},
+	{9, "Исцеление", "Восстановите 8 HP", CardSkill, Uncommon, 1, 0, 0, 0, false, false, 0, 0},
+	
+	// Power cards
+	{10, "Ярость", "В начале хода получите 1 дополнительную энергию", CardPower, Rare, 1, 0, 0, 0, false, false, 0, 0},
+	{11, "Броня", "В начале хода получите 3 блока", CardPower, Uncommon, 1, 0, 0, 0, false, false, 0, 0},
+	{12, "Сила", "Все ваши атаки наносят на 2 урона больше", CardPower, Rare, 2, 0, 0, 0, false, false, 0, 0},
+	{13, "Регенерация", "В конце хода восстановите 2 HP", CardPower, Uncommon, 1, 0, 0, 0, false, false, 0, 0},
+	{14, "Концентрация", "В начале хода возьмите 1 дополнительную карту", CardPower, Rare, 1, 0, 0, 0, false, false, 0, 0},
 }
 
 // ============================================================================
@@ -187,108 +176,82 @@ func NewWeapon(wType WeaponType) *Weapon {
 // ============================================================================
 
 type Player struct {
-	x, y         float64
-	vx, vy       float64
-	width        float32
-	height       float32
-	facing       int
-
-	// Stats
 	maxHealth    int
 	health       int
-	level        int
-	exp          int
-	maxExp       int
-	gold         int
-
-	// Combat
-	damageMult   float64
-	attackSpeed  float64
-	moveSpeed    float64
-
-	// Weapons
-	weapons      []*Weapon
-
-	// Status
-	invincibleTimer int
+	block        int
+	energy       int
+	maxEnergy    int
+	strength     int
+	extraEnergy  int
+	extraBlock   int
+	extraDraw    int
+	regen        int
+	deck         []*Card
+	hand         []*Card
+	discard      []*Card
+	exhaust      []*Card
+	relics       []string
 }
 
 type Enemy struct {
-	x, y       float64
-	vx, vy     float64
-	width      float32
-	height     float32
-	enemyType  int
-	health     int
-	maxHealth  int
-	damage     int
-	expValue   int
-	isAlive    bool
-	speed      float64
+	id           int
+	name         string
+	maxHealth    int
+	health       int
+	block        int
+	damage       int
+	intent       string
+	intentValue  int
+	sprite       *ebiten.Image
+	x, y         float64
+	width, height float32
+	isDead       bool
 }
 
-type Projectile struct {
-	x, y       float64
-	vx, vy     float64
-	width      float32
-	height     float32
-	damage     int
-	owner      int
-	isActive   bool
-	life       int
-	pierce     int
-	hitCount   int
-	color      color.RGBA
-	wType      WeaponType
-}
+type GameState int
 
-type Pickup struct {
-	x, y       float64
-	pType      int // 0: exp, 1: gold, 2: health
-	value      int
-	isActive   bool
-	animFrame  int
-}
+const (
+	StateMenu GameState = iota
+	StateBattle
+	StateMap
+	StateReward
+	StateGameOver
+	StateVictory
+)
 
-type Particle struct {
-	x, y     float64
-	vx, vy   float64
-	life     int
-	color    color.RGBA
-	size     float32
-	gravity  float64
-}
+type BattleState int
 
-type DamageNumber struct {
-	x, y   float64
-	value  int
-	isCrit bool
-	life   int
-	vy     float64
-}
+const (
+	BattlePlayerTurn BattleState = iota
+	BattleEnemyTurn
+	BattleEnd
+)
 
 type Game struct {
 	player      *Player
 	enemies     []*Enemy
-	projectiles []*Projectile
-	pickups     []*Pickup
-	particles   []*Particle
-	damageNums  []*DamageNumber
+	deck        []*Card
+	hand        []*Card
+	discard     []*Card
+	
+	gameState   GameState
+	battleState BattleState
+	turn        int
+	room        int
+	floor       int
+	
+	battleReward *Card
+	mapRooms     []Room
+	
+	mouseX, mouseY int
+	frameCount     int
+}
 
-	state         int
-	frameCount    int
-	waveNumber    int
-	waveTimer     int
-	enemiesToSpawn int
-	spawnTimer    int
-
-	score       int
-	kills       int
-	timeSurvived int
-
-	// Level up
-	isLevelUp   bool
-	upgradeOptions []Upgrade
+type Room struct {
+	id        int
+	roomType  int // 0: battle, 1: elite, 2: treasure, 3: rest
+	isCleared bool
+	x, y      int
 }
 
 // ============================================================================
@@ -301,140 +264,313 @@ func NewGame() *Game {
 
 	g := &Game{
 		player: &Player{
-			x:           ScreenWidth / 2,
-			y:           ScreenHeight / 2,
-			width:       40,
-			height:      56,
-			facing:      1,
-			maxHealth:   100,
-			health:      100,
-			level:       1,
-			maxExp:      20,
-			damageMult:  1.0,
-			attackSpeed: 1.0,
-			moveSpeed:   1.0,
-			weapons:     []*Weapon{NewWeapon(WeaponMagicMissile)},
+			maxHealth: 72,
+			health:    72,
+			maxEnergy: 3,
+			energy:    3,
 		},
-		state:          0, // Menu
-		frameCount:     0,
-		waveNumber:     0,
-		enemiesToSpawn: 0,
-		particles:      make([]*Particle, 0),
-		enemies:        make([]*Enemy, 0),
-		projectiles:    make([]*Projectile, 0),
-		pickups:        make([]*Pickup, 0),
-		damageNums:     make([]*DamageNumber, 0),
+		gameState:   StateMenu,
+		battleState: BattlePlayerTurn,
+		turn:        1,
+		room:        0,
+		floor:       1,
+		hand:        make([]*Card, 0),
+		discard:     make([]*Card, 0),
+		deck:        make([]*Card, 0),
 	}
+
+	// Starting deck
+	g.addStartingDeck()
+	g.generateMap()
 
 	return g
 }
 
-func (g *Game) StartGame() {
-	g.state = 1 // Playing
-	g.waveNumber = 1
-	g.StartWave()
-}
-
-func (g *Game) StartWave() {
-	g.waveTimer = 60 * 30 // 30 seconds per wave
-	g.enemiesToSpawn = 5 + g.waveNumber*3
-	g.spawnTimer = 0
-}
-
-func (g *Game) spawnEnemy() {
-	// Spawn around player
-	angle := rand.Float64() * math.Pi * 2
-	dist := float64(500 + rand.Intn(200))
-
-	ex := g.player.x + math.Cos(angle)*dist
-	ey := g.player.y + math.Sin(angle)*dist
-
-	// Clamp to screen
-	ex = math.Max(50, math.Min(float64(ScreenWidth)-50, ex))
-	ey = math.Max(50, math.Min(float64(ScreenHeight)-50, ey))
-
-	enemyType := 0 // Basic
-	randVal := rand.Float32()
-
-	if g.waveNumber >= 3 && randVal < 0.1 {
-		enemyType = 2 // Tank
-	} else if g.waveNumber >= 2 && randVal < 0.25 {
-		enemyType = 1 // Fast
+func (g *Game) addStartingDeck() {
+	// 4x Удар, 4x Защита
+	for i := 0; i < 4; i++ {
+		g.deck = append(g.deck, &Card{id: 0, name: "Удар", description: "Нанесите 6 урона", cardType: CardAttack, rarity: Common, cost: 1, damage: 6})
 	}
-
-	enemy := &Enemy{
-		x: ex,
-		y: ey,
-		width: 36,
-		height: 36,
-		enemyType: enemyType,
-		isAlive: true,
-	}
-
-	switch enemyType {
-	case 0: // Basic
-		enemy.maxHealth = 30 + g.waveNumber*10
-		enemy.health = enemy.maxHealth
-		enemy.damage = 8 + g.waveNumber*2
-		enemy.expValue = 10
-		enemy.speed = 1.5
-	case 1: // Fast
-		enemy.maxHealth = 20 + g.waveNumber*5
-		enemy.health = enemy.maxHealth
-		enemy.damage = 6 + g.waveNumber*2
-		enemy.expValue = 15
-		enemy.speed = 2.5
-		enemy.width = 28
-		enemy.height = 28
-	case 2: // Tank
-		enemy.maxHealth = 100 + g.waveNumber*30
-		enemy.health = enemy.maxHealth
-		enemy.damage = 15 + g.waveNumber*3
-		enemy.expValue = 30
-		enemy.speed = 0.8
-		enemy.width = 56
-		enemy.height = 56
-	}
-
-	g.enemies = append(g.enemies, enemy)
-}
-
-func (g *Game) generateUpgradeOptions() {
-	g.upgradeOptions = make([]Upgrade, 3)
-
-	for i := 0; i < 3; i++ {
-		idx := rand.Intn(len(upgradePool))
-		g.upgradeOptions[i] = upgradePool[idx]
+	for i := 0; i < 4; i++ {
+		g.deck = append(g.deck, &Card{id: 5, name: "Защита", description: "Получите 5 блока", cardType: CardSkill, rarity: Common, cost: 1, block: 5})
 	}
 }
 
-func (g *Game) applyUpgrade(upgrade Upgrade) {
+func (g *Game) generateMap() {
+	g.mapRooms = make([]Room, 15)
+	for i := range g.mapRooms {
+		roomType := rand.Intn(100)
+		if roomType < 60 {
+			g.mapRooms[i] = Room{id: i, roomType: 0, x: (i % 5) * 200 + 100, y: (i / 5) * 150 + 100}
+		} else if roomType < 80 {
+			g.mapRooms[i] = Room{id: i, roomType: 1, x: (i % 5) * 200 + 100, y: (i / 5) * 150 + 100}
+		} else if roomType < 95 {
+			g.mapRooms[i] = Room{id: i, roomType: 2, x: (i % 5) * 200 + 100, y: (i / 5) * 150 + 100}
+		} else {
+			g.mapRooms[i] = Room{id: i, roomType: 3, x: (i % 5) * 200 + 100, y: (i / 5) * 150 + 100}
+		}
+	}
+}
+
+func (g *Game) startBattle(room Room) {
+	g.gameState = StateBattle
+	g.battleState = BattlePlayerTurn
+	g.player.energy = g.player.maxEnergy
+	g.player.block = 0
+	
+	// Create enemy based on room type
+	var enemy *Enemy
+	if room.roomType == 1 { // Elite
+		enemy = g.createEliteEnemy()
+	} else {
+		enemy = g.createEnemy(g.floor)
+	}
+	
+	g.enemies = []*Enemy{enemy}
+	
+	// Draw hand
+	g.drawCards(MaxHandSize)
+	g.turn = 1
+}
+
+func (g *Game) createEnemy(floor int) *Enemy {
+	enemyTypes := []struct {
+		name   string
+		hp     int
+		damage int
+		sprite *ebiten.Image
+	}{
+		{"Слизень", 40 + floor*5, 8 + floor*2, gameAssets.slimeGreen},
+		{"Летун", 30 + floor*4, 10 + floor*2, gameAssets.bee},
+		{"Лягушка", 50 + floor*6, 7 + floor*2, gameAssets.frog},
+	}
+	
+	t := enemyTypes[rand.Intn(len(enemyTypes))]
+	return &Enemy{
+		name:   t.name,
+		maxHealth: t.hp,
+		health: t.hp,
+		damage: t.damage,
+		sprite: t.sprite,
+		x: ScreenWidth/2 + 200,
+		y: ScreenHeight/2 - 50,
+		width: 80,
+		height: 80,
+	}
+}
+
+func (g *Game) createEliteEnemy() *Enemy {
+	return &Enemy{
+		name:   "ЭЛИТНЫЙ ВРАГ",
+		maxHealth: 80 + g.floor*10,
+		health: 80 + g.floor*10,
+		damage: 15 + g.floor*3,
+		sprite: gameAssets.frog,
+		x: ScreenWidth/2 + 200,
+		y: ScreenHeight/2 - 50,
+		width: 100,
+		height: 100,
+	}
+}
+
+func (g *Game) drawCards(count int) {
+	for i := 0; i < count && len(g.deck) > 0; i++ {
+		if len(g.deck) == 0 {
+			if len(g.discard) == 0 {
+				break
+			}
+			// Shuffle discard into deck
+			g.deck = g.discard
+			g.discard = make([]*Card, 0)
+			rand.Shuffle(len(g.deck), func(i, j int) {
+				g.deck[i], g.deck[j] = g.deck[j], g.deck[i]
+			})
+		}
+		
+		if len(g.deck) > 0 {
+			card := g.deck[len(g.deck)-1]
+			g.deck = g.deck[:len(g.deck)-1]
+			g.hand = append(g.hand, card)
+		}
+	}
+}
+
+func (g *Game) playCard(card *Card, target *Enemy) {
 	p := g.player
-
-	switch upgrade.id {
-	case UpgradeDamage:
-		p.damageMult += 0.2
-	case UpgradeAttackSpeed:
-		p.attackSpeed += 0.15
-	case UpgradeMaxHealth:
-		p.maxHealth += 20
-		p.health += 20
-	case UpgradeMoveSpeed:
-		p.moveSpeed += 0.1
-	case UpgradeProjectileSize:
-		for _, w := range p.weapons {
-			w.sizeMult += 0.25
+	
+	if p.energy < card.cost {
+		return
+	}
+	
+	p.energy -= card.cost
+	
+	switch card.cardType {
+	case CardAttack:
+		damage := card.damage + p.strength
+		if target != nil {
+			target.health -= damage
+			target.block -= damage
+			if target.block < 0 {
+				target.health += target.block
+				target.block = 0
+			}
+			if target.health <= 0 {
+				target.isDead = true
+				g.endBattle(true)
+			}
 		}
-	case UpgradePierce:
-		for _, w := range p.weapons {
-			w.pierce += 1
+	case CardSkill:
+		p.block += card.block
+		if card.id == 7 { // Уклонение
+			g.drawCards(1)
 		}
-	case UpgradeNewWeapon:
-		if len(p.weapons) < 4 {
-			wType := WeaponType(rand.Intn(4))
-			p.weapons = append(p.weapons, NewWeapon(wType))
+		if card.id == 8 { // Медитация
+			p.energy += 2
+		}
+		if card.id == 9 { // Исцеление
+			p.health = min(p.health+8, p.maxHealth)
+		}
+	case CardPower:
+		switch card.id {
+		case 10: p.extraEnergy = 999 // Ярость
+		case 11: p.extraBlock = 999  // Броня
+		case 12: p.strength = 999    // Сила
+		case 13: p.regen = 999       // Регенерация
+		case 14: p.extraDraw = 999   // Концентрация
 		}
 	}
+	
+	// Move card to discard
+	for i, c := range g.hand {
+		if c == card {
+			g.hand = append(g.hand[:i], g.hand[i+1:]...)
+			g.discard = append(g.discard, card)
+			break
+		}
+	}
+}
+
+func (g *Game) endPlayerTurn() {
+	g.battleState = BattleEnemyTurn
+	
+	// Enemy turn
+	for _, enemy := range g.enemies {
+		if enemy.isDead {
+			continue
+		}
+		
+		// Simple AI
+		enemy.intent = "attack"
+		enemy.intentValue = enemy.damage
+		
+		// Deal damage
+		damage := enemy.damage
+		block := g.player.block
+		if block >= damage {
+			g.player.block -= damage
+		} else {
+			g.player.health -= (damage - block)
+			g.player.block = 0
+		}
+		
+		if g.player.health <= 0 {
+			g.gameState = StateGameOver
+		}
+	}
+	
+	// End of turn cleanup
+	g.endTurn()
+}
+
+func (g *Game) endTurn() {
+	p := g.player
+	
+	// Regen
+	if p.regen > 0 {
+		p.health = min(p.health+2, p.maxHealth)
+	}
+	
+	// Clear block
+	p.block = 0
+	
+	// Discard hand
+	for _, card := range g.hand {
+		g.discard = append(g.discard, card)
+	}
+	g.hand = make([]*Card, 0)
+	
+	// Start new turn
+	p.energy = p.maxEnergy
+	if p.extraEnergy > 0 {
+		p.energy++
+	}
+	
+	drawCount := MaxHandSize
+	if p.extraDraw > 0 {
+		drawCount++
+	}
+	g.drawCards(drawCount)
+	
+	g.turn++
+	g.battleState = BattlePlayerTurn
+	
+	// Set enemy intent
+	for _, enemy := range g.enemies {
+		if !enemy.isDead {
+			enemy.intent = "attack"
+			enemy.intentValue = enemy.damage
+		}
+	}
+}
+
+func (g *Game) endBattle(victory bool) {
+	if victory {
+		g.gameState = StateReward
+		g.battleReward = g.getRandomCard()
+		g.room++
+		if g.room >= len(g.mapRooms) {
+			g.gameState = StateVictory
+		}
+	}
+}
+
+func (g *Game) getRandomCard() *Card {
+	rarityRoll := rand.Intn(100)
+	var rarity CardRarity
+	if rarityRoll < 60 {
+		rarity = Common
+	} else if rarityRoll < 90 {
+		rarity = Uncommon
+	} else {
+		rarity = Rare
+	}
+	
+	availableCards := make([]Card, 0)
+	for _, card := range cardDatabase {
+		if card.rarity == rarity {
+			availableCards = append(availableCards, card)
+		}
+	}
+	
+	if len(availableCards) == 0 {
+		availableCards = cardDatabase
+	}
+	
+	card := availableCards[rand.Intn(len(availableCards))]
+	return &card
+}
+
+func (g *Game) addCardToDeck(card *Card) {
+	if len(g.deck) < MaxDeckSize {
+		g.deck = append(g.deck, card)
+	}
+	g.gameState = StateMap
+}
+
+func (g *Game) rest() {
+	g.player.health = min(g.player.health+15, g.player.maxHealth)
+	g.room++
+	g.gameState = StateMap
 }
 
 // ============================================================================
@@ -443,434 +579,105 @@ func (g *Game) applyUpgrade(upgrade Upgrade) {
 
 func (g *Game) Update() error {
 	g.frameCount++
-
-	switch g.state {
-	case 0: // Menu
+	
+	// Track mouse
+	g.mouseX, g.mouseY = ebiten.CursorPosition()
+	
+	switch g.gameState {
+	case StateMenu:
 		g.updateMenu()
-	case 1: // Playing
-		g.updatePlaying()
-	case 2: // LevelUp
-		g.updateLevelUp()
-	case 3: // GameOver
-		g.updateGameOver()
+	case StateMap:
+		g.updateMap()
+	case StateBattle:
+		g.updateBattle()
+	case StateReward:
+		g.updateReward()
+	case StateGameOver, StateVictory:
+		g.updateEnd()
 	}
-
+	
 	return nil
 }
 
 func (g *Game) updateMenu() {
 	if inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeySpace) {
-		g.StartGame()
+		g.gameState = StateMap
 	}
 }
 
-func (g *Game) updatePlaying() {
-	g.timeSurvived++
-	g.waveTimer--
-
-	if g.waveTimer <= 0 {
-		g.waveNumber++
-		g.StartWave()
-	}
-
-	// Spawn enemies
-	if g.enemiesToSpawn > 0 {
-		g.spawnTimer--
-		if g.spawnTimer <= 0 {
-			g.spawnEnemy()
-			g.enemiesToSpawn--
-			g.spawnTimer = 60 - g.waveNumber*2
-			if g.spawnTimer < 20 {
-				g.spawnTimer = 20
-			}
-		}
-	}
-
-	g.updatePlayer()
-	g.updateEnemies()
-	g.updateProjectiles()
-	g.updatePickups()
-	g.updateParticles()
-	g.updateDamageNumbers()
-	g.checkCollisions()
-	g.checkLevelUp()
-}
-
-func (g *Game) updatePlayer() {
-	p := g.player
-
-	// Movement
-	if ebiten.IsKeyPressed(ebiten.KeyArrowRight) || ebiten.IsKeyPressed(ebiten.KeyD) {
-		p.vx = PlayerSpeed * p.moveSpeed
-		p.facing = 1
-	} else if ebiten.IsKeyPressed(ebiten.KeyArrowLeft) || ebiten.IsKeyPressed(ebiten.KeyA) {
-		p.vx = -PlayerSpeed * p.moveSpeed
-		p.facing = -1
-	} else {
-		p.vx = 0
-	}
-
-	if ebiten.IsKeyPressed(ebiten.KeyArrowDown) || ebiten.IsKeyPressed(ebiten.KeyS) {
-		p.vy = PlayerSpeed * p.moveSpeed
-	} else if ebiten.IsKeyPressed(ebiten.KeyArrowUp) || ebiten.IsKeyPressed(ebiten.KeyW) {
-		p.vy = -PlayerSpeed * p.moveSpeed
-	} else {
-		p.vy = 0
-	}
-
-	p.x += p.vx
-	p.y += p.vy
-
-	// Clamp to screen
-	p.x = math.Max(0, math.Min(float64(ScreenWidth)-float64(p.width), p.x))
-	p.y = math.Max(80, math.Min(float64(ScreenHeight)-float64(p.height), p.y))
-
-	// Auto-attack
-	for _, weapon := range p.weapons {
-		weapon.timer--
-		if weapon.timer <= 0 {
-			g.fireWeapon(weapon)
-			weapon.timer = int(float64(weapon.cooldown) / p.attackSpeed)
-		}
-	}
-
-	// Invincibility
-	if p.invincibleTimer > 0 {
-		p.invincibleTimer--
-	}
-}
-
-func (g *Game) fireWeapon(weapon *Weapon) {
-	p := g.player
-
-	// Find nearest enemy
-	var target *Enemy
-	minDist := float64(500)
-
-	for _, e := range g.enemies {
-		if !e.isAlive {
-			continue
-		}
-		dist := math.Hypot(e.x-p.x, e.y-p.y)
-		if dist < minDist {
-			minDist = dist
-			target = e
-		}
-	}
-
-	if target == nil {
-		return
-	}
-
-	// Fire based on weapon type
-	switch weapon.wType {
-	case WeaponMagicMissile, WeaponFireball:
-		angle := math.Atan2(target.y-p.y, target.x-p.x)
-		speed := 8.0
-		if weapon.wType == WeaponFireball {
-			speed = 6.0
-		}
-
-		for i := 0; i < weapon.projectiles; i++ {
-			spreadAngle := angle + (float64(i) - float64(weapon.projectiles-1)/2) * 0.2
-			g.projectiles = append(g.projectiles, &Projectile{
-				x: p.x + float64(p.width)/2,
-				y: p.y + float64(p.height)/2,
-				vx: math.Cos(spreadAngle) * speed,
-				vy: math.Sin(spreadAngle) * speed,
-				width: float32(12 * weapon.sizeMult),
-				height: float32(12 * weapon.sizeMult),
-				damage: int(float64(weapon.damage) * p.damageMult),
-				owner: 1,
-				isActive: true,
-				life: 120,
-				pierce: weapon.pierce,
-				color: ColorWeapon1,
-				wType: weapon.wType,
-			})
-		}
-
-	case WeaponLightning:
-		// Instant hit, pierces
-		g.projectiles = append(g.projectiles, &Projectile{
-			x: p.x + float64(p.width)/2,
-			y: p.y + float64(p.height)/2,
-			vx: 0,
-			vy: 0,
-			width: 4,
-			height: float32(minDist),
-			damage: int(float64(weapon.damage) * p.damageMult),
-			owner: 1,
-			isActive: true,
-			life: 10,
-			pierce: weapon.pierce + 1,
-			color: ColorWeapon3,
-			wType: weapon.wType,
-		})
-
-	case WeaponAura:
-		// Damages all nearby enemies
-		for _, e := range g.enemies {
-			if !e.isAlive {
-				continue
-			}
-			dist := math.Hypot(e.x-p.x, e.y-p.y)
-			if dist < 150 {
-				g.damageEnemy(e, weapon.damage)
-				g.spawnDamageNumber(e.x, e.y, weapon.damage, false)
-			}
-		}
-	}
-}
-
-func (g *Game) updateEnemies() {
-	p := g.player
-
-	for _, e := range g.enemies {
-		if !e.isAlive {
-			continue
-		}
-
-		// Move towards player
-		angle := math.Atan2(p.y-e.y, p.x-e.x)
-		e.vx = math.Cos(angle) * e.speed
-		e.vy = math.Sin(angle) * e.speed
-
-		// Simple separation
-		for _, other := range g.enemies {
-			if other == e || !other.isAlive {
-				continue
-			}
-			dist := math.Hypot(e.x-other.x, e.y-other.y)
-			if dist < 30 {
-				pushAngle := math.Atan2(e.y-other.y, e.x-other.x)
-				e.vx += math.Cos(pushAngle) * 0.5
-				e.vy += math.Sin(pushAngle) * 0.5
-			}
-		}
-
-		e.x += e.vx
-		e.y += e.vy
-
-		// Collision with player
-		if g.checkCollision(p, e) && p.invincibleTimer == 0 {
-			p.health -= e.damage
-			p.invincibleTimer = 30
-			g.spawnDamageNumber(p.x+float64(p.width)/2, p.y+float64(p.height)/2, e.damage, false)
-
-			if p.health <= 0 {
-				g.state = 3 // GameOver
-			}
-		}
-	}
-}
-
-func (g *Game) updateProjectiles() {
-	for i := len(g.projectiles) - 1; i >= 0; i-- {
-		proj := g.projectiles[i]
-
-		if proj.wType == WeaponLightning {
-			proj.life--
-			if proj.life <= 0 {
-				proj.isActive = false
-			}
-			continue
-		}
-
-		proj.x += proj.vx
-		proj.y += proj.vy
-		proj.life--
-
-		if proj.life <= 0 || proj.x < -100 || proj.x > float64(ScreenWidth)+100 ||
-			proj.y < -100 || proj.y > float64(ScreenHeight)+100 {
-			proj.isActive = false
-		}
-	}
-}
-
-func (g *Game) updatePickups() {
-	p := g.player
-
-	for _, pickup := range g.pickups {
-		if !pickup.isActive {
-			continue
-		}
-
-		pickup.animFrame++
-
-		// Magnet effect
-		dist := math.Hypot(pickup.x-p.x, pickup.y-p.y)
-		if dist < 100 {
-			pickup.x += (p.x - pickup.x) * 0.1
-			pickup.y += (p.y - pickup.y) * 0.1
-		}
-
-		// Collect
-		if dist < 30 {
-			pickup.isActive = false
-
-			switch pickup.pType {
-			case 0: // Exp
-				p.exp += pickup.value
-			case 1: // Gold
-				p.gold += pickup.value
-			case 2: // Health
-				p.health = int(math.Min(float64(p.health)+float64(pickup.value), float64(p.maxHealth)))
-			}
-		}
-	}
-}
-
-func (g *Game) updateParticles() {
-	for i := len(g.particles) - 1; i >= 0; i-- {
-		p := g.particles[i]
-		p.x += p.vx
-		p.y += p.vy
-		p.vy += p.gravity
-		p.life--
-		if p.life <= 0 {
-			g.particles = append(g.particles[:i], g.particles[i+1:]...)
-		}
-	}
-}
-
-func (g *Game) updateDamageNumbers() {
-	for i := len(g.damageNums) - 1; i >= 0; i-- {
-		dn := g.damageNums[i]
-		dn.y += dn.vy
-		dn.vy -= 0.2
-		dn.life--
-		if dn.life <= 0 {
-			g.damageNums = append(g.damageNums[:i], g.damageNums[i+1:]...)
-		}
-	}
-}
-
-func (g *Game) checkCollisions() {
-	// Projectiles vs Enemies
-	for _, proj := range g.projectiles {
-		if !proj.isActive || proj.wType == WeaponAura {
-			continue
-		}
-
-		for _, e := range g.enemies {
-			if !e.isAlive || proj.hitCount >= proj.pierce+1 {
-				continue
-			}
-
-			if proj.x < e.x+float64(e.width) &&
-				proj.x+float64(proj.width) > e.x &&
-				proj.y < e.y+float64(e.height) &&
-				proj.y+float64(proj.height) > e.y {
-
-				g.damageEnemy(e, proj.damage)
-				g.spawnDamageNumber(e.x, e.y, proj.damage, false)
-
-				if proj.wType != WeaponLightning {
-					proj.hitCount++
+func (g *Game) updateMap() {
+	// Check room click
+	for i := range g.mapRooms {
+		room := &g.mapRooms[i]
+		if i == g.room && !room.isCleared {
+			if g.isMouseOver(room.x, room.y, 80, 80) {
+				if inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeySpace) {
+					if room.roomType == 3 {
+						g.rest()
+					} else {
+						g.startBattle(*room)
+					}
 				}
 			}
 		}
 	}
 }
 
-func (g *Game) damageEnemy(e *Enemy, damage int) {
-	e.health -= damage
-
-	if e.health <= 0 {
-		e.isAlive = false
-		g.kills++
-		g.score += e.expValue
-
-		// Drop pickup
-		g.pickups = append(g.pickups, &Pickup{
-			x: e.x,
-			y: e.y,
-			pType: 0, // Exp
-			value: e.expValue,
-			isActive: true,
-		})
-
-		// Death particles
-		g.spawnDeathParticles(e.x, e.y)
-	}
-}
-
-func (g *Game) checkLevelUp() {
-	p := g.player
-
-	if p.exp >= p.maxExp && p.level < MaxLevel {
-		p.level++
-		p.exp -= p.maxExp
-		p.maxExp = int(float64(p.maxExp) * 1.3)
-		p.health = p.maxHealth
-
-		g.isLevelUp = true
-		g.state = 2 // LevelUp
-		g.generateUpgradeOptions()
-	}
-}
-
-func (g *Game) checkCollision(a interface{}, b interface{}) bool {
-	switch va := a.(type) {
-	case *Player:
-		if vb, ok := b.(*Enemy); ok {
-			return va.x < vb.x+float64(vb.width) &&
-				va.x+float64(va.width) > vb.x &&
-				va.y < vb.y+float64(vb.height) &&
-				va.y+float64(va.height) > vb.y
+func (g *Game) updateBattle() {
+	// Update card hover
+	for _, card := range g.hand {
+		card.isHovered = g.isMouseOver(int(card.x), int(card.y), CardWidth, CardHeight)
+		if card.isHovered && inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeySpace) {
+			// Play card on first enemy
+			for _, enemy := range g.enemies {
+				if !enemy.isDead {
+					g.playCard(card, enemy)
+					break
+				}
+			}
 		}
 	}
-	return false
-}
-
-func (g *Game) updateLevelUp() {
-	// Select upgrade with keys 1, 2, 3
-	for i := 0; i < len(g.upgradeOptions); i++ {
-		if inpututil.IsKeyJustPressed(ebiten.Key(i + 1 + 48)) { // 1, 2, 3
-			g.applyUpgrade(g.upgradeOptions[i])
-			g.isLevelUp = false
-			g.state = 1 // Playing
-			g.upgradeOptions = nil
-			break
+	
+	// End turn button
+	if g.isMouseOver(ScreenWidth-150, ScreenHeight-80, 130, 50) {
+		if inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeySpace) {
+			g.endPlayerTurn()
 		}
 	}
 }
 
-func (g *Game) updateGameOver() {
+func (g *Game) updateReward() {
+	// Select card
+	if g.battleReward != nil {
+		g.battleReward.isHovered = g.isMouseOver(ScreenWidth/2-CardWidth/2, ScreenHeight/2-CardHeight/2, CardWidth, CardHeight)
+		if g.battleReward.isHovered && (inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeySpace)) {
+			g.addCardToDeck(g.battleReward)
+		}
+	}
+	
+	// Skip button
+	if g.isMouseOver(ScreenWidth/2-65, ScreenHeight/2+150, 130, 40) {
+		if inpututil.IsKeyJustPressed(ebiten.KeyEscape) || inpututil.IsKeyJustPressed(ebiten.KeySpace) {
+			g.gameState = StateMap
+		}
+	}
+}
+
+func (g *Game) updateEnd() {
 	if inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeySpace) {
 		*g = *NewGame()
 	}
 }
 
-// ============================================================================
-// PARTICLES
-// ============================================================================
-
-func (g *Game) spawnDeathParticles(x, y float64) {
-	for i := 0; i < 15; i++ {
-		g.particles = append(g.particles, &Particle{
-			x: x + 20,
-			y: y + 20,
-			vx: (rand.Float64() - 0.5) * 8,
-			vy: (rand.Float64() - 0.5) * 8,
-			life: 30 + rand.Intn(20),
-			color: ColorEnemyBasic,
-			size: 3 + rand.Float32()*3,
-			gravity: 0.3,
-		})
-	}
+func (g *Game) isMouseOver(x, y, w, h int) bool {
+	return g.mouseX >= x && g.mouseX <= x+w && g.mouseY >= y && g.mouseY <= y+h
 }
 
-func (g *Game) spawnDamageNumber(x, y float64, value int, isCrit bool) {
-	g.damageNums = append(g.damageNums, &DamageNumber{
-		x: x,
-		y: y,
-		value: value,
-		isCrit: isCrit,
-		life: 40,
-		vy: 2,
-	})
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 // ============================================================================
@@ -878,262 +685,316 @@ func (g *Game) spawnDamageNumber(x, y float64, value int, isCrit bool) {
 // ============================================================================
 
 func (g *Game) Draw(screen *ebiten.Image) {
-	switch g.state {
-	case 0:
+	switch g.gameState {
+	case StateMenu:
 		g.drawMenu(screen)
-	case 1, 2:
-		g.drawPlaying(screen)
-	case 3:
+	case StateMap:
+		g.drawMap(screen)
+	case StateBattle:
+		g.drawBattle(screen)
+	case StateReward:
+		g.drawReward(screen)
+	case StateGameOver:
 		g.drawGameOver(screen)
+	case StateVictory:
+		g.drawVictory(screen)
 	}
 }
 
 func (g *Game) drawMenu(screen *ebiten.Image) {
-	// Background gradient
-	for y := 0; y < ScreenHeight; y++ {
-		r := uint8(20 + float64(y)/ScreenHeight*30)
-		g := uint8(30 + float64(y)/ScreenHeight*40)
-		b := uint8(60 + float64(y)/ScreenHeight*60)
-		vector.DrawFilledRect(screen, 0, float32(y), ScreenWidth, 1, color.RGBA{r, g, b, 255}, true)
-	}
-
-	// Title
-	title := "🍄 GO MARIO SURVIVOR 🍄"
+	screen.Fill(ColorBG)
+	
 	if gameAssets.largeFont != nil {
+		title := "🍄 GO MARIO: CARD BATTLES 🍄"
 		bounds := text.BoundString(gameAssets.largeFont, title)
-		text.Draw(screen, title, gameAssets.largeFont, ScreenWidth/2-bounds.Dx()/2, 180, ColorGold)
-	}
-
-	// Subtitle
-	if gameAssets.gameFont != nil {
-		text.Draw(screen, "Roguelite Survivor", gameAssets.gameFont, ScreenWidth/2-80, 250, color.White)
-	}
-
-	// Instructions
-	instructions := []string{
-		"⬅️ ➡️ ⬆️ ⬇️ / WASD - Движение",
-		"⚔️ Авто-атака ближайшего врага",
-		"📦 Собирай опыт для прокачки",
-		"🎯 Выбери апгрейд цифрами 1/2/3",
-		"",
-		"Нажми ENTER для старта",
-	}
-
-	y := 350
-	for _, line := range instructions {
-		if gameAssets.gameFont != nil {
-			bounds := text.BoundString(gameAssets.gameFont, line)
+		text.Draw(screen, title, gameAssets.largeFont, ScreenWidth/2-bounds.Dx()/2, 200, ColorGold)
+		
+		subtitle := "Карточный Roguelike"
+		bounds = text.BoundString(gameAssets.gameFont, subtitle)
+		text.Draw(screen, subtitle, gameAssets.gameFont, ScreenWidth/2-bounds.Dx()/2, 280, color.White)
+		
+		instructions := []string{
+			"🎴 Собирайте карты",
+			"⚔️ Сражайтесь с врагами",
+			"📈 Улучшайте колоду",
+			"🏆 Достигните вершины",
+			"",
+			"Нажмите ENTER для старта",
+		}
+		
+		y := 380
+		for _, line := range instructions {
+			bounds = text.BoundString(gameAssets.gameFont, line)
 			text.Draw(screen, line, gameAssets.gameFont, ScreenWidth/2-bounds.Dx()/2, y, color.White)
+			y += 35
 		}
-		y += 32
-	}
-
-	// Features
-	features := []string{
-		"🎮 Волны врагов",
-		"⚔️ Разные оружия",
-		"📈 Система прокачки",
-		"💀 Бесконечный геймплей",
-	}
-
-	y = 550
-	for _, line := range features {
-		if gameAssets.gameFont != nil {
-			bounds := text.BoundString(gameAssets.gameFont, line)
-			text.Draw(screen, line, gameAssets.gameFont, ScreenWidth/2-bounds.Dx()/2, y, ColorGold)
-		}
-		y += 28
 	}
 }
 
-func (g *Game) drawPlaying(screen *ebiten.Image) {
-	// Background
-	screen.Fill(color.RGBA{30, 40, 50, 255})
+func (g *Game) drawMap(screen *ebiten.Image) {
+	screen.Fill(ColorBG)
+	
+	// Draw map rooms
+	for i, room := range g.mapRooms {
+		roomColor := ColorCardBorder
+		if room.isCleared {
+			roomColor = color.RGBA{50, 50, 50, 255}
+		}
+		if i == g.room {
+			roomColor = ColorGold
+		}
+		
+		vector.DrawFilledRect(screen, float32(room.x), float32(room.y), 80, 80, roomColor, true)
+		
+		// Room icon
+		icon := "?"
+		switch room.roomType {
+		case 0: icon = "⚔️"
+		case 1: icon = "💀"
+		case 2: icon = "📦"
+		case 3: icon = "🔥"
+		}
+		
+		if gameAssets.gameFont != nil {
+			text.Draw(screen, icon, gameAssets.gameFont, room.x+30, room.y+50, color.White)
+		}
+		
+		// Connection line
+		if i < len(g.mapRooms)-1 {
+			nextRoom := g.mapRooms[i+1]
+			vector.StrokeLine(screen, float32(room.x+40), float32(room.y+80),
+				float32(nextRoom.x+40), float32(nextRoom.y), 2, ColorCardBorder, true)
+		}
+	}
+	
+	// Player info
+	g.drawPlayerInfo(screen, 20, 20)
+	
+	// Instructions
+	if gameAssets.gameFont != nil {
+		text.Draw(screen, "Нажмите ENTER для входа в комнату", gameAssets.gameFont, ScreenWidth/2-150, ScreenHeight-50, color.White)
+	}
+}
 
-	// Draw pickups
-	for _, p := range g.pickups {
-		if !p.isActive {
+func (g *Game) drawBattle(screen *ebiten.Image) {
+	screen.Fill(ColorBG)
+	
+	// Draw enemies
+	for _, enemy := range g.enemies {
+		if enemy.isDead {
 			continue
 		}
-		c := ColorExp
-		if p.pType == 1 {
-			c = ColorGold
-		} else if p.pType == 2 {
-			c = ColorHealth
+
+		// Enemy sprite background
+		vector.DrawFilledRect(screen, float32(enemy.x-40), float32(enemy.y-40), enemy.width, enemy.height, ColorEnemyBG, true)
+
+		if enemy.sprite != nil {
+			op := &ebiten.DrawImageOptions{}
+			op.GeoM.Translate(float64(enemy.x-40), float64(enemy.y-40))
+			screen.DrawImage(enemy.sprite, op)
 		}
-		vector.DrawFilledCircle(screen, float32(p.x)+15, float32(p.y)+15, 10, c, true)
+
+		// Health bar
+		vector.DrawFilledRect(screen, float32(enemy.x-40), float32(enemy.y-60), enemy.width, 10, color.RGBA{80, 0, 0, 255}, true)
+		healthPercent := float32(enemy.health) / float32(enemy.maxHealth)
+		vector.DrawFilledRect(screen, float32(enemy.x-40), float32(enemy.y-60), enemy.width*healthPercent, 10, ColorHealth, true)
+
+		// Name and HP
+		if gameAssets.gameFont != nil {
+			text.Draw(screen, fmt.Sprintf("%s", enemy.name), gameAssets.gameFont, int(enemy.x-30), int(enemy.y-70), color.White)
+			text.Draw(screen, fmt.Sprintf("%d/%d", enemy.health, enemy.maxHealth), gameAssets.gameFont, int(enemy.x+20), int(enemy.y-70), ColorHealth)
+
+			// Intent
+			intentIcon := "⚔️"
+			text.Draw(screen, fmt.Sprintf("%s %d", intentIcon, enemy.intentValue), gameAssets.gameFont, int(enemy.x-30), int(enemy.y+50), color.RGBA{255, 100, 100, 255})
+		}
 	}
 
 	// Draw player
-	p := g.player
-	if p.invincibleTimer == 0 || g.frameCount%4 < 2 {
-		var playerImg *ebiten.Image
-		if g.frameCount%12 < 6 {
-			playerImg = gameAssets.playerWalk1
-		} else {
-			playerImg = gameAssets.playerWalk2
-		}
-
-		if playerImg != nil {
-			op := &ebiten.DrawImageOptions{}
-			op.GeoM.Translate(p.x, p.y)
-			op.GeoM.Scale(0.5, 0.5)
-			screen.DrawImage(playerImg, op)
-		} else {
-			vector.DrawFilledRect(screen, float32(p.x), float32(p.y), float32(p.width), float32(p.height), color.RGBA{0, 255, 100, 255}, true)
-		}
+	if gameAssets.playerStand != nil {
+		op := &ebiten.DrawImageOptions{}
+		op.GeoM.Translate(200, ScreenHeight/2-50)
+		op.GeoM.Scale(0.5, 0.5)
+		screen.DrawImage(gameAssets.playerStand, op)
 	}
 
-	// Draw enemies
-	for _, e := range g.enemies {
-		if !e.isAlive {
-			continue
-		}
-		c := ColorEnemyBasic
-		if e.enemyType == 1 {
-			c = ColorEnemyFast
-		} else if e.enemyType == 2 {
-			c = ColorEnemyTank
-		}
-		vector.DrawFilledRect(screen, float32(e.x), float32(e.y), e.width, e.height, c, true)
-
-		// Health bar
-		barWidth := e.width
-		healthPercent := float32(e.health) / float32(e.maxHealth)
-		vector.DrawFilledRect(screen, float32(e.x), float32(e.y)-6, barWidth, 4, color.RGBA{80, 0, 0, 255}, true)
-		vector.DrawFilledRect(screen, float32(e.x), float32(e.y)-6, barWidth*healthPercent, 4, ColorHealth, true)
-	}
-
-	// Draw projectiles
-	for _, proj := range g.projectiles {
-		if !proj.isActive {
-			continue
-		}
-		if proj.wType == WeaponLightning {
-			// Draw lightning line
-			vector.StrokeLine(screen, float32(proj.x), float32(proj.y),
-				float32(proj.x), float32(proj.y)+proj.height, 3, proj.color, true)
-		} else {
-			vector.DrawFilledCircle(screen, float32(proj.x), float32(proj.y), float32(proj.width)/2, proj.color, true)
+	// Player stats
+	g.drawPlayerInfo(screen, 20, 20)
+	
+	// Energy
+	if gameAssets.gameFont != nil {
+		for i := 0; i < g.player.energy; i++ {
+			vector.DrawFilledCircle(screen, float32(250+i*30), 100, 12, ColorEnergy, true)
 		}
 	}
-
-	// Draw particles
-	for _, part := range g.particles {
-		alpha := uint8(255 * part.life / 50)
-		c := color.RGBA{part.color.R, part.color.G, part.color.B, alpha}
-		vector.DrawFilledCircle(screen, float32(part.x), float32(part.y), part.size, c, true)
-	}
-
-	// Draw damage numbers
-	for _, dn := range g.damageNums {
-		if gameAssets.gameFont != nil {
-			txt := fmt.Sprintf("%d", dn.value)
-			if dn.isCrit {
-				txt = fmt.Sprintf("💥%d!", dn.value)
-			}
-			if dn.isCrit {
-				text.Draw(screen, txt, gameAssets.gameFont, int(dn.x), int(dn.y), color.RGBA{255, 215, 0, 255})
-			} else {
-				text.Draw(screen, txt, gameAssets.gameFont, int(dn.x), int(dn.y), color.White)
-			}
+	
+	// Cards in hand
+	cardStartX := ScreenWidth/2 - (len(g.hand)*CardWidth)/2 - (len(g.hand)-1)*20
+	for i, card := range g.hand {
+		card.x = float64(cardStartX + i*(CardWidth+40))
+		card.y = float64(ScreenHeight - CardHeight - 20)
+		
+		if card.isHovered {
+			card.y -= 30
 		}
+		
+		g.drawCard(screen, card)
 	}
-
-	// Draw UI
-	g.drawUI(screen)
-
-	// Draw level up overlay
-	if g.state == 2 {
-		g.drawLevelUpOverlay(screen)
+	
+	// End turn button
+	buttonColor := ColorButtonNormal
+	if g.isMouseOver(ScreenWidth-150, ScreenHeight-80, 130, 50) {
+		buttonColor = ColorButtonHover
+	}
+	vector.DrawFilledRect(screen, float32(ScreenWidth-150), float32(ScreenHeight-80), 130, 50, buttonColor, true)
+	vector.StrokeRect(screen, float32(ScreenWidth-150), float32(ScreenHeight-80), 130, 50, 2, ColorCardBorder, true)
+	if gameAssets.gameFont != nil {
+		text.Draw(screen, "Конец хода", gameAssets.gameFont, ScreenWidth-130, ScreenHeight-50, color.White)
+	}
+	
+	// Turn info
+	if gameAssets.gameFont != nil {
+		text.Draw(screen, fmt.Sprintf("Ход %d", g.turn), gameAssets.gameFont, ScreenWidth/2-30, 20, color.White)
 	}
 }
 
-func (g *Game) drawUI(screen *ebiten.Image) {
-	p := g.player
+func (g *Game) drawCard(screen *ebiten.Image, card *Card) {
+	x, y := card.x, card.y
+	
+	// Card background
+	cardColor := ColorCardBG
+	if card.isHovered {
+		cardColor = ColorCardBorder
+	}
+	
+	vector.DrawFilledRect(screen, float32(x), float32(y), CardWidth, CardHeight, cardColor, true)
+	vector.StrokeRect(screen, float32(x), float32(y), CardWidth, CardHeight, 2, ColorCardBorder, true)
 
-	// UI Background
-	vector.DrawFilledRect(screen, 0, 0, ScreenWidth, 70, ColorUIBg, true)
+	// Card type color
+	typeColor := ColorCardAttack
+	if card.cardType == CardSkill {
+		typeColor = ColorCardSkill
+	} else if card.cardType == CardPower {
+		typeColor = ColorCardPower
+	}
+	vector.DrawFilledRect(screen, float32(x), float32(y), CardWidth, 5, typeColor, true)
 
-	// Health bar
-	vector.DrawFilledRect(screen, 20, 10, 200, 16, color.RGBA{80, 0, 0, 255}, true)
-	healthPercent := float32(p.health) / float32(p.maxHealth)
-	vector.DrawFilledRect(screen, 20, 10, 200*healthPercent, 16, ColorHealth, true)
-
-	// Exp bar
-	vector.DrawFilledRect(screen, 20, 32, 250, 10, color.RGBA{0, 50, 0, 255}, true)
-	expPercent := float32(p.exp) / float32(p.maxExp)
-	vector.DrawFilledRect(screen, 20, 32, 250*expPercent, 10, ColorExp, true)
-
+	// Cost
 	if gameAssets.gameFont != nil {
-		text.Draw(screen, fmt.Sprintf("HP %d/%d", p.health, p.maxHealth), gameAssets.gameFont, 230, 24, color.White)
-		text.Draw(screen, fmt.Sprintf("LVL %d", p.level), gameAssets.gameFont, 350, 24, ColorGold)
-		text.Draw(screen, fmt.Sprintf("EXP %d/%d", p.exp, p.maxExp), gameAssets.gameFont, 420, 24, ColorExp)
+		text.Draw(screen, fmt.Sprintf("%d", card.cost), gameAssets.gameFont, int(x)+8, int(y)+25, ColorEnergy)
+	}
+
+	// Card name
+	if gameAssets.gameFont != nil {
+		bounds := text.BoundString(gameAssets.gameFont, card.name)
+		text.Draw(screen, card.name, gameAssets.gameFont, int(x)+CardWidth/2-bounds.Dx()/2, int(y)+50, color.White)
+
+		// Description
+		descLines := wrapText(card.description, 18)
+		for i, line := range descLines {
+			text.Draw(screen, line, gameAssets.gameFont, int(x)+10, int(y)+80+i*20, color.RGBA{200, 200, 200, 255})
+		}
 
 		// Stats
-		minutes := g.timeSurvived / 3600
-		seconds := (g.timeSurvived % 3600) / 60
-		text.Draw(screen, fmt.Sprintf("⏱️ %d:%02d", minutes, seconds), gameAssets.gameFont, 550, 24, color.White)
-		text.Draw(screen, fmt.Sprintf("💀 %d", g.kills), gameAssets.gameFont, 680, 24, ColorEnemyBasic)
-		text.Draw(screen, fmt.Sprintf("📊 %d", g.score), gameAssets.gameFont, 780, 24, ColorGold)
-
-		// Wave
-		text.Draw(screen, fmt.Sprintf("🌊 WAVE %d", g.waveNumber), gameAssets.gameFont, 900, 24, ColorGold)
-
-		// Weapons
-		x := 20
-		y := 50
-		for _, w := range p.weapons {
-			weaponColor := ColorWeapon1
-			if w.wType == WeaponFireball {
-				weaponColor = ColorWeapon2
-			} else if w.wType == WeaponLightning {
-				weaponColor = ColorWeapon3
-			}
-			vector.DrawFilledRect(screen, float32(x), float32(y), 40, 6, color.RGBA{50, 50, 50, 255}, true)
-			cdPercent := float32(w.timer) / float32(w.cooldown)
-			vector.DrawFilledRect(screen, float32(x), float32(y), 40*(1-cdPercent), 6, weaponColor, true)
-			x += 45
+		stats := ""
+		if card.damage > 0 {
+			stats += fmt.Sprintf("⚔️%d ", card.damage)
 		}
+		if card.block > 0 {
+			stats += fmt.Sprintf("🛡️%d ", card.block)
+		}
+		text.Draw(screen, stats, gameAssets.gameFont, int(x)+10, int(y)+CardHeight-30, color.White)
 	}
 }
 
-func (g *Game) drawLevelUpOverlay(screen *ebiten.Image) {
-	// Overlay
-	vector.DrawFilledRect(screen, 0, 0, ScreenWidth, ScreenHeight, color.RGBA{0, 0, 0, 180}, true)
-
-	if gameAssets.largeFont != nil {
-		text.Draw(screen, "🎉 LEVEL UP!", gameAssets.largeFont, ScreenWidth/2-120, 250, ColorGold)
+func wrapText(text string, maxLen int) []string {
+	if len(text) <= maxLen {
+		return []string{text}
 	}
-
-	if gameAssets.gameFont != nil {
-		text.Draw(screen, fmt.Sprintf("Level %d reached! Choose upgrade:", g.player.level), gameAssets.gameFont, ScreenWidth/2-150, 320, color.White)
-
-		for i, upgrade := range g.upgradeOptions {
-			y := 380 + i*80
-			vector.DrawFilledRect(screen, float32(ScreenWidth/2-200), float32(y-30), 400, 60, ColorUIBg, true)
-			vector.DrawFilledRect(screen, float32(ScreenWidth/2-200), float32(y-30), 400, 60, color.RGBA{255, 215, 0, 50}, true)
-
-			text.Draw(screen, fmt.Sprintf("[%d] %s %s", i+1, upgrade.icon, upgrade.name), gameAssets.gameFont, ScreenWidth/2-180, y, ColorGold)
-			text.Draw(screen, upgrade.description, gameAssets.gameFont, ScreenWidth/2-180, y+25, color.White)
+	
+	words := []string{text}
+	lines := []string{}
+	currentLine := ""
+	
+	for _, word := range words {
+		if len(currentLine)+len(word) > maxLen {
+			lines = append(lines, currentLine)
+			currentLine = word
+		} else {
+			currentLine += word
 		}
+	}
+	if currentLine != "" {
+		lines = append(lines, currentLine)
+	}
+	
+	return lines
+}
+
+func (g *Game) drawPlayerInfo(screen *ebiten.Image, x, y int) {
+	p := g.player
+	
+	// Health
+	vector.DrawFilledRect(screen, float32(x), float32(y), 150, 20, color.RGBA{80, 0, 0, 255}, true)
+	healthPercent := float32(p.health) / float32(p.maxHealth)
+	vector.DrawFilledRect(screen, float32(x), float32(y), 150*healthPercent, 20, ColorHealth, true)
+	
+	// Block
+	vector.DrawFilledRect(screen, float32(x), float32(y+25), 80, 16, color.RGBA{0, 0, 80, 255}, true)
+	vector.DrawFilledRect(screen, float32(x), float32(y+25), float32(min(p.block, 80)), 16, ColorBlock, true)
+	
+	if gameAssets.gameFont != nil {
+		text.Draw(screen, fmt.Sprintf("HP %d/%d", p.health, p.maxHealth), gameAssets.gameFont, x+10, y+15, color.White)
+		text.Draw(screen, fmt.Sprintf("🛡️%d", p.block), gameAssets.gameFont, x+10, y+38, ColorBlock)
+	}
+}
+
+func (g *Game) drawReward(screen *ebiten.Image) {
+	screen.Fill(ColorBG)
+	
+	if gameAssets.largeFont != nil {
+		text.Draw(screen, "🎉 НАГРАДА!", gameAssets.largeFont, ScreenWidth/2-100, 150, ColorGold)
+	}
+	
+	if gameAssets.gameFont != nil {
+		text.Draw(screen, "Выберите карту для добавления в колоду", gameAssets.gameFont, ScreenWidth/2-180, 220, color.White)
+	}
+	
+	// Draw reward card
+	if g.battleReward != nil {
+		g.battleReward.x = float64(ScreenWidth/2 - CardWidth/2)
+		g.battleReward.y = float64(ScreenHeight/2 - CardHeight/2)
+		g.drawCard(screen, g.battleReward)
+	}
+	
+	// Skip button
+	buttonColor := ColorButtonNormal
+	if g.isMouseOver(ScreenWidth/2-65, ScreenHeight/2+150, 130, 40) {
+		buttonColor = ColorButtonHover
+	}
+	vector.DrawFilledRect(screen, float32(ScreenWidth/2-65), float32(ScreenHeight/2+150), 130, 40, buttonColor, true)
+	if gameAssets.gameFont != nil {
+		text.Draw(screen, "Пропустить", gameAssets.gameFont, ScreenWidth/2-50, ScreenHeight/2+175, color.White)
 	}
 }
 
 func (g *Game) drawGameOver(screen *ebiten.Image) {
 	screen.Fill(color.RGBA{50, 20, 20, 255})
-
+	
 	if gameAssets.largeFont != nil {
-		text.Draw(screen, "💀 GAME OVER", gameAssets.largeFont, ScreenWidth/2-150, ScreenHeight/2-80, ColorHealth)
+		text.Draw(screen, "💀 ВЫ ПРОИГРАЛИ", gameAssets.largeFont, ScreenWidth/2-180, ScreenHeight/2-50, ColorHealth)
+		text.Draw(screen, fmt.Sprintf("Этаж: %d | Комната: %d", g.floor, g.room), gameAssets.gameFont, ScreenWidth/2-120, ScreenHeight/2+20, color.White)
+		text.Draw(screen, "Нажмите ENTER для рестарта", gameAssets.gameFont, ScreenWidth/2-150, ScreenHeight/2+80, color.White)
+	}
+}
 
-		minutes := g.timeSurvived / 3600
-		seconds := (g.timeSurvived % 3600) / 60
-
-		text.Draw(screen, fmt.Sprintf("Time Survived: %d:%02d", minutes, seconds), gameAssets.gameFont, ScreenWidth/2-120, ScreenHeight/2, color.White)
-		text.Draw(screen, fmt.Sprintf("Wave Reached: %d", g.waveNumber), gameAssets.gameFont, ScreenWidth/2-100, ScreenHeight/2+35, color.White)
-		text.Draw(screen, fmt.Sprintf("Enemies Killed: %d", g.kills), gameAssets.gameFont, ScreenWidth/2-100, ScreenHeight/2+70, color.White)
-		text.Draw(screen, fmt.Sprintf("Final Score: %d", g.score), gameAssets.gameFont, ScreenWidth/2-100, ScreenHeight/2+105, ColorGold)
-		text.Draw(screen, "Press ENTER to restart", gameAssets.gameFont, ScreenWidth/2-120, ScreenHeight/2+160, color.White)
+func (g *Game) drawVictory(screen *ebiten.Image) {
+	screen.Fill(color.RGBA{20, 50, 20, 255})
+	
+	if gameAssets.largeFont != nil {
+		text.Draw(screen, "🏆 ПОБЕДА!", gameAssets.largeFont, ScreenWidth/2-120, ScreenHeight/2-50, ColorGold)
+		text.Draw(screen, fmt.Sprintf("Ходов: %d", g.turn), gameAssets.gameFont, ScreenWidth/2-80, ScreenHeight/2+20, color.White)
+		text.Draw(screen, "Нажмите ENTER для рестарта", gameAssets.gameFont, ScreenWidth/2-150, ScreenHeight/2+80, color.White)
 	}
 }
 
@@ -1147,7 +1008,7 @@ func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
 
 func main() {
 	ebiten.SetWindowSize(ScreenWidth, ScreenHeight)
-	ebiten.SetWindowTitle("GO MARIO SURVIVOR - Go365 Day 86 | Roguelite")
+	ebiten.SetWindowTitle("GO MARIO: CARD BATTLES - Go365 Day 86 | Card Roguelike")
 	ebiten.SetVsyncEnabled(true)
 
 	game := NewGame()

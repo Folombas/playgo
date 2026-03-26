@@ -1,62 +1,68 @@
 # Go365 Day 86 — Отчёт о разработке
 
 **Дата:** 26 марта 2026 года
-**Проект:** go_mario v2.0.0 (Roguelite Survivor)
+**Проект:** go_mario v3.0.0 (Card Battler)
 **Go365 День:** 86
 
 ---
 
-## 🎮 ПЕРЕРАБОТКА: go_mario v2.0.0
+## 🎮 ТРЕТЬЯ ВЕРСИЯ: go_mario v3.0.0
 
 ### Новая концепция
-**Roguelite Survivor** в стиле Vampire Survivors!
+**Карточный Roguelike** в стиле Slay the Spire!
 
 ### Что сделано
 
-#### 1. Геймплей
-- [x] Авто-атака ближайшего врага
-- [x] 4 типа оружия (Magic Missile, Fireball, Lightning, Aura)
-- [x] Система волн (каждые 30 секунд)
-- [x] Спавн врагов вокруг игрока
-- [x] Подбор опыта (магнитный эффект)
+#### 1. Система карт
+- [x] 15 уникальных карт в базе
+- [x] 3 типа карт: Attack, Skill, Power
+- [x] 3 редкости: Common, Uncommon, Rare
+- [x] Стоимость, урон, блок, эффекты
+- [x] Отрисовка карт с информацией
 
-#### 2. Прокачка
-- [x] Система уровней (EXP → Level Up)
-- [x] Выбор из 3 случайных апгрейдов
-- [x] 6 типов апгрейдов (урон, скорость, HP, размер, проникновение, новое оружие)
-- [x] Применение апгрейдов
+#### 2. Колода и рука
+- [x] Стартовая колода (8 карт)
+- [x] Система взятия карт (draw 5)
+- [x] Сброс в discard
+- [x] Перетасовка discard в колоду
+- [x] Макс. размер колоды 30
 
-#### 3. Враги
-- [x] 3 типа врагов (Basic, Fast, Tank)
-- [x] ИИ преследования игрока
-- [x] Разделение между врагами (separation)
-- [x] Прогрессия сложности по волнам
+#### 3. Боевая система
+- [x] Пошаговая система
+- [x] Энергия (3 на ход)
+- [x] Разыгрывание карт
+- [x] Блок и HP
+- [x] Конец хода кнопкой
 
-#### 4. Визуальные эффекты
-- [x] Система частиц (смерть врагов)
-- [x] Всплывающий урон
-- [x] Полоски здоровья врагов
-- [x] Анимация игрока (ходьба)
-- [x] Мигание при неуязвимости
+#### 4. Враги
+- [x] 3 типа врагов (Слизень, Летун, Лягушка)
+- [x] Элитные враги
+- [x] Полоски здоровья
+- [x] Интенты (показ следующего действия)
+- [x] ИИ атаки
 
-#### 5. Интерфейс
-- [x] HUD: HP, EXP, уровень, золото
-- [x] Индикаторы кулдауна оружия
-- [x] Таймер выживания
-- [x] Счётчик убийств и волн
-- [x] Overlay выбора апгрейдов
-- [x] Меню и Game Over экран
+#### 5. Карта и прогрессия
+- [x] Генерация карты (15 комнат)
+- [x] 4 типа комнат (битва, элита, сокровище, отдых)
+- [x] Перемещение по карте
+- [x] Отдых (+15 HP)
+- [x] Награда (выбор карты)
 
-#### 6. Аудио
-- [ ] Звуковые эффекты (отложено)
-- [ ] Фоновая музыка (отложено)
+#### 6. Интерфейс
+- [x] Меню
+- [x] Карта с комнатами
+- [x] Боевой экран
+- [x] Экран награды
+- [x] Game Over / Победа
+- [x] HUD (HP, блок, энергия)
+- [x] Hover эффект на картах
 
 ---
 
 ## 📁 Изменённые файлы
 
 ### Код
-- `go_mario/main.go` — полностью переписан (~1150 строк)
+- `go_mario/main.go` — полностью переписан (~1000 строк)
 
 ### Документация
 - `go_mario/README.md` — обновлён с новой концепцией
@@ -69,12 +75,12 @@
 ## 📊 Статистика
 
 ```
-Написано строк:     ~1150
-Структур:           10+ (Player, Enemy, Projectile, Weapon, Pickup, Particle, DamageNumber, Game...)
-Типов оружия:       4
-Типов апгрейдов:    6
-Типов врагов:       3
-Функций:            40+
+Написано строк:     ~1000
+Структур:           8 (Card, Player, Enemy, Game, Room...)
+Типов карт:         15
+Типов врагов:       4
+Комнат:             4 типа
+Функций:            30+
 ```
 
 ---
@@ -82,83 +88,71 @@
 ## 🎮 Геймплей
 
 ### Механики
-1. **Движение:** WASD / Стрелки
-2. **Авто-атака:** Оружие стреляет автоматически
-3. **Сбор опыта:** Подбирай кристаллы с врагов
-4. **Левел-ап:** Выбирай 1 из 3 апгрейдов (клавиши 1/2/3)
-5. **Выживание:** Держись как можно дольше!
+1. **Навигация:** Выбор комнаты на карте (Enter)
+2. **Бой:** Пошаговая система
+3. **Карты:** Клик + Enter для розыгрыша
+4. **Энергия:** 3 на ход, тратится на карты
+5. **Цель:** Пройти все 15 комнат
 
 ### Прогрессия
-- Волна 1: 8 врагов (Basic)
-- Волна 2: 11 врагов (Basic + Fast)
-- Волна 3+: 14+ врагов (все типы)
-- Каждые 30 секунд новая волна
+- Комната 1-5: Обычные враги
+- Комната 6-10: Элиты + сокровища
+- Комната 11-15: Боссы
 
 ---
 
 ## 🔧 Технические детали
 
-### Авто-атака
+### Система карт
 ```go
-// Поиск ближайшего врага
-var target *Enemy
-minDist := float64(500)
-for _, e := range g.enemies {
-    dist := math.Hypot(e.x-p.x, e.y-p.y)
-    if dist < minDist {
-        minDist = dist
-        target = e
-    }
-}
-
-// Выстрел снаряда
-angle := math.Atan2(target.y-p.y, target.x-p.x)
-g.projectiles = append(g.projectiles, &Projectile{
-    vx: math.Cos(angle) * speed,
-    vy: math.Sin(angle) * speed,
-    damage: int(float64(weapon.damage) * p.damageMult),
-    pierce: weapon.pierce,
-})
-```
-
-### Система апгрейдов
-```go
-type Upgrade struct {
-    id          UpgradeType
+type Card struct {
+    id          int
     name        string
     description string
-    icon        string
-    tier        int
+    cardType    CardType  // Attack, Skill, Power
+    rarity      CardRarity // Common, Uncommon, Rare
+    cost        int
+    damage      int
+    block       int
 }
+```
 
-func (g *Game) applyUpgrade(upgrade Upgrade) {
-    switch upgrade.id {
-    case UpgradeDamage:
-        p.damageMult += 0.2
-    case UpgradeAttackSpeed:
-        p.attackSpeed += 0.15
-    case UpgradeMaxHealth:
-        p.maxHealth += 20
-        p.health += 20
-    // ...
+### Боевой цикл
+```go
+func (g *Game) playCard(card *Card, target *Enemy) {
+    if p.energy < card.cost {
+        return
     }
+    
+    p.energy -= card.cost
+    
+    switch card.cardType {
+    case CardAttack:
+        target.health -= card.damage
+    case CardSkill:
+        p.block += card.block
+    case CardPower:
+        // Permanent buff
+    }
+    
+    // Move to discard
 }
 ```
 
 ### ИИ врагов
 ```go
-// Движение к игроку
-angle := math.Atan2(p.y-e.y, p.x-e.x)
-e.vx = math.Cos(angle) * e.speed
-e.vy = math.Sin(angle) * e.speed
+// Простой ИИ - всегда атака
+enemy.intent = "attack"
+enemy.intentValue = enemy.damage
 
-// Разделение (separation)
-for _, other := range g.enemies {
-    dist := math.Hypot(e.x-other.x, e.y-other.y)
-    if dist < 30 {
-        pushAngle := math.Atan2(e.y-other.y, e.x-other.x)
-        e.vx += math.Cos(pushAngle) * 0.5
-    }
+// Нанесение урона
+damage := enemy.damage
+block := g.player.block
+if block >= damage {
+    g.player.block -= damage
+} else {
+    g.player.health -= (damage - block)
+    g.player.block = 0
 }
 ```
 
@@ -167,10 +161,10 @@ for _, other := range g.enemies {
 ## ✅ Чеклист Go365
 
 - [x] Ежедневное программирование на Go
-- [x] Кардинальная смена концепции (платформер → roguelite)
-- [x] Использование всей мощи Ebitengine
+- [x] Третья кардинальная смена концепции
+- [x] Карточный roguelike с полной системой
 - [x] Коммит и пуш в репозиторий
-- [x] Документирование (README.md, CHANGELOG.md)
+- [x] Документирование
 - [x] Сборка без ошибок
 
 ---
@@ -188,13 +182,13 @@ for _, other := range g.enemies {
 **Go87 — 27 марта 2026**
 
 Планы:
-- Добавить боссов (каждые 5 волн)
-- Новые типы оружия
-- Пассивные предметы
+- Добавить больше карт
+- Реликвии и зелья
+- События на карте
 - Баланс и полировка
 
 ---
 
 **Создано:** 26 марта 2026
 **Go365 Challenge:** День 86 из 365
-**Версия:** go_mario v2.0.0 (Roguelite Survivor)
+**Версия:** go_mario v3.0.0 (Card Battler)
