@@ -551,15 +551,15 @@ func (g *Game) LoadGame() bool {
 }
 
 func (g *Game) GenerateLevel() {
-	g.levelWidth = 150 // tiles
+	g.levelWidth = 500 // tiles - ОГРОМНАЯ КАРТА!
 
 	// Generate varied terrain
 	for x := 0; x < g.levelWidth; x++ {
 		// Ground with variations
 		tileType := 1 // grass
-		if x > 50 && x < 80 {
+		if x > 150 && x < 250 {
 			tileType = 4 // stone
-		} else if x > 100 {
+		} else if x > 300 {
 			tileType = 5 // snow
 		}
 
@@ -1242,6 +1242,50 @@ func (g *Game) drawMenu(screen *ebiten.Image) {
 	}
 }
 
+func (g *Game) drawMinimap(screen *ebiten.Image) {
+	// Mini-map in top right corner
+	mapWidth := 200
+	mapHeight := 100
+	mapX := ScreenWidth - mapWidth - 10
+	mapY := 60
+	
+	// Background
+	vector.DrawFilledRect(screen, float32(mapX), float32(mapY), float32(mapWidth), float32(mapHeight), color.RGBA{0, 0, 0, 180}, true)
+	vector.StrokeRect(screen, float32(mapX), float32(mapY), float32(mapWidth), float32(mapHeight), 2, color.RGBA{255, 255, 255, 255}, true)
+	
+	// Scale
+	scale := float32(mapWidth) / float32(g.levelWidth*TileSize)
+	
+	// Draw level markers
+	for _, tile := range g.tiles {
+		if tile.y == 14 { // Ground level
+			tileX := mapX + int(float32(tile.x*TileSize)*scale)
+			tileY := mapY + mapHeight - 10
+			vector.DrawFilledRect(screen, float32(tileX), float32(tileY), 2, 10, color.RGBA{100, 180, 100, 255}, true)
+		}
+	}
+	
+	// Draw player position
+	playerMapX := mapX + int(float32(g.player.x)*scale)
+	playerMapY := mapY + mapHeight/2
+	vector.DrawFilledCircle(screen, float32(playerMapX), float32(playerMapY), 4, color.RGBA{0, 255, 0, 255}, true)
+	
+	// Draw boss position
+	if g.boss != nil && g.boss.alive {
+		bossMapX := mapX + int(float32(g.boss.x)*scale)
+		vector.DrawFilledCircle(screen, float32(bossMapX), float32(mapY+mapHeight/2), 6, color.RGBA{255, 0, 0, 255}, true)
+	}
+	
+	// Draw flag
+	flagMapX := mapX + int(float32(g.flagX)*scale)
+	vector.DrawFilledRect(screen, float32(flagMapX), float32(mapY), 3, float32(mapHeight), color.RGBA{255, 215, 0, 255}, true)
+	
+	// Label
+	if gameAssets.gameFont != nil {
+		text.Draw(screen, "MAP", gameAssets.gameFont, mapX+5, mapY-5, color.White)
+	}
+}
+
 func (g *Game) drawGame(screen *ebiten.Image) {
 	// Apply screen shake
 	shakeX := 0.0
@@ -1258,6 +1302,9 @@ func (g *Game) drawGame(screen *ebiten.Image) {
 	}
 
 	camX := g.cameraX + shakeX
+	
+	// Draw minimap
+	g.drawMinimap(screen)
 
 	// Background decorations (parallax clouds)
 	for _, d := range g.decorations {
