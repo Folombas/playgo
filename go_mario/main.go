@@ -10,16 +10,14 @@ import (
 	"log"
 	"math"
 	"math/rand"
-	"os"
 	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"github.com/hajimehoshi/ebiten/v2/text"
 	"github.com/hajimehoshi/ebiten/v2/vector"
 	"golang.org/x/image/font"
-	"golang.org/x/image/font/opentype"
+	"golang.org/x/image/font/basicfont"
 )
 
 // ============================================================================
@@ -30,10 +28,10 @@ const (
 	ScreenWidth  = 1024
 	ScreenHeight = 768
 
-	PlayerSpeed    = 5.0
+	PlayerSpeed     = 5.0
 	PlayerTurnSpeed = 0.08
-	BulletSpeed    = 10.0
-	EnemySpeed     = 2.0
+	BulletSpeed     = 10.0
+	EnemySpeed      = 2.0
 )
 
 // ============================================================================
@@ -60,42 +58,18 @@ var (
 // ============================================================================
 
 type Assets struct {
-	playerShip   *ebiten.Image
-	enemy1       *ebiten.Image
-	enemy2       *ebiten.Image
-	gameFont     font.Face
-	largeFont    font.Face
+	gameFont  font.Face
+	largeFont font.Face
 }
 
 var gameAssets *Assets
 
 func LoadAssets() *Assets {
 	assets := &Assets{}
-
-	// Try to load ship sprite, fallback to procedural
-	assets.playerShip, _, _ = ebitenutil.NewImageFromFile("assets/PNG/Players/128x256/Green/alienGreen_stand.png")
-	assets.enemy1, _, _ = ebitenutil.NewImageFromFile("assets/PNG/Enemies/slimeGreen.png")
-	assets.enemy2, _, _ = ebitenutil.NewImageFromFile("assets/PNG/Enemies/slimeBlue.png")
-
-	assets.gameFont, _ = loadFont("assets/fonts/SuperAdorable-MAvyp.ttf", 20)
-	assets.largeFont, _ = loadFont("assets/fonts/SuperAdorable-MAvyp.ttf", 56)
-
+	// Используем встроенный шрифт вместо загрузки из файла
+	assets.gameFont = basicfont.Face7x13
+	assets.largeFont = basicfont.Face7x13
 	return assets
-}
-
-func loadFont(path string, size int) (font.Face, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-	ttFont, err := opentype.Parse(data)
-	if err != nil {
-		return nil, err
-	}
-	return opentype.NewFace(ttFont, &opentype.FaceOptions{
-		Size: float64(size),
-		DPI:  72,
-	})
 }
 
 // ============================================================================
@@ -1028,53 +1002,46 @@ func (g *Game) Draw(screen *ebiten.Image) {
 
 func (g *Game) drawMenu(screen *ebiten.Image) {
 	screen.Fill(ColorBG)
-	
-	// Title
+
+	// Title - центрируем вручную
+	title := "GO MARIO: SPACE ADVENTURE"
 	if gameAssets.largeFont != nil {
-		title := "🚀 GO MARIO: SPACE 🚀"
-		bounds := text.BoundString(gameAssets.largeFont, title)
-		text.Draw(screen, title, gameAssets.largeFont, ScreenWidth/2-bounds.Dx()/2, 200, ColorPlayer)
-		
-		subtitle := "SPACE ADVENTURE"
-		bounds = text.BoundString(gameAssets.gameFont, subtitle)
-		text.Draw(screen, subtitle, gameAssets.gameFont, ScreenWidth/2-bounds.Dx()/2, 280, ColorWave)
+		text.Draw(screen, title, gameAssets.largeFont, ScreenWidth/2-150, 200, ColorPlayer)
+		text.Draw(screen, "Geometry Wars Style Shooter", gameAssets.gameFont, ScreenWidth/2-140, 250, ColorWave)
 	}
-	
+
 	// Instructions
 	instructions := []string{
-		"⬅️ ➡️ / A D - Поворот",
-		"⬆️ / W - Тяга",
-		"Пробел / J / Z - Огонь",
-		"Shift / K - Рывок",
+		"LEFT/RIGHT or A/D - Rotate",
+		"UP or W - Thrust",
+		"SPACE or J/Z - Fire",
+		"SHIFT or K - Dash",
 		"",
-		"Нажми ENTER для старта",
+		"Press ENTER to start",
 	}
-	
-	y := 400
+
+	y := 350
 	for _, line := range instructions {
 		if gameAssets.gameFont != nil {
-			bounds := text.BoundString(gameAssets.gameFont, line)
-			text.Draw(screen, line, gameAssets.gameFont, ScreenWidth/2-bounds.Dx()/2, y, color.White)
+			text.Draw(screen, line, gameAssets.gameFont, ScreenWidth/2-120, y, color.White)
 		}
-		y += 35
+		y += 25
 	}
-	
+
 	// Features
 	features := []string{
-		"🎮 Волны врагов",
-		"👹 Боссы",
-		"⚡ Рывок",
-		"📦 Апгрейды",
-		"✨ Частицы",
+		"[+] Waves of enemies",
+		"[!] Boss battles",
+		"[^] Power-ups",
+		"[*] Weapon upgrades",
 	}
-	
-	y = 580
+
+	y = 520
 	for _, line := range features {
 		if gameAssets.gameFont != nil {
-			bounds := text.BoundString(gameAssets.gameFont, line)
-			text.Draw(screen, line, gameAssets.gameFont, ScreenWidth/2-bounds.Dx()/2, y, ColorGold)
+			text.Draw(screen, line, gameAssets.gameFont, ScreenWidth/2-100, y, ColorGold)
 		}
-		y += 28
+		y += 22
 	}
 }
 
@@ -1218,26 +1185,28 @@ func (g *Game) drawEnemyShape(screen *ebiten.Image, x, y, size, angle float64, c
 
 func (g *Game) drawHUD(screen *ebiten.Image) {
 	p := g.player
-	
+
 	// Top bar
 	vector.DrawFilledRect(screen, 0, 0, ScreenWidth, 50, color.RGBA{0, 0, 0, 150}, true)
-	
+
 	// Health
 	vector.DrawFilledRect(screen, 20, 15, 200, 15, color.RGBA{80, 0, 0, 255}, true)
-	vector.DrawFilledRect(screen, 20, 15, 200*float32(p.health)/float32(p.maxHealth), 15, ColorHealth, true)
-	
+	if p.maxHealth > 0 {
+		vector.DrawFilledRect(screen, 20, 15, 200*float32(p.health)/float32(p.maxHealth), 15, ColorHealth, true)
+	}
+
 	// Shield
 	if p.shield > 0 {
 		vector.DrawFilledRect(screen, 20, 33, 150, 8, color.RGBA{0, 0, 80, 255}, true)
 		vector.DrawFilledRect(screen, 20, 33, 150*float32(p.shield)/100, 8, ColorWave, true)
 	}
-	
+
 	if gameAssets.gameFont != nil {
 		text.Draw(screen, fmt.Sprintf("HP %d/%d", p.health, p.maxHealth), gameAssets.gameFont, 230, 28, color.White)
 		text.Draw(screen, fmt.Sprintf("SCORE: %d", p.score), gameAssets.gameFont, 400, 28, ColorGold)
 		text.Draw(screen, fmt.Sprintf("WAVE: %d", g.wave.number), gameAssets.gameFont, 600, 28, ColorWave)
 		text.Draw(screen, fmt.Sprintf("WP: %d", p.weaponLevel), gameAssets.gameFont, 750, 28, ColorBullet)
-		
+
 		if p.multiShot {
 			text.Draw(screen, "[MULTI]", gameAssets.gameFont, 850, 28, ColorEnemy2)
 		}
@@ -1249,29 +1218,29 @@ func (g *Game) drawHUD(screen *ebiten.Image) {
 
 func (g *Game) drawGameOver(screen *ebiten.Image) {
 	screen.Fill(color.RGBA{50, 20, 20, 255})
-	
+
 	if gameAssets.largeFont != nil {
-		text.Draw(screen, "💀 GAME OVER", gameAssets.largeFont, ScreenWidth/2-180, ScreenHeight/2-50, ColorEnemy1)
-		
-		if gameAssets.gameFont != nil {
-			text.Draw(screen, fmt.Sprintf("Final Score: %d", g.player.score), gameAssets.gameFont, ScreenWidth/2-100, ScreenHeight/2+30, color.White)
-			text.Draw(screen, fmt.Sprintf("Wave: %d", g.wave.number), gameAssets.gameFont, ScreenWidth/2-80, ScreenHeight/2+60, color.White)
-			text.Draw(screen, "Press ENTER to restart", gameAssets.gameFont, ScreenWidth/2-130, ScreenHeight/2+120, color.White)
-		}
+		text.Draw(screen, "GAME OVER", gameAssets.largeFont, ScreenWidth/2-80, ScreenHeight/2-50, ColorEnemy1)
+	}
+
+	if gameAssets.gameFont != nil {
+		text.Draw(screen, fmt.Sprintf("Final Score: %d", g.player.score), gameAssets.gameFont, ScreenWidth/2-80, ScreenHeight/2+20, color.White)
+		text.Draw(screen, fmt.Sprintf("Wave: %d", g.wave.number), gameAssets.gameFont, ScreenWidth/2-50, ScreenHeight/2+45, color.White)
+		text.Draw(screen, "Press ENTER to restart", gameAssets.gameFont, ScreenWidth/2-90, ScreenHeight/2+90, color.White)
 	}
 }
 
 func (g *Game) drawVictory(screen *ebiten.Image) {
 	screen.Fill(color.RGBA{20, 50, 20, 255})
-	
+
 	if gameAssets.largeFont != nil {
-		text.Draw(screen, "🏆 VICTORY!", gameAssets.largeFont, ScreenWidth/2-150, ScreenHeight/2-50, ColorHealth)
-		
-		if gameAssets.gameFont != nil {
-			text.Draw(screen, fmt.Sprintf("Final Score: %d", g.player.score), gameAssets.gameFont, ScreenWidth/2-100, ScreenHeight/2+30, color.White)
-			text.Draw(screen, "You defeated all waves!", gameAssets.gameFont, ScreenWidth/2-120, ScreenHeight/2+60, color.White)
-			text.Draw(screen, "Press ENTER to play again", gameAssets.gameFont, ScreenWidth/2-130, ScreenHeight/2+120, color.White)
-		}
+		text.Draw(screen, "VICTORY!", gameAssets.largeFont, ScreenWidth/2-60, ScreenHeight/2-50, ColorHealth)
+	}
+
+	if gameAssets.gameFont != nil {
+		text.Draw(screen, fmt.Sprintf("Final Score: %d", g.player.score), gameAssets.gameFont, ScreenWidth/2-80, ScreenHeight/2+20, color.White)
+		text.Draw(screen, "You defeated all waves!", gameAssets.gameFont, ScreenWidth/2-90, ScreenHeight/2+45, color.White)
+		text.Draw(screen, "Press ENTER to play again", gameAssets.gameFont, ScreenWidth/2-95, ScreenHeight/2+90, color.White)
 	}
 }
 
