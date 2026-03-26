@@ -1,5 +1,5 @@
-// Go365 Day 87 - GO MARIO: SUPER PLATFORMER v7.0.0
-// Красочный 2D платформер с БОССАМИ, ЗВУКАМИ и МИРАМИ!
+// Go365 Day 89 - GO MARIO v9.0.0
+// Платформер с БОССАМИ, POWER-UPS, АЧИНКАМИ, ЗВУКОМ и КОМБО!
 
 package main
 
@@ -31,6 +31,20 @@ const (
 	PlayerSpeed  = 5.0
 	MaxWorld     = 3
 	LevelsPerWorld = 3
+	MaxCombo     = 50
+	ComboWindow  = 120 // 2 секунды при 60 FPS
+)
+
+// Sound types
+type SoundType int
+
+const (
+	SoundJump SoundType = iota
+	SoundCoin
+	SoundHit
+	SoundPowerup
+	SoundBoss
+	SoundWin
 )
 
 // ============================================================================
@@ -214,6 +228,24 @@ type Player struct {
 	gems      int
 	score     int
 	lives     int
+	
+	// Combo system
+	combo      int
+	comboTimer int
+	maxCombo   int
+	
+	// Power-ups
+	powerTimer int
+	isInvincible bool
+	invincibleTimer int
+}
+
+type Audio struct {
+	enabled bool
+	volume  float64
+	lastJump int
+	lastCoin int
+	lastHit  int
 }
 
 type Tile struct {
@@ -308,6 +340,7 @@ type Game struct {
 	decorations []*Decoration
 	particles   []*Particle
 	boss        *Boss
+	audio       *Audio
 	cameraX     float64
 	state       int // 0=menu, 1=playing, 2=gameover, 3=win, 4=boss
 	frame       int
@@ -319,6 +352,8 @@ type Game struct {
 	hasBoss     bool
 	saveFile    string
 	achievements map[string]*Achievement
+	screenShake  float64
+	comboDisplay int // Для отображения комбо
 }
 
 // ============================================================================
@@ -339,6 +374,8 @@ func NewGame() *Game {
 			maxHealth: 100,
 			health: 100,
 			lives: 3,
+			combo: 0,
+			maxCombo: 0,
 		},
 		state: 0,
 		world: 1,
@@ -351,8 +388,11 @@ func NewGame() *Game {
 		decorations: make([]*Decoration, 0),
 		particles: make([]*Particle, 0),
 		boss: nil,
+		audio: &Audio{enabled: true, volume: 0.5},
 		saveFile: "savegame.json",
 		achievements: make(map[string]*Achievement),
+		screenShake: 0,
+		comboDisplay: 0,
 	}
 	
 	g.initAchievements()
@@ -368,6 +408,84 @@ func (g *Game) initAchievements() {
 		"boss_slayer": {id: "boss_slayer", name: "Убийца боссов", description: "Победите босса", unlocked: false},
 		"world_conqueror": {id: "world_conqueror", name: "Завоеватель", description: "Пройдите все миры", unlocked: false},
 		"survivor": {id: "survivor", name: "Выживший", description: "Достигните 3 мира", unlocked: false},
+		"combo_master": {id: "combo_master", name: "Комбо-мастер", description: "Наберите комбо x20", unlocked: false},
+	}
+}
+
+func (g *Game) playSound(sound SoundType) {
+	if !g.audio.enabled {
+		return
+	}
+	
+	// Visual feedback instead of audio for now
+	switch sound {
+	case SoundJump:
+		g.audio.lastJump = g.frame
+	case SoundCoin:
+		g.audio.lastCoin = g.frame
+	case SoundHit:
+		g.audio.lastHit = g.frame
+		g.screenShake = 5
+	case SoundPowerup:
+		g.screenShake = 3
+	case SoundBoss:
+		g.screenShake = 10
+	case SoundWin:
+		g.screenShake = 15
+	}
+}
+
+func (g *Game) updateCombo() {
+	p := g.player
+	
+	if p.combo > 0 {
+		p.comboTimer--
+		if p.comboTimer <= 0 {
+			p.combo = 0
+			g.comboDisplay = 0
+		}
+	}
+	
+	// Update combo display decay
+	if g.comboDisplay > 0 {
+		g.comboDisplay--
+	}
+}
+
+func (g *Game) addCombo(points int) {
+	p := g.player
+	
+	p.combo++
+	if p.combo > MaxCombo {
+		p.combo = MaxCombo
+	}
+	p.comboTimer = ComboWindow
+	g.comboDisplay = 60 // Показывать 1 секунду
+	
+	// Bonus score from combo
+	bonus := points * (p.combo / 5)
+	p.score += bonus
+	
+	// Update max combo
+	if p.combo > p.maxCombo {
+		p.maxCombo = p.combo
+	}
+	
+	// Check achievement
+	if p.combo >= 20 && !g.achievements["combo_master"].unlocked {
+		g.achievements["combo_master"].unlocked = true
+	}
+	
+	// Visual feedback
+	g.screenShake = 2
+}
+
+func (g *Game) updateScreenShake() {
+	if g.screenShake > 0 {
+		g.screenShake *= 0.9
+		if g.screenShake < 0.5 {
+			g.screenShake = 0
+		}
 	}
 }
 
@@ -623,6 +741,8 @@ func (g *Game) Update() error {
 	g.updateParticles()
 	g.updatePowerUps()
 	g.checkAchievements()
+	g.updateCombo()
+	g.updateScreenShake()
 	g.checkWin()
 
 	return nil
@@ -648,6 +768,7 @@ func (g *Game) updatePlayer() {
 		p.vy = JumpForce
 		p.onGround = false
 		g.spawnJumpParticles(p.x+float64(p.width)/2, p.y+float64(p.height))
+		g.playSound(SoundJump)
 	}
 
 	// Physics
@@ -885,6 +1006,8 @@ func (g *Game) updateCoins() {
 			p.coins++
 			p.score += (c.id + 1) * 10
 			g.spawnCollectParticles(c.x+10, c.y+10, color.RGBA{255, 215, 0, 255})
+			g.playSound(SoundCoin)
+			g.addCombo(10)
 		}
 	}
 }
@@ -1120,6 +1243,12 @@ func (g *Game) drawMenu(screen *ebiten.Image) {
 }
 
 func (g *Game) drawGame(screen *ebiten.Image) {
+	// Apply screen shake
+	shakeX := 0.0
+	if g.screenShake > 0 {
+		shakeX = (rand.Float64() - 0.5) * g.screenShake
+	}
+	
 	// Sky
 	for y := 0; y < ScreenHeight; y++ {
 		r := uint8(135 - y/10)
@@ -1128,7 +1257,7 @@ func (g *Game) drawGame(screen *ebiten.Image) {
 		vector.DrawFilledRect(screen, 0, float32(y), ScreenWidth, 1, color.RGBA{r, g, b, 255}, true)
 	}
 
-	camX := g.cameraX
+	camX := g.cameraX + shakeX
 
 	// Background decorations (parallax clouds)
 	for _, d := range g.decorations {
@@ -1351,6 +1480,18 @@ func (g *Game) drawHUD(screen *ebiten.Image) {
 		text.Draw(screen, fmt.Sprintf("Lives: %d", g.player.lives), gameAssets.gameFont, 320, 18, color.RGBA{100, 255, 100, 255})
 		text.Draw(screen, fmt.Sprintf("Coins: %d", g.player.coins), gameAssets.gameFont, 480, 18, color.RGBA{255, 215, 0, 255})
 		text.Draw(screen, fmt.Sprintf("Score: %d", g.player.score), gameAssets.gameFont, 650, 18, color.White)
+		
+		// Combo display
+		if g.player.combo > 1 && g.comboDisplay > 0 {
+			comboColor := color.RGBA{255, 100, 50, 255}
+			if g.player.combo >= 10 {
+				comboColor = color.RGBA{255, 50, 50, 255}
+			}
+			if g.player.combo >= 20 {
+				comboColor = color.RGBA{180, 50, 255, 255}
+			}
+			text.Draw(screen, fmt.Sprintf("🔥 COMBO x%d!", g.player.combo), gameAssets.gameFont, 480, 40, comboColor)
+		}
 
 		// Save hint
 		text.Draw(screen, "[S] Save", gameAssets.gameFont, 850, 18, color.RGBA{150, 150, 150, 255})
