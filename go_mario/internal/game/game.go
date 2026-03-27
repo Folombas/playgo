@@ -52,7 +52,6 @@ func NewGame() *Game {
 		assets:   assets.Get(),
 		world:    1,
 		levelNum: 1,
-		font:     nil, // Будет загружено при необходимости
 	}
 
 	g.startNewGame()
@@ -282,39 +281,22 @@ func (g *Game) Draw(screen *ebiten.Image) {
 
 // drawMenu рисует меню
 func (g *Game) drawMenu(screen *ebiten.Image) {
-	// Заголовок
-	title := "GO MARIO"
-	titleWidth := len(title) * 20
-	
-	// Используем шрифт по умолчанию если GameFont не загружен
 	fontToUse := g.assets.GameFont
 	if fontToUse == nil {
-		// Рисуем заголовок в центре
-		ebitenutil.DebugPrintAt(screen, title, (ScreenWidth-titleWidth)/2, 200)
-		
-		// Инструкция
-		instruction := "Press ENTER to start"
-		instWidth := len(instruction) * 10
-		ebitenutil.DebugPrintAt(screen, instruction, (ScreenWidth-instWidth)/2, 400)
-		
-		// Управление
-		controls := []string{
-			"Controls:",
-			"Arrow Keys / WASD - Move",
-			"Space / W - Jump",
-			"S / Down - Duck",
-		}
-		for i, line := range controls {
-			ebitenutil.DebugPrintAt(screen, line, 100, 500+i*40)
-		}
+		fontToUse = g.font
+	}
+	if fontToUse == nil {
 		return
 	}
 	
+	// Заголовок
+	title := "GO MARIO"
+	titleWidth := len(title) * 7
 	text.Draw(screen, title, fontToUse, (ScreenWidth-titleWidth)/2, 200, color.White)
 
 	// Инструкция
 	instruction := "Press ENTER to start"
-	instWidth := len(instruction) * 12
+	instWidth := len(instruction) * 7
 	text.Draw(screen, instruction, fontToUse, (ScreenWidth-instWidth)/2, 400, color.White)
 
 	// Управление
@@ -326,7 +308,7 @@ func (g *Game) drawMenu(screen *ebiten.Image) {
 	}
 
 	for i, line := range controls {
-		text.Draw(screen, line, fontToUse, 100, 500+i*40, color.White)
+		text.Draw(screen, line, fontToUse, 100, 500+i*20, color.White)
 	}
 }
 
@@ -572,16 +554,9 @@ func (g *Game) drawUI(screen *ebiten.Image) {
 
 	fontToUse := g.assets.GameFont
 	if fontToUse == nil {
-		// Используем DebugPrint если шрифт не загружен
-		scoreText := fmt.Sprintf("SCORE: %06d", g.player.Score)
-		coinText := fmt.Sprintf("COINS: %d", g.player.Coins)
-		livesText := fmt.Sprintf("LIVES: %d", g.player.Lives)
-		levelText := fmt.Sprintf("WORLD %d-%d", g.world, g.levelNum)
-		
-		ebitenutil.DebugPrintAt(screen, scoreText, 20, 30)
-		ebitenutil.DebugPrintAt(screen, coinText, 300, 30)
-		ebitenutil.DebugPrintAt(screen, livesText, 500, 30)
-		ebitenutil.DebugPrintAt(screen, levelText, 700, 30)
+		fontToUse = g.font
+	}
+	if fontToUse == nil {
 		return
 	}
 
@@ -609,27 +584,25 @@ func (g *Game) drawGameOver(screen *ebiten.Image) {
 
 	fontToUse := g.assets.GameFont
 	if fontToUse == nil {
-		// Используем DebugPrint если шрифт не загружен
-		ebitenutil.DebugPrintAt(screen, "GAME OVER", ScreenWidth/2-50, 300)
-		scoreText := fmt.Sprintf("Final Score: %d", g.player.Score)
-		ebitenutil.DebugPrintAt(screen, scoreText, ScreenWidth/2-60, 400)
-		ebitenutil.DebugPrintAt(screen, "Press ENTER to restart", ScreenWidth/2-80, 500)
+		fontToUse = g.font
+	}
+	if fontToUse == nil {
 		return
 	}
 
 	// Текст GAME OVER
 	gameOver := "GAME OVER"
-	goWidth := len(gameOver) * 20
+	goWidth := len(gameOver) * 7
 	text.Draw(screen, gameOver, fontToUse, (ScreenWidth-goWidth)/2, 300, color.RGBA{255, 0, 0, 255})
 
 	// Счёт
 	scoreText := fmt.Sprintf("Final Score: %d", g.player.Score)
-	sw := len(scoreText) * 12
+	sw := len(scoreText) * 7
 	text.Draw(screen, scoreText, fontToUse, (ScreenWidth-sw)/2, 400, color.White)
 
 	// Инструкция
 	restart := "Press ENTER to restart"
-	rw := len(restart) * 12
+	rw := len(restart) * 7
 	text.Draw(screen, restart, fontToUse, (ScreenWidth-rw)/2, 500, color.White)
 }
 
@@ -640,27 +613,25 @@ func (g *Game) drawWin(screen *ebiten.Image) {
 
 	fontToUse := g.assets.GameFont
 	if fontToUse == nil {
-		// Используем DebugPrint если шрифт не загружен
-		ebitenutil.DebugPrintAt(screen, "YOU WIN!", ScreenWidth/2-40, 300)
-		scoreText := fmt.Sprintf("Final Score: %d", g.player.Score)
-		ebitenutil.DebugPrintAt(screen, scoreText, ScreenWidth/2-60, 400)
-		ebitenutil.DebugPrintAt(screen, "Press ENTER to menu", ScreenWidth/2-70, 500)
+		fontToUse = g.font
+	}
+	if fontToUse == nil {
 		return
 	}
 
 	// Текст WIN
 	win := "YOU WIN!"
-	wWidth := len(win) * 20
+	wWidth := len(win) * 7
 	text.Draw(screen, win, fontToUse, (ScreenWidth-wWidth)/2, 300, color.RGBA{255, 215, 0, 255})
 
 	// Счёт
 	scoreText := fmt.Sprintf("Final Score: %d", g.player.Score)
-	sw := len(scoreText) * 12
+	sw := len(scoreText) * 7
 	text.Draw(screen, scoreText, fontToUse, (ScreenWidth-sw)/2, 400, color.White)
 
 	// Инструкция
 	menu := "Press ENTER to menu"
-	mw := len(menu) * 12
+	mw := len(menu) * 7
 	text.Draw(screen, menu, fontToUse, (ScreenWidth-mw)/2, 500, color.White)
 }
 

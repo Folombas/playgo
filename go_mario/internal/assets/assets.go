@@ -9,6 +9,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"golang.org/x/image/font"
+	"golang.org/x/image/font/basicfont"
 )
 
 // Assets хранит все загруженные ресурсы игры
@@ -266,9 +267,8 @@ func (a *Assets) Load() error {
 		return fmt.Errorf("failed to load background: %w", err)
 	}
 
-	// Загрузка шрифта
-	// Используем встроенный шрифт Ebitengine
-	a.GameFont = nil // Будет использован шрифт по умолчанию
+	// Загрузка шрифта - используем встроенный шрифт Ebitengine
+	a.GameFont = basicfont.Face7x13
 
 	return nil
 }
