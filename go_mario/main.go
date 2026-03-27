@@ -1139,14 +1139,15 @@ func (g *Game) drawGame(screen *ebiten.Image, shakeX, shakeY float64) {
 	px := p.x - camX + shakeX
 	py := p.y + shakeY
 
+	// Рисуем игрока
 	if p.invincible > 0 && (g.frame/4)%2 == 0 {
-		// Пропускаем отрисовку
+		// Пропускаем отрисовку при мигании
 	} else {
 		var img *ebiten.Image
 		if !p.onGround {
 			img = getSprite("player_jump")
-		} else if p.vx != 0 {
-			// Используем правильно нарезанные кадры ходьбы!
+		} else if p.vx != 0 && p.walkAnimTimer > 0 {
+			// Используем правильно нарезанные кадры ходьбы
 			img = getWalkSprite(p.walkFrame)
 		} else {
 			img = getSprite("player_stand")
@@ -1165,26 +1166,33 @@ func (g *Game) drawGame(screen *ebiten.Image, shakeX, shakeY float64) {
 			screen.DrawImage(img, op)
 		}
 
-		// Рисуем оружие
+		// Рисуем оружие ТОЛЬКО если оно есть
 		if p.weapon != WeaponNone {
 			weaponX := float32(px)
+			weaponY := float32(py + p.height/2 - 3)
 			if p.facing > 0 {
-				weaponX += float32(p.width)
+				weaponX += float32(p.width - 5)
 			} else {
-				weaponX -= 10
+				weaponX -= 15
 			}
-			weaponY := float32(py + p.height/2)
 
 			var weaponColor color.RGBA
+			var weaponW, weaponH float32
 			switch p.weapon {
 			case WeaponSword:
 				weaponColor = color.RGBA{200, 200, 200, 255}
+				weaponW = 25
+				weaponH = 4
 			case WeaponGun:
 				weaponColor = color.RGBA{100, 100, 100, 255}
+				weaponW = 18
+				weaponH = 5
 			case WeaponBlaster:
 				weaponColor = color.RGBA{0, 255, 255, 255}
+				weaponW = 20
+				weaponH = 6
 			}
-			vector.DrawFilledRect(screen, weaponX, weaponY, 20, 6, weaponColor, false)
+			vector.DrawFilledRect(screen, weaponX, weaponY, weaponW, weaponH, weaponColor, false)
 		}
 	}
 
