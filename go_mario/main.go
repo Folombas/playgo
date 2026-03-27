@@ -288,9 +288,11 @@ func (g *Game) generateLevel() {
 			groundY = 11 // Выше
 		}
 
-		g.tiles = append(g.tiles, &Tile{x: x, y: groundY, id: 1})  // grass
+		g.tiles = append(g.tiles, &Tile{x: x, y: groundY, id: 1})   // grass
 		g.tiles = append(g.tiles, &Tile{x: x, y: groundY + 1, id: 4}) // dirt
 		g.tiles = append(g.tiles, &Tile{x: x, y: groundY + 2, id: 5}) // dirt
+		g.tiles = append(g.tiles, &Tile{x: x, y: groundY + 3, id: 5}) // dirt - ещё ряд!
+		g.tiles = append(g.tiles, &Tile{x: x, y: groundY + 4, id: 5}) // dirt - ещё ряд!
 	}
 
 	// Платформы из разных тайлов
