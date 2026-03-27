@@ -241,6 +241,7 @@ type Game struct {
 	frame   int
 	state   int // 0=menu, 1=playing, 2=gameover, 3=win
 	level   int
+	cloudOffset float64 // Для движущихся облаков
 }
 
 func NewGame() *Game {
@@ -432,6 +433,7 @@ func (g *Game) Update() error {
 
 	g.updatePlayer()
 	g.updateCamera()
+	g.updateClouds()
 	g.updateEnemies()
 	g.checkCollisions()
 
@@ -520,6 +522,14 @@ func (g *Game) updateCamera() {
 	maxX := float64(g.levelW*TileSize) - ScreenWidth
 	if g.cameraX > maxX {
 		g.cameraX = maxX
+	}
+}
+
+func (g *Game) updateClouds() {
+	// Облака двигаются туда-сюда
+	g.cloudOffset += 0.3
+	if g.cloudOffset > 200 {
+		g.cloudOffset = -200
 	}
 }
 
@@ -643,17 +653,24 @@ func (g *Game) drawGame(screen *ebiten.Image) {
 		}
 	}
 
-	// Облака (все 3 типа)
+	// Облака (все 3 типа) - ДВИЖУЩИЕСЯ!
 	for i := 0; i < 15; i++ {
-		x := float32((i*80 - int(camX*0.15)) % (ScreenWidth + 150))
-		if x < -150 {
-			x += ScreenWidth + 150
+		baseX := float64(i * 80)
+		// Движение туда-сюда
+		cloudX := baseX + g.cloudOffset + float64(i%5)*20
+		// Зацикливание
+		for cloudX < -150 {
+			cloudX += ScreenWidth + 300
 		}
+		for cloudX > ScreenWidth+150 {
+			cloudX -= ScreenWidth + 300
+		}
+		
 		y := float32(40 + i%4*25)
 		cloudName := fmt.Sprintf("cloud%d", (i%3)+1)
 		if sprites[cloudName] != nil {
 			op := &ebiten.DrawImageOptions{}
-			op.GeoM.Translate(float64(x), float64(y))
+			op.GeoM.Translate(cloudX, float64(y))
 			screen.DrawImage(sprites[cloudName], op)
 		}
 	}
