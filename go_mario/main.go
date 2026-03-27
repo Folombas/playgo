@@ -104,17 +104,9 @@ func loadAllSprites() {
 	// Brick
 	sprites["brick"], _, _ = ebitenutil.NewImageFromFile("assets/sprites/tiles/brickWall.png")
 
-	// Stone - используем dirt если stone нет
-	sprites["stone"], _, _ = ebitenutil.NewImageFromFile("assets/sprites/tiles/stone.png")
-	if sprites["stone"] == nil {
-		sprites["stone"], _, _ = ebitenutil.NewImageFromFile("assets/sprites/tiles/dirtMid.png")
-	}
-	sprites["stoneMid"], _, _ = ebitenutil.NewImageFromFile("assets/sprites/tiles/stoneMid.png")
-	if sprites["stoneMid"] == nil {
-		sprites["stoneMid"], _, _ = ebitenutil.NewImageFromFile("assets/sprites/tiles/dirtMid.png")
-	}
-
-	// Boxes
+	// Dirt
+	sprites["dirt"], _, _ = ebitenutil.NewImageFromFile("assets/sprites/tiles/dirt.png")
+	sprites["dirtMid"], _, _ = ebitenutil.NewImageFromFile("assets/sprites/tiles/dirtMid.png")
 	sprites["boxCoin"], _, _ = ebitenutil.NewImageFromFile("assets/sprites/tiles/boxCoin.png")
 	sprites["boxItem"], _, _ = ebitenutil.NewImageFromFile("assets/sprites/tiles/boxItem.png")
 	sprites["boxEmpty"], _, _ = ebitenutil.NewImageFromFile("assets/sprites/tiles/boxEmpty.png")
@@ -294,26 +286,25 @@ func (g *Game) generateLevel() {
 			groundY = 11 // Выше
 		}
 
-		g.tiles = append(g.tiles, &Tile{x: x, y: groundY, id: 1})   // grass
-		g.tiles = append(g.tiles, &Tile{x: x, y: groundY + 1, id: 4}) // dirt
-		g.tiles = append(g.tiles, &Tile{x: x, y: groundY + 2, id: 5}) // dirt
-		g.tiles = append(g.tiles, &Tile{x: x, y: groundY + 3, id: 5}) // dirt - ещё ряд!
-		g.tiles = append(g.tiles, &Tile{x: x, y: groundY + 4, id: 5}) // dirt - ещё ряд!
+		g.tiles = append(g.tiles, &Tile{x: x, y: groundY, id: 1})     // grass
+		g.tiles = append(g.tiles, &Tile{x: x, y: groundY + 1, id: 3}) // dirt
+		g.tiles = append(g.tiles, &Tile{x: x, y: groundY + 2, id: 4}) // dirtMid
+		g.tiles = append(g.tiles, &Tile{x: x, y: groundY + 3, id: 4}) // dirtMid
+		g.tiles = append(g.tiles, &Tile{x: x, y: groundY + 4, id: 4}) // dirtMid
 	}
 
-	// Платформы из разных тайлов
+	// Платформы из кирпичей
 	for x := 20; x < g.levelW-20; x += 25 {
 		platY := 7
 		platLen := 4 + rand.Intn(3)
-		tileType := 2 // brick
 
 		for i := 0; i < platLen; i++ {
-			g.tiles = append(g.tiles, &Tile{x: x + i, y: platY, id: tileType})
+			g.tiles = append(g.tiles, &Tile{x: x + i, y: platY, id: 2}) // brick
 		}
 
-		// Блоки с предметами
+		// Блоки с монетами
 		if rand.Float32() < 0.5 {
-			g.tiles = append(g.tiles, &Tile{x: x + 2, y: platY - 1, id: 7}) // boxCoin
+			g.tiles = append(g.tiles, &Tile{x: x + 2, y: platY - 1, id: 5}) // boxCoin
 		}
 
 		// Монеты над платформой
@@ -331,6 +322,11 @@ func (g *Game) generateLevel() {
 				y:     float64((platY-1)*TileSize - 20),
 				gtype: rand.Intn(4),
 			})
+		}
+
+		// Блоки с монетами (boxCoin)
+		if rand.Float32() < 0.3 {
+			g.tiles = append(g.tiles, &Tile{x: x + 1, y: platY - 1, id: 6}) // boxItem
 		}
 	}
 
@@ -691,28 +687,13 @@ func (g *Game) drawGame(screen *ebiten.Image) {
 		case 2:
 			img = sprites["brick"]
 		case 3:
-			img = sprites["stone"]
-			if img == nil {
-				img = sprites["brick"] // Запасной тайл
-			}
-		case 4:
 			img = sprites["dirt"]
-		case 5:
+		case 4:
 			img = sprites["dirtMid"]
-		case 6:
-			img = sprites["stoneMid"]
-			if img == nil {
-				img = sprites["dirtMid"] // Запасной тайл
-			}
-		case 7:
+		case 5:
 			img = sprites["boxCoin"]
-		case 8:
+		case 6:
 			img = sprites["boxItem"]
-		case 9:
-			img = sprites["spikes"]
-			if img == nil {
-				continue // Пропускаем, если нет спрайта
-			}
 		}
 
 		if img != nil {
