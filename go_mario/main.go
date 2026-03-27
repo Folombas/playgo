@@ -63,12 +63,12 @@ func initSpriteCache() {
 	spriteCache = make(map[string]*ebiten.Image)
 	walkSprites = make([]*ebiten.Image, 0)
 
-	// Игрок - СИНИЙ КОСМО-СОЛДАТ (p3)
-	spriteCache["player_stand"], _, _ = ebitenutil.NewImageFromFile("assets/sprites/mario/p3_stand.png")
-	spriteCache["player_jump"], _, _ = ebitenutil.NewImageFromFile("assets/sprites/mario/p3_jump.png")
+	// Игрок - ЗЕЛЁНЫЙ СОЛДАТ (p1)
+	spriteCache["player_stand"], _, _ = ebitenutil.NewImageFromFile("assets/sprites/mario/p1_stand.png")
+	spriteCache["player_jump"], _, _ = ebitenutil.NewImageFromFile("assets/sprites/mario/p1_jump.png")
 
 	// Спрайт-лист ходьбы
-	walkSheet, _, _ := ebitenutil.NewImageFromFile("assets/sprites/mario/walk/p3_walk.png")
+	walkSheet, _, _ := ebitenutil.NewImageFromFile("assets/sprites/mario/walk/p1_walk.png")
 	if walkSheet != nil {
 		bounds := walkSheet.Bounds()
 		frameWidth := bounds.Dx() / 2
@@ -79,7 +79,7 @@ func initSpriteCache() {
 		}
 	}
 
-	spriteCache["player_hurt"], _, _ = ebitenutil.NewImageFromFile("assets/sprites/mario/p3_hurt.png")
+	spriteCache["player_hurt"], _, _ = ebitenutil.NewImageFromFile("assets/sprites/mario/p1_hurt.png")
 
 	// Тайлы - ТРАВА И ЗЕМЛЯ
 	spriteCache["grass"], _, _ = ebitenutil.NewImageFromFile("assets/sprites/tiles/grassMid.png")
