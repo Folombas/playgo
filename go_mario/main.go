@@ -461,6 +461,7 @@ func (g *Game) updatePlayer() {
 	} else {
 		p.vx = 0
 		p.walkFrame = 0
+		p.walkAnimTimer = 0 // Сбрасываем таймер когда не идём
 	}
 
 	if (ebiten.IsKeyPressed(ebiten.KeySpace) || ebiten.IsKeyPressed(ebiten.KeyArrowUp) || ebiten.IsKeyPressed(ebiten.KeyW)) && p.walkAnimTimer == 0 {
@@ -1052,12 +1053,14 @@ func (g *Game) drawGame(screen *ebiten.Image, shakeX, shakeY float64) {
 	px := p.x - camX + shakeX
 	py := p.y + shakeY
 
+	// Рисуем игрока - ТОЛЬКО ОДИН РАЗ
 	if p.invincible > 0 && (g.frame/4)%2 == 0 {
+		// Пропускаем отрисовку при мигании
 	} else {
 		var img *ebiten.Image
 		if !p.onGround {
 			img = getSprite("player_jump")
-		} else if p.vx != 0 && p.walkAnimTimer > 0 {
+		} else if p.vx != 0 {
 			img = getWalkSprite(p.walkFrame)
 		} else {
 			img = getSprite("player_stand")
@@ -1073,6 +1076,7 @@ func (g *Game) drawGame(screen *ebiten.Image, shakeX, shakeY float64) {
 			if p.powerLevel == PowerSpeed {
 				op.ColorM.Scale(0.5, 1, 1.5, 1)
 			}
+			// Рисуем спрайт игрока
 			screen.DrawImage(img, op)
 		}
 
