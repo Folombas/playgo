@@ -4,6 +4,7 @@ package game
 import (
 	"fmt"
 	"image/color"
+	"math"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
@@ -345,10 +346,16 @@ func (g *Game) drawBackground(screen *ebiten.Image) {
 		return
 	}
 
+	bgWidth := float64(g.assets.Background.Bounds().Dx())
+	
 	// Рисуем фон с параллаксом (медленнее камеры)
-	bgX := -g.cameraX * 0.3
-
-	for x := bgX; x < ScreenWidth; x += float64(g.assets.Background.Bounds().Dx()) {
+	bgX := math.Mod(-g.cameraX*0.3, bgWidth)
+	if bgX < 0 {
+		bgX += bgWidth
+	}
+	
+	// Рисуем фон несколько раз чтобы заполнить экран
+	for x := bgX - bgWidth; x < ScreenWidth; x += bgWidth {
 		op := &ebiten.DrawImageOptions{}
 		op.GeoM.Translate(x, 0)
 		screen.DrawImage(g.assets.Background, op)
@@ -358,6 +365,11 @@ func (g *Game) drawBackground(screen *ebiten.Image) {
 // drawDecorations рисует декорации
 func (g *Game) drawDecorations(screen *ebiten.Image, cameraX float64) {
 	for _, dec := range g.level.Decorations {
+		// Проверка видимости в камере
+		if dec.X < cameraX-100 || dec.X > cameraX+ScreenWidth+100 {
+			continue
+		}
+		
 		var sprite *ebiten.Image
 		switch dec.Type {
 		case 0: // cloud
@@ -387,6 +399,13 @@ func (g *Game) drawDecorations(screen *ebiten.Image, cameraX float64) {
 // drawTiles рисует тайлы
 func (g *Game) drawTiles(screen *ebiten.Image, cameraX float64) {
 	for _, tile := range g.level.Tiles {
+		tileX := float64(tile.X * level.TileSize)
+		
+		// Проверка видимости в камере
+		if tileX < cameraX-level.TileSize || tileX > cameraX+ScreenWidth {
+			continue
+		}
+		
 		var sprite *ebiten.Image
 		switch tile.Type {
 		case level.TileGrassTop:
@@ -412,7 +431,7 @@ func (g *Game) drawTiles(screen *ebiten.Image, cameraX float64) {
 		if sprite != nil {
 			tileOp := &ebiten.DrawImageOptions{}
 			tileOp.GeoM.Translate(
-				float64(tile.X*level.TileSize)-cameraX,
+				tileX-cameraX,
 				float64(tile.Y*level.TileSize),
 			)
 			screen.DrawImage(sprite, tileOp)
@@ -424,6 +443,11 @@ func (g *Game) drawTiles(screen *ebiten.Image, cameraX float64) {
 func (g *Game) drawCoins(screen *ebiten.Image, cameraX float64) {
 	for _, coin := range g.level.Coins {
 		if coin.Collected {
+			continue
+		}
+
+		// Проверка видимости в камере
+		if coin.X < cameraX-50 || coin.X > cameraX+ScreenWidth+50 {
 			continue
 		}
 
@@ -449,6 +473,11 @@ func (g *Game) drawCoins(screen *ebiten.Image, cameraX float64) {
 func (g *Game) drawEnemies(screen *ebiten.Image, cameraX float64) {
 	for _, enemy := range g.level.Enemies {
 		if !enemy.Alive {
+			continue
+		}
+
+		// Проверка видимости в камере
+		if enemy.X < cameraX-50 || enemy.X > cameraX+ScreenWidth+50 {
 			continue
 		}
 
@@ -522,9 +551,16 @@ func (g *Game) drawPlayer(screen *ebiten.Image) {
 		sprite = g.assets.PlayerDuck
 	case player.AnimHurt:
 		sprite = g.assets.PlayerHurt
+	default:
+		sprite = g.assets.PlayerStand
 	}
 
 	if sprite == nil {
+		return
+	}
+
+	// Мигание при неуязвимости - пропускаем отрисовку
+	if g.player.Invincible && g.frame%6 < 3 {
 		return
 	}
 
@@ -538,11 +574,6 @@ func (g *Game) drawPlayer(screen *ebiten.Image) {
 
 	// Позиция с камерой
 	op.GeoM.Translate(g.player.X-g.cameraX, g.player.Y)
-
-	// Мигание при неуязвимости
-	if g.player.Invincible && g.frame%4 < 2 {
-		op.ColorM.Scale(1, 1, 1, 0.5)
-	}
 
 	screen.DrawImage(sprite, op)
 }
