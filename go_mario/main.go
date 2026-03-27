@@ -1,5 +1,5 @@
-// Go365 Day 87 - SUPER GO MARIO v3.0.0
-// Крутой 2D-платформер с боссами, power-ups, частицами и звуками!
+// Go365 Day 87 - SUPER GO MARIO v3.1.0
+// Оптимизированная версия с кэшированием спрайтов
 
 package main
 
@@ -46,6 +46,43 @@ const (
 	PowerFlower
 )
 
+// Кэш спрайтов
+var spriteCache map[string]*ebiten.Image
+
+func initSpriteCache() {
+	spriteCache = make(map[string]*ebiten.Image)
+
+	// Игрок
+	spriteCache["player_stand"], _, _ = ebitenutil.NewImageFromFile("assets/sprites/mario/p1_stand.png")
+	spriteCache["player_jump"], _, _ = ebitenutil.NewImageFromFile("assets/sprites/mario/p1_jump.png")
+	spriteCache["player_walk"], _, _ = ebitenutil.NewImageFromFile("assets/sprites/mario/p1_walk/p1_walk.png")
+
+	// Тайлы
+	spriteCache["grass"], _, _ = ebitenutil.NewImageFromFile("assets/sprites/tiles/grassMid.png")
+	spriteCache["dirt"], _, _ = ebitenutil.NewImageFromFile("assets/sprites/tiles/dirt.png")
+	spriteCache["brick"], _, _ = ebitenutil.NewImageFromFile("assets/sprites/tiles/brickWall.png")
+	spriteCache["box"], _, _ = ebitenutil.NewImageFromFile("assets/sprites/tiles/boxCoin.png")
+
+	// Враги
+	spriteCache["slime1"], _, _ = ebitenutil.NewImageFromFile("assets/sprites/enemies/slimeWalk1.png")
+	spriteCache["slime2"], _, _ = ebitenutil.NewImageFromFile("assets/sprites/enemies/slimeWalk2.png")
+	spriteCache["fly1"], _, _ = ebitenutil.NewImageFromFile("assets/sprites/enemies/flyFly1.png")
+	spriteCache["fly2"], _, _ = ebitenutil.NewImageFromFile("assets/sprites/enemies/flyFly2.png")
+
+	// Предметы
+	spriteCache["coin"], _, _ = ebitenutil.NewImageFromFile("assets/sprites/items/coinGold.png")
+	spriteCache["mushroom"], _, _ = ebitenutil.NewImageFromFile("assets/sprites/items/mushroomRed.png")
+	spriteCache["star"], _, _ = ebitenutil.NewImageFromFile("assets/sprites/items/star.png")
+	spriteCache["flower"], _, _ = ebitenutil.NewImageFromFile("assets/sprites/items/plantPurple.png")
+}
+
+func getSprite(name string) *ebiten.Image {
+	if spriteCache == nil {
+		initSpriteCache()
+	}
+	return spriteCache[name]
+}
+
 // Игрок
 type Player struct {
 	x, y         float64
@@ -80,7 +117,7 @@ type Tile struct {
 type Enemy struct {
 	x, y      float64
 	vx, vy    float64
-	enemyType int // 0=slime, 1=fly, 2=boss
+	enemyType int
 	alive     bool
 	animFrame int
 	health    int
@@ -107,7 +144,7 @@ type Particle struct {
 // Power-up
 type PowerUp struct {
 	x, y      float64
-	id        int // 0=mushroom, 1=star, 2=flower
+	id        int
 	alive     bool
 	animFrame int
 }
@@ -127,24 +164,25 @@ type Boss struct {
 
 // Игра
 type Game struct {
-	player     *Player
-	tiles      []*Tile
-	enemies    []*Enemy
-	coins      []*Coin
-	particles  []*Particle
-	powerUps   []*PowerUp
-	boss       *Boss
-	cameraX    float64
-	levelW     int
-	levelH     int
-	frame      int
-	state      int
-	world      int
-	level      int
-	flagX      float64
+	player      *Player
+	tiles       []*Tile
+	enemies     []*Enemy
+	coins       []*Coin
+	particles   []*Particle
+	powerUps    []*PowerUp
+	boss        *Boss
+	cameraX     float64
+	levelW      int
+	levelH      int
+	frame       int
+	state       int
+	world       int
+	level       int
+	flagX       float64
 	screenShake float64
-	comboText  int
-	highScore  int
+	comboText   int
+	highScore   int
+	walkFrame   int
 }
 
 // ============================================================================
@@ -154,24 +192,27 @@ type Game struct {
 func NewGame() *Game {
 	rand.Seed(time.Now().UnixNano())
 
+	if spriteCache == nil {
+		initSpriteCache()
+	}
+
 	g := &Game{
 		player: &Player{
 			x:         100,
 			y:         300,
 			width:     40,
-			height:     48,
+			height:    48,
 			facing:    1,
 			maxHealth: 3,
 			health:    3,
 			lives:     3,
 		},
-		state:   StateMenu,
-		world:   1,
-		level:   1,
-		levelH:  16,
+		state:  StateMenu,
+		world:  1,
+		level:  1,
+		levelH: 16,
 	}
 
-	g.loadHighScore()
 	g.startLevel()
 	return g
 }
@@ -202,9 +243,9 @@ func (g *Game) generateLevel() {
 			continue
 		}
 
-		g.tiles = append(g.tiles, &Tile{x: x, y: 13, id: 1}) // grass
-		g.tiles = append(g.tiles, &Tile{x: x, y: 14, id: 2}) // dirt
-		g.tiles = append(g.tiles, &Tile{x: x, y: 15, id: 2}) // dirt
+		g.tiles = append(g.tiles, &Tile{x: x, y: 13, id: 1})
+		g.tiles = append(g.tiles, &Tile{x: x, y: 14, id: 2})
+		g.tiles = append(g.tiles, &Tile{x: x, y: 15, id: 2})
 	}
 
 	// Платформы
@@ -212,9 +253,9 @@ func (g *Game) generateLevel() {
 		if x%12 < 4 && x%20 != 0 {
 			platY := 7 + rand.Intn(3)
 			for i := 0; i < 3+rand.Intn(2); i++ {
-				tileID := 3 // brick
+				tileID := 3
 				if rand.Float32() < 0.3 {
-					tileID = 4 // box
+					tileID = 4
 				}
 				g.tiles = append(g.tiles, &Tile{x: x + i, y: platY, id: tileID})
 			}
@@ -237,7 +278,7 @@ func (g *Game) generateLevel() {
 	for x := 20; x < g.levelW-15; x++ {
 		if rand.Float32() < 0.08 {
 			enemyType := rand.Intn(2)
-			enemyY := float64(12*TileSize)
+			enemyY := float64(12 * TileSize)
 			if enemyType == 1 && rand.Float32() < 0.5 {
 				enemyY = float64(6+rand.Intn(4)) * TileSize
 			}
@@ -257,17 +298,16 @@ func (g *Game) generateLevel() {
 		if rand.Float32() < 0.02 {
 			g.powerUps = append(g.powerUps, &PowerUp{
 				x:     float64(x*TileSize + 10),
-				y:     float64(10*TileSize),
+				y:     float64(10 * TileSize),
 				id:    rand.Intn(3),
 				alive: true,
 			})
 		}
 	}
 
-	// Флаг
 	g.flagX = float64((g.levelW - 8) * TileSize)
 
-	// Босс в конце каждого 3 уровня
+	// Босс
 	if g.level%3 == 0 {
 		g.state = StateBoss
 		g.boss = &Boss{
@@ -331,7 +371,7 @@ func (g *Game) Update() error {
 		g.updateParticles()
 		if g.boss == nil || !g.boss.alive {
 			g.player.score += 1000
-			g.spawnParticles(g.boss.x, g.boss.y, 50, color.RGBA{255, 100, 100, 255})
+			g.spawnParticles(g.boss.x+40, g.boss.y+40, 50, color.RGBA{255, 100, 100, 255})
 			g.boss = nil
 			g.level++
 			g.startLevel()
@@ -340,7 +380,6 @@ func (g *Game) Update() error {
 		return nil
 	}
 
-	// Playing
 	g.updatePlayer()
 	g.updateCamera()
 	g.updateEnemies()
@@ -350,7 +389,6 @@ func (g *Game) Update() error {
 	g.checkCollisions()
 	g.updateScreenShake()
 
-	// Проверка победы
 	if g.player.x > g.flagX {
 		g.level++
 		if g.level > 3 {
@@ -370,7 +408,6 @@ func (g *Game) Update() error {
 func (g *Game) updatePlayer() {
 	p := g.player
 
-	// Управление
 	if ebiten.IsKeyPressed(ebiten.KeyArrowRight) || ebiten.IsKeyPressed(ebiten.KeyD) {
 		p.vx = Speed
 		p.facing = 1
@@ -389,10 +426,8 @@ func (g *Game) updatePlayer() {
 		g.spawnParticles(p.x+p.width/2, p.y+p.height, 10, color.RGBA{255, 255, 255, 255})
 	}
 
-	// Стрельба (если есть flower power)
 	if inpututil.IsKeyJustPressed(ebiten.KeyZ) && p.powerLevel == PowerFlower && p.fireCooldown <= 0 {
 		p.fireCooldown = 30
-		// Создаём огненный шар
 		g.particles = append(g.particles, &Particle{
 			x:     p.x + p.width,
 			y:     p.y + p.height/2,
@@ -407,7 +442,6 @@ func (g *Game) updatePlayer() {
 		p.fireCooldown--
 	}
 
-	// Физика
 	p.vy += Gravity
 	if p.vy > 12 {
 		p.vy = 12
@@ -416,7 +450,6 @@ func (g *Game) updatePlayer() {
 	p.x += p.vx
 	p.y += p.vy
 
-	// Коллизии с тайлами
 	p.onGround = false
 	for _, t := range g.tiles {
 		tx := float64(t.x * TileSize)
@@ -436,7 +469,6 @@ func (g *Game) updatePlayer() {
 		}
 	}
 
-	// Границы
 	if p.x < 0 {
 		p.x = 0
 	}
@@ -444,12 +476,10 @@ func (g *Game) updatePlayer() {
 		p.x = float64(g.levelW*TileSize) - p.width
 	}
 
-	// Смерть от падения
 	if p.y > ScreenHeight+100 {
 		p.health = 0
 	}
 
-	// Обновление power timer
 	if p.powerTimer > 0 {
 		p.powerTimer--
 		if p.powerTimer <= 0 && p.powerLevel == PowerStar {
@@ -457,12 +487,10 @@ func (g *Game) updatePlayer() {
 		}
 	}
 
-	// Неуязвимость
 	if p.invincible > 0 {
 		p.invincible--
 	}
 
-	// Combo
 	if p.combo > 0 {
 		p.comboTimer--
 		if p.comboTimer <= 0 {
@@ -496,12 +524,10 @@ func (g *Game) updateEnemies() {
 		e.x += e.vx
 		e.animFrame++
 
-		// Разворот случайно
 		if rand.Float32() < 0.02 {
 			e.vx *= -1
 		}
 
-		// Гравитация для летающих
 		if e.enemyType == 1 {
 			e.vy += 0.2
 			if e.vy > 3 {
@@ -520,19 +546,16 @@ func (g *Game) updateBoss() {
 
 	p := g.player
 
-	// Движение к игроку
 	if p.x > b.x {
 		b.vx = 2
 	} else {
 		b.vx = -2
 	}
 
-	// Прыжок
 	if rand.Float32() < 0.03 && b.y >= 400 {
 		b.vy = -12
 	}
 
-	// Гравитация
 	b.vy += 0.5
 	if b.vy > 10 {
 		b.vy = 10
@@ -541,33 +564,28 @@ func (g *Game) updateBoss() {
 	b.x += b.vx
 	b.y += b.vy
 
-	// Пол
 	if b.y > 400 {
 		b.y = 400
 		b.vy = 0
 	}
 
-	// Атаки
 	b.attackTimer--
 	if b.attackTimer <= 0 {
 		b.attackTimer = 40
-		// Создаём снаряд
-		angle := -0.5
 		g.particles = append(g.particles, &Particle{
 			x:     b.x + 40,
 			y:     b.y + 40,
 			vx:    float64(p.facing) * 5,
-			vy:    angle,
+			vy:    -0.5,
 			life:  90,
 			color: color.RGBA{255, 50, 50, 255},
 			size:  15,
 		})
 	}
 
-	// Коллизия с игроком
 	if rectOverlap(p.x, p.y, p.width, p.height, b.x, b.y, 80, 80) {
 		if p.vy > 0 && p.y+p.height < b.y+40 {
-			b.health -= 1
+			b.health--
 			p.vy = -10
 			g.spawnParticles(b.x+40, b.y, 10, color.RGBA{255, 100, 100, 255})
 			g.screenShake = 5
@@ -622,7 +640,6 @@ func (g *Game) updateParticles() {
 func (g *Game) checkCollisions() {
 	p := g.player
 
-	// Монеты
 	for _, c := range g.coins {
 		if c.collected {
 			continue
@@ -635,14 +652,12 @@ func (g *Game) checkCollisions() {
 		}
 	}
 
-	// Враги
 	for _, e := range g.enemies {
 		if !e.alive {
 			continue
 		}
 		if rectOverlap(p.x, p.y, p.width, p.height, e.x, e.y, 36, 36) {
 			if p.vy > 0 && p.y+p.height < e.y+20 {
-				// Прыгнул сверху
 				e.alive = false
 				p.vy = -8
 				p.score += 200
@@ -655,7 +670,6 @@ func (g *Game) checkCollisions() {
 				g.spawnParticles(e.x+18, e.y+18, 15, color.RGBA{100, 255, 100, 255})
 				g.screenShake = 3
 			} else if p.invincible <= 0 {
-				// Получил урон
 				if p.powerLevel > 0 && p.powerLevel != PowerStar {
 					p.powerLevel--
 					p.invincible = 90
@@ -688,7 +702,6 @@ func (g *Game) checkCollisions() {
 		}
 	}
 
-	// Power-ups
 	for _, pu := range g.powerUps {
 		if !pu.alive {
 			continue
@@ -696,16 +709,16 @@ func (g *Game) checkCollisions() {
 		if rectOverlap(p.x, p.y, p.width, p.height, pu.x, pu.y, 32, 32) {
 			pu.alive = false
 			switch pu.id {
-			case 0: // Mushroom
+			case 0:
 				if p.powerLevel < PowerMushroom {
 					p.powerLevel = PowerMushroom
 					p.maxHealth++
 					p.health = p.maxHealth
 				}
-			case 1: // Star
+			case 1:
 				p.powerLevel = PowerStar
 				p.powerTimer = 600
-			case 2: // Flower
+			case 2:
 				p.powerLevel = PowerFlower
 			}
 			p.score += 500
@@ -713,11 +726,9 @@ func (g *Game) checkCollisions() {
 		}
 	}
 
-	// Частицы-снаряды (огненные шары)
 	for i := len(g.particles) - 1; i >= 0; i-- {
 		pt := g.particles[i]
 		if pt.color.R == 255 && pt.color.G == 100 && pt.color.B == 0 {
-			// Проверяем попадание во врагов
 			for _, e := range g.enemies {
 				if e.alive && rectOverlap(pt.x, pt.y, float64(pt.size), float64(pt.size), e.x, e.y, 36, 36) {
 					e.alive = false
@@ -726,7 +737,6 @@ func (g *Game) checkCollisions() {
 					pt.life = 0
 				}
 			}
-			// Проверяем попадание в босса
 			if g.boss != nil && g.boss.alive && rectOverlap(pt.x, pt.y, float64(pt.size), float64(pt.size), g.boss.x, g.boss.y, 80, 80) {
 				g.boss.health--
 				g.spawnParticles(g.boss.x+40, g.boss.y+40, 10, color.RGBA{255, 100, 100, 255})
@@ -775,14 +785,11 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	// Очистка
 	screen.Fill(color.RGBA{100, 149, 237, 255})
 
-	// Screen shake
+	// Screen shake offset
+	var shakeX, shakeY float64
 	if g.screenShake > 0 {
-		dx := (rand.Float64() - 0.5) * g.screenShake * 2
-		dy := (rand.Float64() - 0.5) * g.screenShake * 2
-		op := &ebiten.DrawImageOptions{}
-		op.GeoM.Translate(dx, dy)
-		screen = screen.SubImage(screen.Bounds()).(*ebiten.Image)
-		_ = op
+		shakeX = (rand.Float64() - 0.5) * g.screenShake * 2
+		shakeY = (rand.Float64() - 0.5) * g.screenShake * 2
 	}
 
 	switch g.state {
@@ -790,25 +797,25 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		g.drawMenu(screen)
 		return
 	case StateGameOver:
-		g.drawGame(screen)
+		g.drawGame(screen, shakeX, shakeY)
 		g.drawGameOver(screen)
 		return
 	case StateWin:
-		g.drawGame(screen)
+		g.drawGame(screen, shakeX, shakeY)
 		g.drawWin(screen)
 		return
 	}
 
-	g.drawGame(screen)
+	g.drawGame(screen, shakeX, shakeY)
 }
 
-func (g *Game) drawGame(screen *ebiten.Image) {
+func (g *Game) drawGame(screen *ebiten.Image, shakeX, shakeY float64) {
 	camX := g.cameraX
 
 	// Тайлы
 	for _, t := range g.tiles {
-		tx := float64(t.x*TileSize) - camX
-		ty := float64(t.y * TileSize)
+		tx := float64(t.x*TileSize) - camX + shakeX
+		ty := float64(t.y*TileSize) + shakeY
 
 		if tx < -TileSize || tx > ScreenWidth {
 			continue
@@ -817,13 +824,13 @@ func (g *Game) drawGame(screen *ebiten.Image) {
 		var img *ebiten.Image
 		switch t.id {
 		case 1:
-			img, _, _ = ebitenutil.NewImageFromFile("assets/sprites/tiles/grassMid.png")
+			img = getSprite("grass")
 		case 2:
-			img, _, _ = ebitenutil.NewImageFromFile("assets/sprites/tiles/dirt.png")
+			img = getSprite("dirt")
 		case 3:
-			img, _, _ = ebitenutil.NewImageFromFile("assets/sprites/tiles/brickWall.png")
+			img = getSprite("brick")
 		case 4:
-			img, _, _ = ebitenutil.NewImageFromFile("assets/sprites/tiles/boxCoin.png")
+			img = getSprite("box")
 		}
 
 		if img != nil {
@@ -838,15 +845,15 @@ func (g *Game) drawGame(screen *ebiten.Image) {
 		if c.collected {
 			continue
 		}
-		cx := c.x - camX
-		if cx < -32 || cx > ScreenWidth {
+		cx := c.x - camX + shakeX
+		if cx < -32 || cx > ScreenWidth+32 {
 			continue
 		}
 
-		img, _, _ := ebitenutil.NewImageFromFile("assets/sprites/items/coinGold.png")
+		img := getSprite("coin")
 		if img != nil {
 			op := &ebiten.DrawImageOptions{}
-			op.GeoM.Translate(cx, c.y)
+			op.GeoM.Translate(cx, c.y+shakeY)
 			screen.DrawImage(img, op)
 		}
 	}
@@ -856,25 +863,25 @@ func (g *Game) drawGame(screen *ebiten.Image) {
 		if !pu.alive {
 			continue
 		}
-		px := pu.x - camX
-		if px < -32 || px > ScreenWidth {
+		px := pu.x - camX + shakeX
+		if px < -32 || px > ScreenWidth+32 {
 			continue
 		}
 
 		var imgName string
 		switch pu.id {
 		case 0:
-			imgName = "assets/sprites/items/mushroomRed.png"
+			imgName = "mushroom"
 		case 1:
-			imgName = "assets/sprites/items/star.png"
+			imgName = "star"
 		case 2:
-			imgName = "assets/sprites/items/plantPurple.png"
+			imgName = "flower"
 		}
 
-		img, _, _ := ebitenutil.NewImageFromFile(imgName)
+		img := getSprite(imgName)
 		if img != nil {
 			op := &ebiten.DrawImageOptions{}
-			op.GeoM.Translate(px, pu.y)
+			op.GeoM.Translate(px, pu.y+shakeY)
 			screen.DrawImage(img, op)
 		}
 	}
@@ -884,7 +891,7 @@ func (g *Game) drawGame(screen *ebiten.Image) {
 		if !e.alive {
 			continue
 		}
-		ex := e.x - camX
+		ex := e.x - camX + shakeX
 		if ex < -50 || ex > ScreenWidth+50 {
 			continue
 		}
@@ -892,21 +899,21 @@ func (g *Game) drawGame(screen *ebiten.Image) {
 		var img *ebiten.Image
 		if e.enemyType == 0 {
 			if (e.animFrame/10)%2 == 0 {
-				img, _, _ = ebitenutil.NewImageFromFile("assets/sprites/enemies/slimeWalk1.png")
+				img = getSprite("slime1")
 			} else {
-				img, _, _ = ebitenutil.NewImageFromFile("assets/sprites/enemies/slimeWalk2.png")
+				img = getSprite("slime2")
 			}
 		} else {
 			if (e.animFrame/10)%2 == 0 {
-				img, _, _ = ebitenutil.NewImageFromFile("assets/sprites/enemies/flyFly1.png")
+				img = getSprite("fly1")
 			} else {
-				img, _, _ = ebitenutil.NewImageFromFile("assets/sprites/enemies/flyFly2.png")
+				img = getSprite("fly2")
 			}
 		}
 
 		if img != nil {
 			op := &ebiten.DrawImageOptions{}
-			op.GeoM.Translate(ex, e.y)
+			op.GeoM.Translate(ex, e.y+shakeY)
 			if e.vx > 0 {
 				op.GeoM.Scale(-1, 1)
 				op.GeoM.Translate(36, 0)
@@ -917,23 +924,24 @@ func (g *Game) drawGame(screen *ebiten.Image) {
 
 	// Босс
 	if g.boss != nil && g.boss.alive {
-		bx := g.boss.x - camX
-		// Рисуем босса как красный квадрат с глазами
-		vector.DrawFilledRect(screen, float32(bx), float32(g.boss.y), 80, 80, color.RGBA{255, 50, 50, 255}, false)
-		vector.DrawFilledRect(screen, float32(bx)+15, float32(g.boss.y)+20, 15, 15, color.RGBA{255, 255, 255, 255}, false)
-		vector.DrawFilledRect(screen, float32(bx)+50, float32(g.boss.y)+20, 15, 15, color.RGBA{255, 255, 255, 255}, false)
-		vector.DrawFilledRect(screen, float32(bx)+20, float32(g.boss.y)+25, 5, 5, color.RGBA{0, 0, 0, 255}, false)
-		vector.DrawFilledRect(screen, float32(bx)+55, float32(g.boss.y)+25, 5, 5, color.RGBA{0, 0, 0, 255}, false)
+		bx := float32(g.boss.x - camX + shakeX)
+		by := float32(g.boss.y + shakeY)
 
-		// Health bar
+		vector.DrawFilledRect(screen, bx, by, 80, 80, color.RGBA{255, 50, 50, 255}, false)
+		vector.DrawFilledRect(screen, bx+15, by+20, 15, 15, color.RGBA{255, 255, 255, 255}, false)
+		vector.DrawFilledRect(screen, bx+50, by+20, 15, 15, color.RGBA{255, 255, 255, 255}, false)
+		vector.DrawFilledRect(screen, bx+20, by+25, 5, 5, color.RGBA{0, 0, 0, 255}, false)
+		vector.DrawFilledRect(screen, bx+55, by+25, 5, 5, color.RGBA{0, 0, 0, 255}, false)
+
 		barW := float32(70 * g.boss.health / g.boss.maxHealth)
-		vector.DrawFilledRect(screen, float32(bx)+5, float32(g.boss.y)-15, 70, 8, color.RGBA{100, 100, 100, 255}, false)
-		vector.DrawFilledRect(screen, float32(bx)+5, float32(g.boss.y)-15, barW, 8, color.RGBA{255, 50, 50, 255}, false)
+		vector.DrawFilledRect(screen, bx+5, by-15, 70, 8, color.RGBA{100, 100, 100, 255}, false)
+		vector.DrawFilledRect(screen, bx+5, by-15, barW, 8, color.RGBA{255, 50, 50, 255}, false)
 	}
 
 	// Игрок
 	p := g.player
-	px := p.x - camX
+	px := p.x - camX + shakeX
+	py := p.y + shakeY
 
 	// Мигание при неуязвимости
 	if p.invincible > 0 && (g.frame/4)%2 == 0 {
@@ -941,15 +949,16 @@ func (g *Game) drawGame(screen *ebiten.Image) {
 	} else {
 		var img *ebiten.Image
 		if !p.onGround {
-			img, _, _ = ebitenutil.NewImageFromFile("assets/sprites/mario/p1_jump.png")
+			img = getSprite("player_jump")
 		} else if p.vx != 0 {
-			if (p.animFrame/8)%2 == 0 {
-				img, _, _ = ebitenutil.NewImageFromFile("assets/sprites/mario/p1_stand.png")
+			g.walkFrame++
+			if (g.walkFrame / 8) % 2 == 0 {
+				img = getSprite("player_stand")
 			} else {
-				img, _, _ = ebitenutil.NewImageFromFile("assets/sprites/mario/p1_walk/p1_walk.png")
+				img = getSprite("player_walk")
 			}
 		} else {
-			img, _, _ = ebitenutil.NewImageFromFile("assets/sprites/mario/p1_stand.png")
+			img = getSprite("player_stand")
 		}
 
 		if img != nil {
@@ -958,9 +967,8 @@ func (g *Game) drawGame(screen *ebiten.Image) {
 				op.GeoM.Scale(-1, 1)
 				op.GeoM.Translate(p.width, 0)
 			}
-			op.GeoM.Translate(px, p.y)
+			op.GeoM.Translate(px, py)
 
-			// Звёздный эффект
 			if p.powerLevel == PowerStar {
 				op.ColorM.Scale(1.5, 1.5, 0.5, 1)
 			}
@@ -971,23 +979,21 @@ func (g *Game) drawGame(screen *ebiten.Image) {
 
 	// Частицы
 	for _, pt := range g.particles {
-		ptx := float32(pt.x - camX)
-		pty := float32(pt.y)
+		ptx := float32(pt.x - camX + shakeX)
+		pty := float32(pt.y + shakeY)
 		vector.DrawFilledCircle(screen, ptx, pty, pt.size, pt.color, true)
 	}
 
 	// Флаг
-	fx := g.flagX - camX
+	fx := g.flagX - camX + shakeX
 	if fx > -50 && fx < ScreenWidth+50 {
 		flagColor := color.RGBA{0, 255, 0, 255}
-		vector.DrawFilledRect(screen, float32(fx), float32(g.flagX)-200, 5, 200, color.RGBA{139, 90, 43, 255}, false)
-		vector.DrawFilledRect(screen, float32(fx)+5, float32(g.flagX)-200, 40, 30, flagColor, false)
+		vector.DrawFilledRect(screen, float32(fx), float32(g.flagX+shakeY)-200, 5, 200, color.RGBA{139, 90, 43, 255}, false)
+		vector.DrawFilledRect(screen, float32(fx)+5, float32(g.flagX+shakeY)-200, 40, 30, flagColor, false)
 	}
 
-	// UI
 	g.drawUI(screen)
 
-	// Combo текст
 	if g.comboText > 0 && p.combo > 1 {
 		comboStr := fmt.Sprintf("COMBO x%d!", p.combo)
 		text.Draw(screen, comboStr, basicfont.Face7x13, ScreenWidth/2-30, 200, color.RGBA{255, 215, 0, 255})
@@ -1001,7 +1007,6 @@ func (g *Game) drawUI(screen *ebiten.Image) {
 	text.Draw(screen, fmt.Sprintf("SCORE: %06d", p.score), basicfont.Face7x13, 15, 30, color.White)
 	text.Draw(screen, fmt.Sprintf("COINS: %d", p.coins), basicfont.Face7x13, 250, 30, color.RGBA{255, 215, 0, 255})
 
-	// Hearts
 	hearts := ""
 	for i := 0; i < p.health; i++ {
 		hearts += "❤"
@@ -1010,7 +1015,6 @@ func (g *Game) drawUI(screen *ebiten.Image) {
 
 	text.Draw(screen, fmt.Sprintf("WORLD %d-%d", g.world, g.level), basicfont.Face7x13, 700, 30, color.White)
 
-	// Power level
 	if p.powerLevel > 0 {
 		powerStr := ""
 		switch p.powerLevel {
@@ -1026,16 +1030,10 @@ func (g *Game) drawUI(screen *ebiten.Image) {
 }
 
 func (g *Game) drawMenu(screen *ebiten.Image) {
-	// Заголовок
 	text.Draw(screen, "SUPER GO MARIO", basicfont.Face7x13, ScreenWidth/2-70, 150, color.RGBA{255, 215, 0, 255})
-
-	// Подзаголовок
-	text.Draw(screen, "v3.0.0 - Ultimate Edition", basicfont.Face7x13, ScreenWidth/2-80, 190, color.White)
-
-	// Инструкция
+	text.Draw(screen, "v3.1.0 - Optimized", basicfont.Face7x13, ScreenWidth/2-65, 190, color.White)
 	text.Draw(screen, "Press ENTER to start", basicfont.Face7x13, ScreenWidth/2-65, 300, color.White)
 
-	// Управление
 	controls := []string{
 		"CONTROLS:",
 		"Arrow Keys / WASD - Move",
@@ -1047,7 +1045,6 @@ func (g *Game) drawMenu(screen *ebiten.Image) {
 		text.Draw(screen, line, basicfont.Face7x13, ScreenWidth/2-80, 380+i*25, color.White)
 	}
 
-	// High score
 	text.Draw(screen, fmt.Sprintf("HIGH SCORE: %06d", g.highScore), basicfont.Face7x13, ScreenWidth/2-70, 550, color.RGBA{255, 215, 0, 255})
 }
 
@@ -1069,32 +1066,27 @@ func (g *Game) Layout(w, h int) (int, int) {
 	return ScreenWidth, ScreenHeight
 }
 
-// ============================================================================
-// SAVE SYSTEM
-// ============================================================================
-
 func (g *Game) saveHighScore() {
 	if g.player.score > g.highScore {
 		g.highScore = g.player.score
-		// В реальной игре нужно сохранять в файл
 	}
 }
 
 func (g *Game) loadHighScore() {
-	// В реальной игре нужно загружать из файла
 	g.highScore = 0
 }
 
-// ============================================================================
-// MAIN
-// ============================================================================
-
 func main() {
-	log.Println("🍄 SUPER GO MARIO v3.0.0 - Запуск...")
+	log.Println("🍄 SUPER GO MARIO v3.1.0 - Optimized Edition")
+	log.Println("🎮 Загрузка спрайтов...")
+
+	initSpriteCache()
+
+	log.Println("✅ Спрайты загружены!")
 	log.Println("🎮 Управление: WASD/Стрелки - движение, Пробел - прыжок, Z - огонь")
 
 	ebiten.SetWindowSize(ScreenWidth, ScreenHeight)
-	ebiten.SetWindowTitle("🍄 SUPER GO MARIO v3.0.0 | Go365 Day 87")
+	ebiten.SetWindowTitle("🍄 SUPER GO MARIO v3.1.0 | Go365 Day 87")
 
 	if err := ebiten.RunGame(NewGame()); err != nil {
 		log.Fatal(err)
