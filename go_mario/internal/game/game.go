@@ -285,12 +285,37 @@ func (g *Game) drawMenu(screen *ebiten.Image) {
 	// Заголовок
 	title := "GO MARIO"
 	titleWidth := len(title) * 20
-	text.Draw(screen, title, g.assets.GameFont, (ScreenWidth-titleWidth)/2, 200, color.White)
+	
+	// Используем шрифт по умолчанию если GameFont не загружен
+	fontToUse := g.assets.GameFont
+	if fontToUse == nil {
+		// Рисуем заголовок в центре
+		ebitenutil.DebugPrintAt(screen, title, (ScreenWidth-titleWidth)/2, 200)
+		
+		// Инструкция
+		instruction := "Press ENTER to start"
+		instWidth := len(instruction) * 10
+		ebitenutil.DebugPrintAt(screen, instruction, (ScreenWidth-instWidth)/2, 400)
+		
+		// Управление
+		controls := []string{
+			"Controls:",
+			"Arrow Keys / WASD - Move",
+			"Space / W - Jump",
+			"S / Down - Duck",
+		}
+		for i, line := range controls {
+			ebitenutil.DebugPrintAt(screen, line, 100, 500+i*40)
+		}
+		return
+	}
+	
+	text.Draw(screen, title, fontToUse, (ScreenWidth-titleWidth)/2, 200, color.White)
 
 	// Инструкция
 	instruction := "Press ENTER to start"
 	instWidth := len(instruction) * 12
-	text.Draw(screen, instruction, g.assets.GameFont, (ScreenWidth-instWidth)/2, 400, color.White)
+	text.Draw(screen, instruction, fontToUse, (ScreenWidth-instWidth)/2, 400, color.White)
 
 	// Управление
 	controls := []string{
@@ -301,7 +326,7 @@ func (g *Game) drawMenu(screen *ebiten.Image) {
 	}
 
 	for i, line := range controls {
-		text.Draw(screen, line, g.assets.GameFont, 100, 500+i*40, color.White)
+		text.Draw(screen, line, fontToUse, 100, 500+i*40, color.White)
 	}
 }
 
@@ -545,21 +570,36 @@ func (g *Game) drawUI(screen *ebiten.Image) {
 	// Панель UI
 	vector.DrawFilledRect(screen, 0, 0, ScreenWidth, 50, color.RGBA{0, 0, 0, 128}, false)
 
+	fontToUse := g.assets.GameFont
+	if fontToUse == nil {
+		// Используем DebugPrint если шрифт не загружен
+		scoreText := fmt.Sprintf("SCORE: %06d", g.player.Score)
+		coinText := fmt.Sprintf("COINS: %d", g.player.Coins)
+		livesText := fmt.Sprintf("LIVES: %d", g.player.Lives)
+		levelText := fmt.Sprintf("WORLD %d-%d", g.world, g.levelNum)
+		
+		ebitenutil.DebugPrintAt(screen, scoreText, 20, 30)
+		ebitenutil.DebugPrintAt(screen, coinText, 300, 30)
+		ebitenutil.DebugPrintAt(screen, livesText, 500, 30)
+		ebitenutil.DebugPrintAt(screen, levelText, 700, 30)
+		return
+	}
+
 	// Счёт
 	scoreText := fmt.Sprintf("SCORE: %06d", g.player.Score)
-	text.Draw(screen, scoreText, g.assets.GameFont, 20, 35, color.White)
+	text.Draw(screen, scoreText, fontToUse, 20, 35, color.White)
 
 	// Монеты
 	coinText := fmt.Sprintf("COINS: %d", g.player.Coins)
-	text.Draw(screen, coinText, g.assets.GameFont, 300, 35, color.White)
+	text.Draw(screen, coinText, fontToUse, 300, 35, color.White)
 
 	// Жизни
 	livesText := fmt.Sprintf("LIVES: %d", g.player.Lives)
-	text.Draw(screen, livesText, g.assets.GameFont, 500, 35, color.White)
+	text.Draw(screen, livesText, fontToUse, 500, 35, color.White)
 
 	// Мир и уровень
 	levelText := fmt.Sprintf("WORLD %d-%d", g.world, g.levelNum)
-	text.Draw(screen, levelText, g.assets.GameFont, 700, 35, color.White)
+	text.Draw(screen, levelText, fontToUse, 700, 35, color.White)
 }
 
 // drawGameOver рисует экран проигрыша
@@ -567,20 +607,30 @@ func (g *Game) drawGameOver(screen *ebiten.Image) {
 	// Полупрозрачный оверлей
 	vector.DrawFilledRect(screen, 0, 0, ScreenWidth, ScreenHeight, color.RGBA{0, 0, 0, 180}, false)
 
+	fontToUse := g.assets.GameFont
+	if fontToUse == nil {
+		// Используем DebugPrint если шрифт не загружен
+		ebitenutil.DebugPrintAt(screen, "GAME OVER", ScreenWidth/2-50, 300)
+		scoreText := fmt.Sprintf("Final Score: %d", g.player.Score)
+		ebitenutil.DebugPrintAt(screen, scoreText, ScreenWidth/2-60, 400)
+		ebitenutil.DebugPrintAt(screen, "Press ENTER to restart", ScreenWidth/2-80, 500)
+		return
+	}
+
 	// Текст GAME OVER
 	gameOver := "GAME OVER"
 	goWidth := len(gameOver) * 20
-	text.Draw(screen, gameOver, g.assets.GameFont, (ScreenWidth-goWidth)/2, 300, color.RGBA{255, 0, 0, 255})
+	text.Draw(screen, gameOver, fontToUse, (ScreenWidth-goWidth)/2, 300, color.RGBA{255, 0, 0, 255})
 
 	// Счёт
 	scoreText := fmt.Sprintf("Final Score: %d", g.player.Score)
 	sw := len(scoreText) * 12
-	text.Draw(screen, scoreText, g.assets.GameFont, (ScreenWidth-sw)/2, 400, color.White)
+	text.Draw(screen, scoreText, fontToUse, (ScreenWidth-sw)/2, 400, color.White)
 
 	// Инструкция
 	restart := "Press ENTER to restart"
 	rw := len(restart) * 12
-	text.Draw(screen, restart, g.assets.GameFont, (ScreenWidth-rw)/2, 500, color.White)
+	text.Draw(screen, restart, fontToUse, (ScreenWidth-rw)/2, 500, color.White)
 }
 
 // drawWin рисует экран победы
@@ -588,20 +638,30 @@ func (g *Game) drawWin(screen *ebiten.Image) {
 	// Полупрозрачный оверлей
 	vector.DrawFilledRect(screen, 0, 0, ScreenWidth, ScreenHeight, color.RGBA{0, 0, 0, 180}, false)
 
+	fontToUse := g.assets.GameFont
+	if fontToUse == nil {
+		// Используем DebugPrint если шрифт не загружен
+		ebitenutil.DebugPrintAt(screen, "YOU WIN!", ScreenWidth/2-40, 300)
+		scoreText := fmt.Sprintf("Final Score: %d", g.player.Score)
+		ebitenutil.DebugPrintAt(screen, scoreText, ScreenWidth/2-60, 400)
+		ebitenutil.DebugPrintAt(screen, "Press ENTER to menu", ScreenWidth/2-70, 500)
+		return
+	}
+
 	// Текст WIN
 	win := "YOU WIN!"
 	wWidth := len(win) * 20
-	text.Draw(screen, win, g.assets.GameFont, (ScreenWidth-wWidth)/2, 300, color.RGBA{255, 215, 0, 255})
+	text.Draw(screen, win, fontToUse, (ScreenWidth-wWidth)/2, 300, color.RGBA{255, 215, 0, 255})
 
 	// Счёт
 	scoreText := fmt.Sprintf("Final Score: %d", g.player.Score)
 	sw := len(scoreText) * 12
-	text.Draw(screen, scoreText, g.assets.GameFont, (ScreenWidth-sw)/2, 400, color.White)
+	text.Draw(screen, scoreText, fontToUse, (ScreenWidth-sw)/2, 400, color.White)
 
 	// Инструкция
 	menu := "Press ENTER to menu"
 	mw := len(menu) * 12
-	text.Draw(screen, menu, g.assets.GameFont, (ScreenWidth-mw)/2, 500, color.White)
+	text.Draw(screen, menu, fontToUse, (ScreenWidth-mw)/2, 500, color.White)
 }
 
 // Layout возвращает размеры экрана

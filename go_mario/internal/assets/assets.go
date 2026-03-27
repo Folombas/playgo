@@ -267,11 +267,8 @@ func (a *Assets) Load() error {
 	}
 
 	// Загрузка шрифта
-	a.GameFont, err = loadFont("assets/fonts/super-adorable-font.zip", 24)
-	if err != nil {
-		// Если шрифт не загрузился, используем дефолтный
-		fmt.Printf("Warning: failed to load font: %v, using default\n", err)
-	}
+	// Используем встроенный шрифт Ebitengine
+	a.GameFont = nil // Будет использован шрифт по умолчанию
 
 	return nil
 }
@@ -297,9 +294,9 @@ func loadWalkFrame(path string, frameIndex int) (*ebiten.Image, image.Point, err
 
 // loadFont загружает шрифт
 // Пока возвращает nil, так как шрифты в ZIP
+// В будущем можно реализовать распаковку
 func loadFont(path string, size int) (font.Face, error) {
-	// TODO: реализовать распаковку ZIP и загрузку шрифта
-	return nil, fmt.Errorf("font loading not implemented - using default")
+	return nil, fmt.Errorf("font loading not implemented")
 }
 
 // Reset сбрасывает глобальный экземпляр (для тестов)
