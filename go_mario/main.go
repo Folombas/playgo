@@ -81,11 +81,11 @@ func initSpriteCache() {
 
 	spriteCache["player_hurt"], _, _ = ebitenutil.NewImageFromFile("assets/sprites/mario/p3_hurt.png")
 
-	// Тайлы - КАМЕННЫЕ/ТЕХНО
-	spriteCache["grass"], _, _ = ebitenutil.NewImageFromFile("assets/sprites/tiles/stone.png")
-	spriteCache["dirt"], _, _ = ebitenutil.NewImageFromFile("assets/sprites/tiles/stoneLeft.png")
-	spriteCache["brick"], _, _ = ebitenutil.NewImageFromFile("assets/sprites/tiles/stoneWall.png")
-	spriteCache["box"], _, _ = ebitenutil.NewImageFromFile("assets/sprites/tiles/boxWarning.png")
+	// Тайлы - ТРАВА И ЗЕМЛЯ
+	spriteCache["grass"], _, _ = ebitenutil.NewImageFromFile("assets/sprites/tiles/grassMid.png")
+	spriteCache["dirt"], _, _ = ebitenutil.NewImageFromFile("assets/sprites/tiles/dirt.png")
+	spriteCache["brick"], _, _ = ebitenutil.NewImageFromFile("assets/sprites/tiles/brickWall.png")
+	spriteCache["box"], _, _ = ebitenutil.NewImageFromFile("assets/sprites/tiles/boxCoin.png")
 	spriteCache["chest"], _, _ = ebitenutil.NewImageFromFile("assets/sprites/tiles/boxItem.png")
 
 	// Враги - ДИНОЗАВРЫ/МОНСТРЫ
