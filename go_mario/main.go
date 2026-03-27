@@ -68,7 +68,7 @@ func initSpriteCache() {
 	spriteCache["player_jump"], _, _ = ebitenutil.NewImageFromFile("assets/sprites/mario/p1_jump.png")
 
 	// Загружаем спрайт-лист ходьбы и разрезаем на кадры
-	walkSheet, _, _ := ebitenutil.NewImageFromFile("assets/sprites/mario/p1_walk/p1_walk.png")
+	walkSheet, _, _ := ebitenutil.NewImageFromFile("assets/sprites/mario/walk/p1_walk.png")
 	if walkSheet != nil {
 		bounds := walkSheet.Bounds()
 		frameWidth := bounds.Dx() / 2 // 2 кадра
@@ -119,6 +119,10 @@ func getSprite(name string) *ebiten.Image {
 func getWalkSprite(frame int) *ebiten.Image {
 	if len(walkSprites) == 0 {
 		initSpriteCache()
+	}
+	// Если спрайты не загрузились, возвращаем stand
+	if len(walkSprites) == 0 {
+		return getSprite("player_stand")
 	}
 	if frame >= len(walkSprites) {
 		frame = 0
