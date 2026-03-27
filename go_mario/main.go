@@ -883,7 +883,7 @@ func (g *Game) drawGame(screen *ebiten.Image) {
 	// Флаг
 	flagX := float64((g.levelW-8)*TileSize) - camX
 	if flagX > -50 && flagX < ScreenWidth+50 {
-		vector.DrawFilledRect(screen, float32(flagX), 4*TileSize, 5, 8*TileSize, color.RGBA{139, 90, 43, 255}, false)
+		vector.DrawFilledRect(screen, float32(flagX), float32(4*TileSize), 5, float32(8*TileSize), color.RGBA{139, 90, 43, 255}, false)
 		flagName := "flagGreen"
 		if g.level%2 == 0 {
 			flagName = "flagRed"
@@ -892,7 +892,7 @@ func (g *Game) drawGame(screen *ebiten.Image) {
 		}
 		if sprites[flagName] != nil {
 			op := &ebiten.DrawImageOptions{}
-			op.GeoM.Translate(flagX+5, 4*TileSize)
+			op.GeoM.Translate(flagX+5, float64(4*TileSize))
 			screen.DrawImage(sprites[flagName], op)
 		}
 	}
@@ -901,7 +901,8 @@ func (g *Game) drawGame(screen *ebiten.Image) {
 }
 
 func (g *Game) drawUI(screen *ebiten.Image) {
-	vector.DrawFilledRect(screen, 0, 0, ScreenWidth, 45, color.RGBA{0, 0, 0, 200}, false)
+	// Полупрозрачная панель UI
+	vector.DrawFilledRect(screen, 0, 0, float32(ScreenWidth), 45, color.RGBA{0, 0, 0, 150}, false)
 
 	p := g.player
 	text.Draw(screen, fmt.Sprintf("SCORE: %06d", p.score), basicfont.Face7x13, 15, 30, color.White)
