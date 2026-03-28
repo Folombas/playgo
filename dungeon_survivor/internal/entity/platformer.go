@@ -30,6 +30,23 @@ type PlatformerPlayer struct {
 	OnGround  bool
 	Facing    int // 1 = вправо, -1 = влево
 	AnimFrame float64
+	Invincible float64 // Время неуязвимости
+	DoubleJump bool // Двойной прыжок
+	SpeedBoost float64 // Ускорение
+	ParticleTrail []ParticleEffect // Шлейф
+}
+
+// ParticleEffect представляет частицу эффекта
+type ParticleEffect struct {
+	X      float64
+	Y      float64
+	VX     float64
+	VY     float64
+	Life   float64
+	MaxLife float64
+	Color  color.Color
+	Size   float64
+	Type   string // "spark", "dust", "star", "heart"
 }
 
 // NewPlatformerPlayer создаёт нового игрока
@@ -46,6 +63,10 @@ func NewPlatformerPlayer(x, y float64) *PlatformerPlayer {
 		OnGround:  false,
 		Facing:    1,
 		AnimFrame: 0,
+		Invincible: 0,
+		DoubleJump: false,
+		SpeedBoost: 1.0,
+		ParticleTrail: make([]ParticleEffect, 0),
 	}
 }
 
@@ -118,10 +139,12 @@ type Platform struct {
 
 // Coin представляет монетку
 type Coin struct {
-	X        float64
-	Y        float64
-	Size     float64
+	X         float64
+	Y         float64
+	Size      float64
 	AnimFrame float64
+	Type      string // "coin", "gem", "powerup"
+	Powerup   string // "doublejump", "speed", "invincible"
 }
 
 // Flag представляет флаг победы
@@ -277,13 +300,27 @@ func (w *PlatformerWorld) GenerateLevel(level int) {
 			Type:   "grass",
 		})
 
-		// Монетки на платформах
+		// Монетки на платформах - разные типы!
 		if rng.Float64() < 0.8 {
+			coinType := "coin"
+			powerup := ""
+			
+			r := rng.Float64()
+			if r < 0.1 {
+				coinType = "gem" // 10% шанс
+			} else if r < 0.2 {
+				coinType = "powerup" // 10% шанс
+				powerups := []string{"doublejump", "speed", "invincible"}
+				powerup = powerups[rng.Intn(len(powerups))]
+			}
+			
 			w.Coins = append(w.Coins, Coin{
 				X:         x + width/2 - 10,
 				Y:         y - 30,
 				Size:      20,
 				AnimFrame: rng.Float64() * 10,
+				Type:      coinType,
+				Powerup:   powerup,
 			})
 		}
 
@@ -688,9 +725,29 @@ func (w *PlatformerWorld) drawGround(screen *ebiten.Image, cameraX float64) {
 func (w *PlatformerWorld) drawCoin(screen *ebiten.Image, x float64, coin *Coin) {
 	// Анимация вращения
 	scale := math.Abs(math.Sin(coin.AnimFrame))
+	
+	var coinColor color.Color
+	var size float64
+	
+	switch coin.Type {
+	case "gem":
+		coinColor = color.RGBA{255, 0, 255, 255}
+		size = 12 * scale
+	case "powerup":
+		coinColor = color.RGBA{0, 255, 255, 255}
+		size = 14 * scale
+	default:
+		coinColor = color.RGBA{255, 215, 0, 255}
+		size = 10 * scale
+	}
 
-	vector.DrawFilledCircle(screen, float32(x+10), float32(coin.Y+10), float32(10*scale), color.RGBA{255, 215, 0, 255}, true)
-	vector.DrawFilledCircle(screen, float32(x+10), float32(coin.Y+10), float32(6*scale), color.RGBA{255, 255, 150, 255}, true)
+	vector.DrawFilledCircle(screen, float32(x+10), float32(coin.Y+10), float32(size), coinColor, true)
+	vector.DrawFilledCircle(screen, float32(x+10), float32(coin.Y+10), float32(size*0.6), color.RGBA{255, 255, 255, 255}, true)
+	
+	// Сияние для бонусов
+	if coin.Type == "powerup" || coin.Type == "gem" {
+		vector.DrawFilledCircle(screen, float32(x+10), float32(coin.Y+10), float32(size*1.5), color.RGBA{255, 255, 255, 100}, true)
+	}
 }
 
 // drawLadder рисует лестницу из спрайта

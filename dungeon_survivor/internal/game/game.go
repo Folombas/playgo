@@ -42,17 +42,21 @@ func DefaultConfig() *Config {
 
 // Game представляет основную игру
 type Game struct {
-	config     *Config
-	state      State
-	player     *entity.PlatformerPlayer
-	world      *entity.PlatformerWorld
-	cameraX    float64
-	coins      int
-	lives      int
-	score      int
-	level      int
-	particles  []*Particle
-	rng        *rand.Rand
+	config      *Config
+	state       State
+	player      *entity.PlatformerPlayer
+	world       *entity.PlatformerWorld
+	cameraX     float64
+	coins       int
+	lives       int
+	score       int
+	level       int
+	particles   []*Particle
+	rng         *rand.Rand
+	screenShake float64 // Тряска экрана
+	flashAlpha  float64 // Вспышка
+	combo       int     // Комбо множитель
+	comboTimer  float64
 }
 
 // Particle представляет частицу
@@ -152,6 +156,43 @@ func (g *Game) updateGame() {
 	// Коллизии с миром
 	g.handleCollisions()
 
+	// Обновление комбо
+	if g.comboTimer > 0 {
+		g.comboTimer--
+	} else {
+		g.combo = 1
+	}
+
+	// Обновление неуязвимости
+	if g.player.Invincible > 0 {
+		g.player.Invincible--
+	}
+
+	// Обновление бустов
+	if g.player.SpeedBoost > 1.0 {
+		g.player.SpeedBoost -= 0.001
+		if g.player.SpeedBoost < 1.0 {
+			g.player.SpeedBoost = 1.0
+			g.player.Speed = 5.0
+		}
+	}
+
+	// Тряска экрана
+	if g.screenShake > 0 {
+		g.screenShake *= 0.9
+		if g.screenShake < 0.5 {
+			g.screenShake = 0
+		}
+	}
+
+	// Вспышка
+	if g.flashAlpha > 0 {
+		g.flashAlpha -= 0.02
+	}
+
+	// Обновление частиц игрока
+	g.updatePlayerParticles()
+
 	// Камера (слежение за игроком)
 	g.cameraX = g.player.X - float64(g.config.ScreenWidth)/3
 	if g.cameraX < 0 {
@@ -170,12 +211,15 @@ func (g *Game) updateGame() {
 	// Проверка падения в пропасть
 	if g.player.Y > float64(g.config.ScreenHeight)+100 {
 		g.lives--
+		g.screenShake = 10
+		g.flashAlpha = 0.3
 		if g.lives <= 0 {
 			g.state = StateGameOver
 		} else {
 			g.player.X = 100
 			g.player.Y = 500
 			g.player.VY = 0
+			g.player.Invincible = 180 // 3 секунды
 		}
 	}
 
@@ -187,6 +231,9 @@ func (g *Game) updateGame() {
 		g.player.Y = 500
 		g.player.VY = 0
 		g.cameraX = 0
+		g.screenShake = 15
+		g.flashAlpha = 0.8
+		g.spawnParticles(g.player.X+50, g.player.Y, 0, -3, 50, color.RGBA{255, 255, 255, 255})
 	}
 }
 
@@ -200,11 +247,46 @@ func (g *Game) handleInput() {
 		g.player.MoveRight()
 	}
 
-	// Прыжок
+	// Прыжок (двойной прыжок если доступен)
 	if (ebiten.IsKeyPressed(ebiten.KeyW) || ebiten.IsKeyPressed(ebiten.KeyUp) || ebiten.IsKeyPressed(ebiten.KeySpace)) && g.player.CanJump() {
 		g.player.Jump()
 		g.spawnParticles(g.player.X+g.player.Width/2, g.player.Y+g.player.Height, -1, -2, 10, color.RGBA{200, 200, 200, 255})
+	} else if (ebiten.IsKeyPressed(ebiten.KeyW) || ebiten.IsKeyPressed(ebiten.KeyUp)) && g.player.DoubleJump && !g.player.OnGround && g.player.VY > -5 {
+		g.player.VY = g.player.JumpForce * 0.8
+		g.player.DoubleJump = false
+		g.spawnParticles(g.player.X+g.player.Width/2, g.player.Y+g.player.Height, 0, -3, 15, color.RGBA{100, 200, 255, 255})
+		g.screenShake = 3
 	}
+}
+
+// updatePlayerParticles обновляет частицы игрока
+func (g *Game) updatePlayerParticles() {
+	// Шлейф при движении
+	if math.Abs(g.player.VX) > 3 {
+		g.player.ParticleTrail = append(g.player.ParticleTrail, entity.ParticleEffect{
+			X:      g.player.X + g.player.Width/2,
+			Y:      g.player.Y + g.player.Height,
+			VX:     -g.player.VX * 0.5,
+			VY:     g.rng.Float64() - 0.5,
+			Life:   1.0,
+			MaxLife: 1.0,
+			Color:  color.RGBA{100, 200, 255, 150},
+			Size:   5 + g.rng.Float64()*5,
+			Type:   "dust",
+		})
+	}
+
+	// Обновление частиц
+	activeParticles := make([]entity.ParticleEffect, 0)
+	for _, p := range g.player.ParticleTrail {
+		p.X += p.VX
+		p.Y += p.VY
+		p.Life -= 0.05
+		if p.Life > 0 {
+			activeParticles = append(activeParticles, p)
+		}
+	}
+	g.player.ParticleTrail = activeParticles
 }
 
 // applyPhysics применяет физику
@@ -302,14 +384,43 @@ func (g *Game) collectCoins() {
 	activeCoins := make([]entity.Coin, 0)
 	for _, coin := range g.world.Coins {
 		if g.checkCoinCollision(coin) {
-			g.coins++
-			g.score += 10
-			g.spawnParticles(coin.X+coin.Size/2, coin.Y+coin.Size/2, 0, -1, 8, color.RGBA{255, 215, 0, 255})
+			// Разные эффекты для разных типов монеток
+			if coin.Type == "gem" {
+				g.score += 50
+				g.screenShake = 5
+				g.spawnParticles(coin.X+coin.Size/2, coin.Y+coin.Size/2, 0, -2, 20, color.RGBA{255, 0, 255, 255})
+			} else if coin.Type == "powerup" {
+				g.activatePowerup(coin.Powerup)
+				g.flashAlpha = 0.5
+				g.spawnParticles(coin.X+coin.Size/2, coin.Y+coin.Size/2, 0, -1, 30, color.RGBA{0, 255, 255, 255})
+			} else {
+				g.coins++
+				g.score += 10 * g.combo
+				g.combo++
+				g.comboTimer = 120 // 2 секунды на 60 FPS
+				g.spawnParticles(coin.X+coin.Size/2, coin.Y+coin.Size/2, 0, -1, 8, color.RGBA{255, 215, 0, 255})
+			}
 		} else {
 			activeCoins = append(activeCoins, coin)
 		}
 	}
 	g.world.Coins = activeCoins
+}
+
+// activatePowerup активирует бонус
+func (g *Game) activatePowerup(powerup string) {
+	switch powerup {
+	case "doublejump":
+		g.player.DoubleJump = true
+		g.score += 100
+	case "speed":
+		g.player.SpeedBoost = 1.5
+		g.player.Speed = 7.5
+		g.score += 100
+	case "invincible":
+		g.player.Invincible = 300 // 5 секунд
+		g.score += 100
+	}
 }
 
 // checkCoinCollision проверяет коллизию с монеткой
@@ -362,25 +473,50 @@ func (g *Game) updateParticles() {
 
 // Draw отрисовывает игру
 func (g *Game) Draw(screen *ebiten.Image) {
+	// Тряска экрана
+	shakeX := 0.0
+	shakeY := 0.0
+	if g.screenShake > 0 {
+		shakeX = (g.rng.Float64() - 0.5) * g.screenShake * 2
+		shakeY = (g.rng.Float64() - 0.5) * g.screenShake * 2
+	}
+
 	// Небо (градиент)
 	for iy := 0; iy < g.config.ScreenHeight; iy++ {
 		ratio := float64(iy) / float64(g.config.ScreenHeight)
 		r := uint8(135 - ratio*35)
 		gr := uint8(206 - ratio*86)
-		b := uint8(235 - ratio*85)
-		vector.DrawFilledRect(screen, 0, float32(iy), float32(g.config.ScreenWidth), 1, color.RGBA{r, gr, b, 255}, true)
+		b := uint8(235)
+		vector.DrawFilledRect(screen, float32(shakeX), float32(float64(iy)+shakeY), float32(g.config.ScreenWidth), 1, color.RGBA{r, gr, b, 255}, true)
 	}
 
 	// Отрисовка мира
-	g.world.Draw(screen, g.cameraX)
+	g.world.Draw(screen, g.cameraX+shakeX)
 
-	// Отрисовка игрока
-	g.player.Draw(screen, g.cameraX)
+	// Отрисовка частиц игрока
+	for _, p := range g.player.ParticleTrail {
+		screenX := p.X - g.cameraX
+		alpha := uint8(p.Life * 255)
+		vector.DrawFilledRect(screen, float32(screenX-p.Size/2), float32(p.Y-p.Size/2), float32(p.Size), float32(p.Size), color.RGBA{100, 200, 255, alpha}, true)
+	}
+
+	// Отрисовка игрока (мигание если неуязвим)
+	if g.player.Invincible <= 0 || int(g.player.Invincible)%10 < 5 {
+		g.player.Draw(screen, g.cameraX+shakeX)
+	}
 
 	// Отрисовка частиц
 	for _, p := range g.particles {
 		screenX := p.X - g.cameraX
 		vector.DrawFilledRect(screen, float32(screenX-p.Size/2), float32(p.Y-p.Size/2), float32(p.Size), float32(p.Size), p.Color, true)
+	}
+
+	// Вспышка
+	if g.flashAlpha > 0 {
+		overlay := ebiten.NewImage(g.config.ScreenWidth, g.config.ScreenHeight)
+		overlay.Fill(color.RGBA{255, 255, 255, uint8(g.flashAlpha * 255)})
+		op := &ebiten.DrawImageOptions{}
+		screen.DrawImage(overlay, op)
 	}
 
 	// UI
@@ -435,12 +571,28 @@ func (g *Game) drawHUD(screen *ebiten.Image) {
 │  ❤️  Жизни: %3d           │
 │  ⭐ Счёт: %5d            │
 │  📍 Уровень: %2d          │
+│  🔥 Комбо: x%d           │
 └─────────────────────────┘
-
-[ESC] - Пауза
-`, g.coins, g.lives, g.score, g.level)
+`, g.coins, g.lives, g.score, g.level, g.combo)
 
 	ebitenutil.DebugPrint(screen, hudText)
+
+	// Индикаторы бонусов
+	y := 150
+	if g.player.DoubleJump {
+		vector.DrawFilledRect(screen, 10, float32(y), 180, 25, color.RGBA{0, 100, 255, 200}, true)
+		ebitenutil.DebugPrintAt(screen, "🦘 Двойной прыжок!", 20, y)
+		y += 30
+	}
+	if g.player.SpeedBoost > 1.0 {
+		vector.DrawFilledRect(screen, 10, float32(y), 180, 25, color.RGBA{255, 150, 0, 200}, true)
+		ebitenutil.DebugPrintAt(screen, "⚡ Скорость!", 20, y)
+		y += 30
+	}
+	if g.player.Invincible > 0 {
+		vector.DrawFilledRect(screen, 10, float32(y), 180, 25, color.RGBA{255, 255, 0, 200}, true)
+		ebitenutil.DebugPrintAt(screen, "✨ Неуязвимость!", 20, y)
+	}
 }
 
 // drawPause отрисовывает паузу
