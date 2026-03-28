@@ -1,3 +1,4 @@
+// Package entity содержит игровые сущности
 package entity
 
 import (
@@ -10,126 +11,64 @@ import (
 
 // Player представляет игрока
 type Player struct {
-	*Entity
-	Level        int
-	XP           float64
-	XPToLevel    float64
-	Damage       float64
-	AttackSpeed  float64 // атак в секунду
-	AttackTimer  float64
-	MoveSpeed    float64
-	Range        float64
-	PickupRange  float64
-	Luck         float64
-	Area         float64
+	X         float64
+	Y         float64
+	Width     float64
+	Height    float64
+	MoveSpeed float64
+	Direction float64 // Угол направления
+	AnimFrame float64
 }
 
 // NewPlayer создаёт нового игрока
 func NewPlayer(x, y float64) *Player {
 	return &Player{
-		Entity:      NewEntity(x, y, 32, 32, 0, 100, 10, color.RGBA{0, 150, 255, 255}),
-		Level:       1,
-		XP:          0,
-		XPToLevel:   20,
-		Damage:      15,
-		AttackSpeed: 1.0,
-		AttackTimer: 0,
-		MoveSpeed:   4.0,
-		Range:       200,
-		PickupRange: 100,
-		Luck:        0,
-		Area:        1.0,
+		X:         x,
+		Y:         y,
+		Width:     40,
+		Height:    40,
+		MoveSpeed: 5.0,
+		Direction: 0,
+		AnimFrame: 0,
 	}
 }
 
 // Update обновляет состояние игрока
 func (p *Player) Update() {
-	// Таймер атаки
-	if p.AttackTimer > 0 {
-		p.AttackTimer -= 1.0 / 60.0 // 60 FPS
-	}
+	p.AnimFrame += 0.1
 }
 
-// Draw отрисовывает игрока с деталями
-func (p *Player) Draw(screen *ebiten.Image) {
-	// Тело игрока (синий квадрат)
-	vector.DrawFilledRect(
-		screen,
-		float32(p.X-p.Width/2),
-		float32(p.Y-p.Height/2),
-		float32(p.Width),
-		float32(p.Height),
-		color.RGBA{0, 150, 255, 255},
-		true,
-	)
+// Draw отрисовывает игрока
+func (p *Player) Draw(screen *ebiten.Image, cameraX, cameraY float64) {
+	screenX := p.X - cameraX
+	screenY := p.Y - cameraY
+
+	// Тело (милый круглый персонаж)
+	vector.DrawFilledCircle(screen, float32(screenX), float32(screenY), float32(p.Width/2), color.RGBA{255, 200, 150, 255}, true)
 
 	// Глаза
-	eyeSize := float32(6)
-	vector.DrawFilledRect(screen, float32(p.X-8), float32(p.Y-4), eyeSize, eyeSize, color.White, true)
-	vector.DrawFilledRect(screen, float32(p.X+2), float32(p.Y-4), eyeSize, eyeSize, color.White, true)
+	eyeOffset := math.Cos(p.AnimFrame * 0.1) * 2
+	vector.DrawFilledCircle(screen, float32(screenX-8+eyeOffset), float32(screenY-5), 5, color.White, true)
+	vector.DrawFilledCircle(screen, float32(screenX+8+eyeOffset), float32(screenY-5), 5, color.White, true)
 
-	// Радиус атаки (полупрозрачный круг)
-	p.drawRangeCircle(screen)
-}
+	// Зрачки
+	vector.DrawFilledCircle(screen, float32(screenX-7+eyeOffset), float32(screenY-5), 2, color.Black, true)
+	vector.DrawFilledCircle(screen, float32(screenX+9+eyeOffset), float32(screenY-5), 2, color.Black, true)
 
-// drawRangeCircle рисует круг радиуса атаки
-func (p *Player) drawRangeCircle(screen *ebiten.Image) {
-	// Упрощённая визуализация - 4 точки по кругу
-	r := float32(p.Range)
-	cx, cy := float32(p.X), float32(p.Y)
+	// Румянец
+	vector.DrawFilledCircle(screen, float32(screenX-12), float32(screenY+3), 4, color.RGBA{255, 150, 150, 180}, true)
+	vector.DrawFilledCircle(screen, float32(screenX+12), float32(screenY+3), 4, color.RGBA{255, 150, 150, 180}, true)
 
-	points := []struct{ x, y float32 }{
-		{cx + r, cy},
-		{cx - r, cy},
-		{cx, cy + r},
-		{cx, cy - r},
+	// Улыбка (дуга из нескольких точек)
+	for i := -8; i <= 8; i += 2 {
+		yOffset := float32(5 + i*i/20)
+		vector.DrawFilledRect(screen, float32(screenX+float64(i)), float32(screenY)+yOffset, 2, 2, color.RGBA{150, 50, 50, 200}, true)
 	}
 
-	for _, pt := range points {
-		vector.DrawFilledRect(screen, pt.x-2, pt.y-2, 4, 4, color.RGBA{255, 100, 100, 100}, true)
+	// Ножки (анимация ходьбы)
+	if p.AnimFrame > 0 {
+		legOffset := math.Sin(p.AnimFrame) * 5
+		vector.DrawFilledRect(screen, float32(screenX-8), float32(screenY+18+legOffset), 6, 8, color.RGBA{200, 100, 50, 255}, true)
+		vector.DrawFilledRect(screen, float32(screenX+2), float32(screenY+18-legOffset), 6, 8, color.RGBA{200, 100, 50, 255}, true)
 	}
-}
-
-// CanAttack проверяет, может ли игрок атаковать
-func (p *Player) CanAttack() bool {
-	return p.AttackTimer <= 0
-}
-
-// ResetAttack сбрасывает таймер атаки
-func (p *Player) ResetAttack() {
-	p.AttackTimer = 1.0 / p.AttackSpeed
-}
-
-// AddXP добавляет опыт и повышает уровень
-func (p *Player) AddXP(amount float64) int {
-	p.XP += amount
-	levelsGained := 0
-
-	for p.XP >= p.XPToLevel {
-		p.XP -= p.XPToLevel
-		p.Level++
-		p.XPToLevel = float64(p.Level) * 20
-		levelsGained++
-
-		// Увеличение статов при повышении уровня
-		p.Damage += 2
-		p.MaxHP += 10
-		p.HP = p.MaxHP
-	}
-
-	return levelsGained
-}
-
-// AngleTo вычисляет угол до цели
-func (p *Player) AngleTo(targetX, targetY float64) float64 {
-	dx := targetX - p.X
-	dy := targetY - p.Y
-	return math.Atan2(dy, dx)
-}
-
-// DistanceTo вычисляет расстояние до точки
-func (p *Player) DistanceTo(x, y float64) float64 {
-	dx := x - p.X
-	dy := y - p.Y
-	return math.Sqrt(dx*dx + dy*dy)
 }

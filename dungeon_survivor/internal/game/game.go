@@ -1,4 +1,4 @@
-// Package game содержит основную игровую логику
+// Package game содержит основную игровую логику Kingdom Garden
 package game
 
 import (
@@ -20,8 +20,8 @@ const (
 	StateMenu State = iota
 	StatePlaying
 	StatePaused
-	StateGameOver
-	StateUpgrade
+	StateBuild
+	StateInventory
 )
 
 // Config содержит конфигурацию игры
@@ -29,6 +29,7 @@ type Config struct {
 	ScreenWidth  int
 	ScreenHeight int
 	TargetFPS    int
+	TileSize     int
 }
 
 // DefaultConfig возвращает конфигурацию по умолчанию
@@ -37,147 +38,196 @@ func DefaultConfig() *Config {
 		ScreenWidth:  1280,
 		ScreenHeight: 720,
 		TargetFPS:    60,
+		TileSize:     48,
 	}
 }
 
 // Game представляет основную игру
 type Game struct {
-	config       *Config
-	state        State
-	score        int
-	wave         int
-	waveTimer    float64
-	enemies      []*entity.Enemy
-	projectiles  []*entity.Projectile
-	player       *entity.Player
-	spawnTimer   float64
-	spawnRate    float64
-	rng          *rand.Rand
-	waveEnemies  int
-	wavesSurvived int
+	config      *Config
+	state       State
+	cameraX     float64
+	cameraY     float64
+	world       *entity.World
+	player      *entity.Player
+	clouds      []*entity.Cloud
+	particles   []*entity.Particle
+	animals     []*entity.Animal
+	dayTime     float64
+	season      Season
+	coins       int
+	unlocked    map[string]bool
+	rng         *rand.Rand
+	selectedItem string
+	buildMode   bool
 }
+
+// Season представляет время года
+type Season int
+
+const (
+	SeasonSpring Season = iota
+	SeasonSummer
+	SeasonFall
+	SeasonWinter
+)
 
 // NewGame создаёт новую игру
 func NewGame() *Game {
 	cfg := DefaultConfig()
-	return &Game{
-		config:      cfg,
-		state:       StateMenu,
-		score:       0,
-		wave:        1,
-		player:      entity.NewPlayer(640, 360),
-		enemies:     make([]*entity.Enemy, 0),
-		projectiles: make([]*entity.Projectile, 0),
-		spawnRate:   60.0,
-		rng:         rand.New(rand.NewSource(time.Now().UnixNano())),
+	entCfg := &entity.Config{
+		ScreenWidth:  cfg.ScreenWidth,
+		ScreenHeight: cfg.ScreenHeight,
+		TargetFPS:    cfg.TargetFPS,
+		TileSize:     cfg.TileSize,
 	}
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+
+	g := &Game{
+		config:    cfg,
+		state:     StateMenu,
+		world:     entity.NewWorld(entCfg),
+		player:    entity.NewPlayer(640, 360),
+		clouds:    make([]*entity.Cloud, 0),
+		particles: make([]*entity.Particle, 0),
+		animals:   make([]*entity.Animal, 0),
+		dayTime:   0.5, // 0-1, 0.5 = полдень
+		season:    SeasonSpring,
+		coins:     100,
+		unlocked:  make(map[string]bool),
+		rng:       rng,
+	}
+
+	// Инициализация облаков
+	for i := 0; i < 15; i++ {
+		g.clouds = append(g.clouds, entity.NewCloud(rng.Float64()*float64(cfg.ScreenWidth), rng.Float64()*200, rng))
+	}
+
+	// Инициализация животных
+	g.spawnAnimal("bunny", 400, 500)
+	g.spawnAnimal("bird", 800, 300)
+	g.spawnAnimal("butterfly", 600, 400)
+
+	// Размещение деревьев и растений
+	g.world.PlaceTree(300, 400)
+	g.world.PlaceTree(900, 350)
+	g.world.PlaceTree(500, 200)
+	g.world.PlaceFlower(400, 450, "pink")
+	g.world.PlaceFlower(420, 460, "yellow")
+	g.world.PlaceFlower(380, 470, "blue")
+	g.world.PlaceCastle(700, 250)
+
+	return g
 }
 
-// Update обновляет логику игры (вызывается каждый кадр)
+// spawnAnimal создаёт животное
+func (g *Game) spawnAnimal(animalType string, x, y float64) {
+	g.animals = append(g.animals, entity.NewAnimal(animalType, x, y, g.rng))
+}
+
+// Update обновляет логику игры
 func (g *Game) Update() error {
-	// Обработка ввода для смены состояний
+	// Обработка ввода
 	if ebiten.IsKeyPressed(ebiten.KeyEscape) {
 		switch g.state {
 		case StatePlaying:
 			g.state = StatePaused
-		case StatePaused:
+		case StatePaused, StateBuild, StateInventory:
 			g.state = StatePlaying
-		case StateMenu, StateGameOver:
+			g.buildMode = false
+		case StateMenu:
 			return ebiten.Termination
 		}
 	}
 
-	// Простой переход из меню в игру по пробелу
+	// Переход из меню в игру
 	if g.state == StateMenu && ebiten.IsKeyPressed(ebiten.KeySpace) {
-		g.resetGame()
 		g.state = StatePlaying
 	}
 
-	// Рестарт из Game Over
-	if g.state == StateGameOver && ebiten.IsKeyPressed(ebiten.KeySpace) {
-		g.resetGame()
-		g.state = StatePlaying
+	// Режим строительства
+	if g.state == StatePlaying && ebiten.IsKeyPressed(ebiten.KeyB) {
+		g.buildMode = !g.buildMode
+		if g.buildMode {
+			g.state = StateBuild
+		} else {
+			g.state = StatePlaying
+		}
+	}
+
+	// Инвентарь
+	if g.state == StatePlaying && ebiten.IsKeyPressed(ebiten.KeyI) {
+		if g.state == StateInventory {
+			g.state = StatePlaying
+		} else {
+			g.state = StateInventory
+		}
 	}
 
 	// Обновление игры
-	if g.state == StatePlaying {
+	if g.state == StatePlaying || g.state == StateBuild {
 		g.updateGame()
 	}
 
 	return nil
 }
 
-// resetGame сбрасывает игру в начальное состояние
-func (g *Game) resetGame() {
-	g.player = entity.NewPlayer(640, 360)
-	g.enemies = make([]*entity.Enemy, 0)
-	g.projectiles = make([]*entity.Projectile, 0)
-	g.score = 0
-	g.wave = 1
-	g.waveTimer = 0
-	g.spawnTimer = 0
-	g.spawnRate = 60.0
-	g.waveEnemies = 0
-	g.wavesSurvived = 0
-}
-
 // updateGame обновляет игровую логику
 func (g *Game) updateGame() {
+	// Обновление времени суток
+	g.dayTime += 0.0001
+	if g.dayTime > 1 {
+		g.dayTime = 0
+	}
+
 	// Обновление игрока
 	g.player.Update()
+
+	// Управление камерой (слежение за игроком)
+	g.cameraX = g.player.X - float64(g.config.ScreenWidth)/2
+	g.cameraY = g.player.Y - float64(g.config.ScreenHeight)/2
+
+	// Ограничение камеры границами мира
+	if g.cameraX < 0 {
+		g.cameraX = 0
+	}
+	if g.cameraY < 0 {
+		g.cameraY = 0
+	}
+	if g.cameraX > float64(g.world.Width*g.config.TileSize)-float64(g.config.ScreenWidth) {
+		g.cameraX = float64(g.world.Width*g.config.TileSize) - float64(g.config.ScreenWidth)
+	}
+	if g.cameraY > float64(g.world.Height*g.config.TileSize)-float64(g.config.ScreenHeight) {
+		g.cameraY = float64(g.world.Height*g.config.TileSize) - float64(g.config.ScreenHeight)
+	}
 
 	// Управление игроком
 	g.handleInput()
 
-	// Спавн врагов
-	g.spawnEnemies()
-
-	// Обновление врагов
-	for _, enemy := range g.enemies {
-		enemy.Update(g.player)
-
-		// Атака врага на игрока
-		if enemy.CanAttack() {
-			dist := g.player.DistanceTo(enemy.X, enemy.Y)
-			if dist < 30 { // Ближний бой
-				g.player.TakeDamage(enemy.Damage)
-				enemy.ResetAttack()
-			}
-		}
+	// Обновление облаков
+	for _, cloud := range g.clouds {
+		cloud.Update()
 	}
 
-	// Авто-атака игрока
-	g.playerAutoAttack()
-
-	// Обновление снарядов
-	for _, proj := range g.projectiles {
-		proj.Update()
-
-		// Коллизия с врагами
-		for _, enemy := range g.enemies {
-			if proj.IsActive && enemy.IsActive {
-				if g.checkCollision(proj.Entity, enemy.Entity) {
-					enemy.TakeDamage(proj.Damage)
-					proj.IsActive = false
-
-					if !enemy.IsActive {
-						g.score += int(enemy.XPValue * 10)
-						g.player.AddXP(enemy.XPValue)
-					}
-				}
-			}
-		}
+	// Обновление животных
+	for _, animal := range g.animals {
+		animal.Update()
 	}
 
-	// Очистка неактивных сущностей
-	g.cleanupEntities()
+	// Обновление частиц
+	g.updateParticles()
 
-	// Проверка волны
-	g.updateWave()
+	// Спавн новых животных
+	if g.rng.Float64() < 0.001 {
+		x := g.player.X + (g.rng.Float64()-0.5)*600
+		y := g.player.Y + (g.rng.Float64()-0.5)*400
+		types := []string{"bunny", "bird", "butterfly"}
+		g.spawnAnimal(types[g.rng.Intn(len(types))], x, y)
+	}
 
-	// Проверка проигрыша
-	if g.player.HP <= 0 {
-		g.state = StateGameOver
+	// Режим строительства
+	if g.buildMode {
+		g.handleBuildInput()
 	}
 }
 
@@ -198,149 +248,183 @@ func (g *Game) handleInput() {
 		g.player.X += speed
 	}
 
-	// Ограничение границами экрана
-	if g.player.X < g.player.Width/2 {
-		g.player.X = g.player.Width / 2
-	}
-	if g.player.X > float64(g.config.ScreenWidth)-g.player.Width/2 {
-		g.player.X = float64(g.config.ScreenWidth) - g.player.Width/2
-	}
-	if g.player.Y < g.player.Height/2 {
-		g.player.Y = g.player.Height / 2
-	}
-	if g.player.Y > float64(g.config.ScreenHeight)-g.player.Height/2 {
-		g.player.Y = float64(g.config.ScreenHeight) - g.player.Height/2
+	// Взаимодействие (посадка растения)
+	if ebiten.IsKeyPressed(ebiten.KeyE) {
+		g.plantSomething()
 	}
 }
 
-// spawnEnemies спавнит врагов
-func (g *Game) spawnEnemies() {
-	g.spawnTimer--
+// handleBuildInput обрабатывает ввод в режиме строительства
+func (g *Game) handleBuildInput() {
+	// Выбор предмета цифрами
+	if ebiten.IsKeyPressed(ebiten.Key1) {
+		g.selectedItem = "tree"
+	}
+	if ebiten.IsKeyPressed(ebiten.Key2) {
+		g.selectedItem = "flower"
+	}
+	if ebiten.IsKeyPressed(ebiten.Key3) {
+		g.selectedItem = "house"
+	}
+	if ebiten.IsKeyPressed(ebiten.Key4) {
+		g.selectedItem = "fence"
+	}
+	if ebiten.IsKeyPressed(ebiten.Key5) {
+		g.selectedItem = "path"
+	}
 
-	if g.spawnTimer <= 0 && g.waveEnemies < g.getWaveMaxEnemies() {
-		g.spawnEnemy()
-		g.spawnTimer = g.spawnRate
+	// Размещение левой кнопкой мыши
+	if ebiten.IsMouseButtonPressed(ebiten.MouseButtonLeft) {
+		mx, my := ebiten.CursorPosition()
+		worldX := float64(mx) + g.cameraX
+		worldY := float64(my) + g.cameraY
+		g.placeBuilding(worldX, worldY)
 	}
 }
 
-// spawnEnemy спавнит одного врага
-func (g *Game) spawnEnemy() {
-	// Спавн за пределами экрана
-	var x, y float64
-	side := g.rng.Intn(4)
+// plantSomething сажает растение рядом с игроком
+func (g *Game) plantSomething() {
+	types := []string{"flower", "tree", "bush"}
+	chosen := types[g.rng.Intn(len(types))]
 
-	switch side {
-	case 0: // Сверху
-		x = float64(g.rng.Intn(g.config.ScreenWidth))
-		y = -30
-	case 1: // Снизу
-		x = float64(g.rng.Intn(g.config.ScreenWidth))
-		y = float64(g.config.ScreenHeight) + 30
-	case 2: // Слева
-		x = -30
-		y = float64(g.rng.Intn(g.config.ScreenHeight))
-	case 3: // Справа
-		x = float64(g.config.ScreenWidth) + 30
-		y = float64(g.rng.Intn(g.config.ScreenHeight))
+	// Размещение перед игроком
+	offsetX := 50.0
+	offsetY := 0.0
+
+	targetX := g.player.X + offsetX
+	targetY := g.player.Y + offsetY
+
+	switch chosen {
+	case "flower":
+		colors := []string{"pink", "yellow", "blue", "red"}
+		g.world.PlaceFlower(targetX, targetY, colors[g.rng.Intn(len(colors))])
+		g.spawnParticles(targetX, targetY, 10, color.RGBA{255, 100, 200, 255})
+	case "tree":
+		g.world.PlaceTree(targetX, targetY)
+		g.spawnParticles(targetX, targetY, 15, color.RGBA{50, 200, 50, 255})
+	case "bush":
+		g.world.PlaceBush(targetX, targetY)
+		g.spawnParticles(targetX, targetY, 8, color.RGBA{100, 150, 50, 255})
 	}
 
-	enemyType := entity.GetEnemyTypeForWave(g.wave)
-	
-	// Босс спавнится в центре
-	if enemyType == entity.EnemyBoss {
-		x = float64(g.config.ScreenWidth) / 2
-		y = -50
-	}
-
-	enemy := entity.NewEnemy(x, y, enemyType)
-	g.enemies = append(g.enemies, enemy)
-	g.waveEnemies++
+	g.coins += 5 // Награда за посадку
 }
 
-// getWaveMaxEnemies возвращает макс. количество врагов в волне
-func (g *Game) getWaveMaxEnemies() int {
-	return 5 + g.wave*3
-}
-
-// playerAutoAttack реализует авто-атаку игрока
-func (g *Game) playerAutoAttack() {
-	if g.player.CanAttack() {
-		proj := entity.FromPlayerToEnemy(
-			g.player,
-			g.enemies,
-			entity.ProjectileBullet,
-			8.0,
-			g.player.Damage,
-			3.0,
-		)
-
-		if proj != nil {
-			g.projectiles = append(g.projectiles, proj)
-			g.player.ResetAttack()
+// placeBuilding размещает постройку
+func (g *Game) placeBuilding(x, y float64) {
+	switch g.selectedItem {
+	case "tree":
+		if g.coins >= 10 {
+			g.world.PlaceTree(x, y)
+			g.coins -= 10
+			g.spawnParticles(x, y, 10, color.RGBA{50, 200, 50, 255})
+		}
+	case "flower":
+		if g.coins >= 5 {
+			colors := []string{"pink", "yellow", "blue", "red", "purple"}
+			g.world.PlaceFlower(x, y, colors[g.rng.Intn(len(colors))])
+			g.coins -= 5
+			g.spawnParticles(x, y, 8, color.RGBA{255, 100, 200, 255})
+		}
+	case "house":
+		if g.coins >= 50 {
+			g.world.PlaceHouse(x, y)
+			g.coins -= 50
+			g.spawnParticles(x, y, 20, color.RGBA{200, 150, 100, 255})
+		}
+	case "fence":
+		if g.coins >= 3 {
+			g.world.PlaceFence(x, y)
+			g.coins -= 3
+		}
+	case "path":
+		if g.coins >= 2 {
+			g.world.PlacePath(x, y)
+			g.coins -= 2
 		}
 	}
 }
 
-// checkCollision проверяет коллизию между сущностями
-func (g *Game) checkCollision(a, b *entity.Entity) bool {
-	left1, right1, top1, bottom1 := a.Bounds()
-	left2, right2, top2, bottom2 := b.Bounds()
-
-	return left1 < right2 && right1 > left2 && top1 < bottom2 && bottom1 > top2
+// spawnParticles создаёт частицы
+func (g *Game) spawnParticles(x, y float64, count int, c color.Color) {
+	for i := 0; i < count; i++ {
+		g.particles = append(g.particles, entity.NewParticle(
+			x,
+			y,
+			(g.rng.Float64()-0.5)*4,
+			(g.rng.Float64()-0.5)*4,
+			c,
+		))
+	}
 }
 
-// cleanupEntities удаляет неактивные сущности
-func (g *Game) cleanupEntities() {
-	// Очистка врагов
-	activeEnemies := make([]*entity.Enemy, 0)
-	for _, e := range g.enemies {
-		if e.IsActive {
-			activeEnemies = append(activeEnemies, e)
+// updateParticles обновляет частицы
+func (g *Game) updateParticles() {
+	activeParticles := make([]*entity.Particle, 0)
+	for _, p := range g.particles {
+		p.Update()
+		if p.Life > 0 {
+			activeParticles = append(activeParticles, p)
 		}
 	}
-	g.enemies = activeEnemies
-
-	// Очистка снарядов
-	activeProjs := make([]*entity.Projectile, 0)
-	for _, p := range g.projectiles {
-		if p.IsActive {
-			activeProjs = append(activeProjs, p)
-		}
-	}
-	g.projectiles = activeProjs
+	g.particles = activeParticles
 }
 
-// updateWave обновляет состояние волны
-func (g *Game) updateWave() {
-	// Проверка завершения волны
-	if g.waveEnemies >= g.getWaveMaxEnemies() && len(g.enemies) == 0 {
-		g.wave++
-		g.waveEnemies = 0
-		g.wavesSurvived++
-		g.spawnRate = max(10, 60-float64(g.wave)*2)
-
-		// Лечение игрока между волнами
-		g.player.Heal(20)
-	}
-}
-
-// Draw отрисовывает игру (вызывается каждый кадр)
+// Draw отрисовывает игру
 func (g *Game) Draw(screen *ebiten.Image) {
-	// Очистка экрана (тёмно-фиолетовый фон подземелья)
-	screen.Fill(color.RGBA{20, 10, 40, 255})
+	// Очистка экрана (небо)
+	screen.Fill(g.getSkyColor())
 
+	// Отрисовка мира
+	g.world.Draw(screen, g.cameraX, g.cameraY)
+
+	// Отрисовка животных
+	for _, animal := range g.animals {
+		animal.Draw(screen, g.cameraX, g.cameraY)
+	}
+
+	// Отрисовка частиц
+	for _, p := range g.particles {
+		p.Draw(screen, g.cameraX, g.cameraY)
+	}
+
+	// Отрисовка игрока
+	g.player.Draw(screen, g.cameraX, g.cameraY)
+
+	// Отрисовка облаков
+	for _, cloud := range g.clouds {
+		cloud.Draw(screen)
+	}
+
+	// UI
 	switch g.state {
 	case StateMenu:
 		g.drawMenu(screen)
-	case StatePlaying, StatePaused:
-		g.drawGame(screen)
-		if g.state == StatePaused {
-			g.drawPause(screen)
+	case StatePlaying, StateBuild:
+		g.drawHUD(screen)
+		if g.buildMode {
+			g.drawBuildMenu(screen)
 		}
-	case StateGameOver:
-		g.drawGame(screen)
-		g.drawGameOver(screen)
+	case StateInventory:
+		g.drawHUD(screen)
+		g.drawInventory(screen)
+	case StatePaused:
+		g.drawHUD(screen)
+		g.drawPause(screen)
 	}
+}
+
+// getSkyColor возвращает цвет неба в зависимости от времени суток
+func (g *Game) getSkyColor() color.Color {
+	if g.dayTime < 0.25 || g.dayTime > 0.75 {
+		// Ночь
+		return color.RGBA{20, 20, 60, 255}
+	} else if g.dayTime < 0.3 || g.dayTime > 0.7 {
+		// Рассвет/закат
+		return color.RGBA{255, 150, 100, 255}
+	}
+	// День
+	return color.RGBA{100, 180, 255, 255}
 }
 
 // Layout возвращает размеры экрана
@@ -350,126 +434,126 @@ func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
 
 // drawMenu отрисовывает главное меню
 func (g *Game) drawMenu(screen *ebiten.Image) {
-	ebitenutil.DebugPrint(screen, `
-╔══════════════════════════════════════════╗
-║      🎮 DUNGEON SURVIVOR - GO90 🎮       ║
-║           Roguelike Adventure            ║
-╠══════════════════════════════════════════╣
-║                                          ║
-║         [SPACE] - Начать игру            ║
-║         [ESC] - Выход                    ║
-║                                          ║
-║   Управление: WASD или Стрелки           ║
-║                                          ║
-║   Выживай как можно дольше!              ║
-║   Собирай опыт, получай улучшения!       ║
-║                                          ║
-║   🗡️ Авто-атака                          ║
-║   👾 Орды врагов                         ║
-║   ⬆️ Улучшения                           ║
-║   💀 Permadeath                          ║
-║                                          ║
-╚══════════════════════════════════════════╝
-`)
+	title := `
+╔═══════════════════════════════════════════╗
+║      🌸 KINGDOM GARDEN 🏰                 ║
+║         Мир Сад Королевства               ║
+╠═══════════════════════════════════════════╣
+║                                           ║
+║      [SPACE] - Начать игру                ║
+║      [ESC] - Выход                        ║
+║                                           ║
+║  🎮 Управление:                           ║
+║     WASD / Стрелки - Перемещение          ║
+║     E - Посадить растение                 ║
+║     B - Режим строительства               ║
+║     I - Инвентарь                         ║
+║                                           ║
+║  🌸 Строй, сажай, украшай!                ║
+║  🦋 Никаких врагов - только красота!      ║
+║                                           ║
+╚═══════════════════════════════════════════╝
+`
+	ebitenutil.DebugPrint(screen, title)
 }
 
-// drawGame отрисовывает игровой процесс
-func (g *Game) drawGame(screen *ebiten.Image) {
-	// Отрисовка сущностей
-	for _, enemy := range g.enemies {
-		enemy.Draw(screen)
+// drawHUD отрисовывает интерфейс
+func (g *Game) drawHUD(screen *ebiten.Image) {
+	// Фон HUD
+	vector.DrawFilledRect(screen, 0, 0, 200, 120, color.RGBA{0, 0, 0, 150}, true)
+
+	hudText := fmt.Sprintf(`┌──────────────────┐
+│  🌸 KINGDOM      │
+├──────────────────┤
+│  💰 Монеты: %4d   │
+│  🏰 Построек: %3d │
+│  🌳 Деревьев: %3d │
+│  🌷 Цветов: %4d   │
+└──────────────────┘
+
+💰 +5 за посадку
+
+[B] Строительство
+[I] Инвентарь
+[ESC] Пауза
+`, g.coins, g.world.BuildingCount(), g.world.TreeCount(), g.world.FlowerCount())
+
+	ebitenutil.DebugPrint(screen, hudText)
+
+	// Выбранный предмет в режиме строительства
+	if g.buildMode {
+		itemText := fmt.Sprintf("🔨 Строим: %s", g.selectedItem)
+		ebitenutil.DebugPrintAt(screen, itemText, g.config.ScreenWidth-200, 20)
 	}
-
-	for _, proj := range g.projectiles {
-		proj.Draw(screen)
-	}
-
-	g.player.Draw(screen)
-
-	// UI
-	g.drawUI(screen)
 }
 
-// drawUI отрисовывает интерфейс
-func (g *Game) drawUI(screen *ebiten.Image) {
-	// Фон UI
-	vector.DrawFilledRect(screen, 0, 0, 220, 140, color.RGBA{0, 0, 0, 180}, true)
+// drawBuildMenu отрисовывает меню строительства
+func (g *Game) drawBuildMenu(screen *ebiten.Image) {
+	menu := `
+╔═══════════════════════════════════════╗
+║         🛠️ СТРОИТЕЛЬСТВО 🛠️            ║
+╠═══════════════════════════════════════╣
+║  [1] 🌳 Дерево (10💰)                 ║
+║  [2] 🌷 Цветок (5💰)                  ║
+║  [3] 🏠 Домик (50💰)                  ║
+║  [4] 🚪 Забор (3💰)                   ║
+║  [5] 🛤️ Дорожка (2💰)                 ║
+╠═══════════════════════════════════════╣
+║  ЛКМ - Разместить                     ║
+║  [B] - Выход                          ║
+╚═══════════════════════════════════════╝
+`
+	ebitenutil.DebugPrintAt(screen, menu, g.config.ScreenWidth/2-180, g.config.ScreenHeight/2-150)
+}
 
-	hpPercent := g.player.HP / g.player.MaxHP
-	xpPercent := g.player.XP / g.player.XPToLevel
+// drawInventory отрисовывает инвентарь
+func (g *Game) drawInventory(screen *ebiten.Image) {
+	// Полупрозрачный фон
+	overlay := ebiten.NewImage(g.config.ScreenWidth, g.config.ScreenHeight)
+	overlay.Fill(color.RGBA{0, 0, 0, 180})
 
-	uiText := fmt.Sprintf(`┌─────────────────────────┐
-│  DUNGEON SURVIVOR       │
-├─────────────────────────┤
-│  ❤️  HP: %3d/%3d %.0f%%   │
-│  ⭐ Level: %-3d          │
-│  📊 XP: %.0f%%            │
-│  🌊 Wave: %-3d           │
-│  💀 Killed: %-4d         │
-│  🏆 Score: %-6d          │
-└─────────────────────────┘
+	op := &ebiten.DrawImageOptions{}
+	screen.DrawImage(overlay, op)
 
-[ESC] - Пауза
-`, int(g.player.HP), int(g.player.MaxHP), hpPercent*100,
-		g.player.Level,
-		xpPercent*100,
-		g.wave,
-		len(g.enemies),
-		g.score)
-
-	ebitenutil.DebugPrint(screen, uiText)
+	invText := `
+╔═══════════════════════════════════════╗
+║            🎒 ИНВЕНТАРЬ 🎒            ║
+╠═══════════════════════════════════════╣
+║                                       ║
+║  🌳 Семена деревьев: ∞                ║
+║  🌷 Семена цветов: ∞                  ║
+║  🏠 Чертежи домов: 3                  ║
+║  🚪 Секции забора: 20                 ║
+║  🛤️ Плитки дорожки: 50                ║
+║                                       ║
+║  💰 Монеты: %d                         ║
+║                                       ║
+╠═══════════════════════════════════════╣
+║  [I] - Закрыть                        ║
+╚═══════════════════════════════════════╝
+`
+	ebitenutil.DebugPrintAt(screen, fmt.Sprintf(invText, g.coins), g.config.ScreenWidth/2-180, g.config.ScreenHeight/2-150)
 }
 
 // drawPause отрисовывает меню паузы
 func (g *Game) drawPause(screen *ebiten.Image) {
-	// Полупрозрачный оверлей
+	// Полупрозрачный фон
 	overlay := ebiten.NewImage(g.config.ScreenWidth, g.config.ScreenHeight)
 	overlay.Fill(color.RGBA{0, 0, 0, 128})
 
 	op := &ebiten.DrawImageOptions{}
 	screen.DrawImage(overlay, op)
 
-	ebitenutil.DebugPrint(screen, `
-╔══════════════════════════════════════════╗
-║                ⏸️ ПАУЗА                   ║
-╠══════════════════════════════════════════╣
-║                                          ║
-║      [ESC] - Продолжить                  ║
-║                                          ║
-╚══════════════════════════════════════════╝
-`)
-}
-
-// drawGameOver отрисовывает экран проигрыша
-func (g *Game) drawGameOver(screen *ebiten.Image) {
-	// Полупрозрачный оверлей
-	overlay := ebiten.NewImage(g.config.ScreenWidth, g.config.ScreenHeight)
-	overlay.Fill(color.RGBA{50, 0, 0, 180})
-
-	op := &ebiten.DrawImageOptions{}
-	screen.DrawImage(overlay, op)
-
-	gameOverText := fmt.Sprintf(`
-╔══════════════════════════════════════════╗
-║            💀 GAME OVER 💀               ║
-╠══════════════════════════════════════════╣
-║                                          ║
-║         Волн пережито: %-3d              ║
-║         Уровень: %-3d                    ║
-║         Счёт: %-6d                       ║
-║                                          ║
-║      [SPACE] - Начать заново             ║
-║      [ESC] - Выход в меню                ║
-║                                          ║
-╚══════════════════════════════════════════╝
-`, g.wavesSurvived, g.player.Level, g.score)
-
-	ebitenutil.DebugPrint(screen, gameOverText)
-}
-
-func max(a, b float64) float64 {
-	if a > b {
-		return a
-	}
-	return b
+	pauseText := `
+╔═══════════════════════════════════════╗
+║              ⏸️ ПАУЗА                  ║
+╠═══════════════════════════════════════╣
+║                                       ║
+║     [ESC] - Продолжить                ║
+║                                       ║
+║     Твой сад прекрасен! 🌸            ║
+║                                       ║
+╚═══════════════════════════════════════╝
+`
+	ebitenutil.DebugPrintAt(screen, pauseText, g.config.ScreenWidth/2-180, g.config.ScreenHeight/2-100)
 }
