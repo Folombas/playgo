@@ -26,6 +26,18 @@ func init() {
 	if err == nil {
 		entity.ObjectsSprite = objectsImg
 	}
+
+	// Спрайт игрока
+	playerImg, _, err := ebitenutil.NewImageFromFile("assets/8-bits-characters-gaming-assets.jpg")
+	if err == nil {
+		entity.PlayerSprite = playerImg
+	}
+
+	// Полоска здоровья
+	lifebarImg, _, err := ebitenutil.NewImageFromFile("assets/rad-rainbow-lifebar.png")
+	if err == nil {
+		entity.LifebarSprite = lifebarImg
+	}
 }
 
 func main() {

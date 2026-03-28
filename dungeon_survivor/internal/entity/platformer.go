@@ -17,6 +17,12 @@ var TerrainSprite *ebiten.Image
 // ObjectsSprite хранит загруженный спрайт объектов
 var ObjectsSprite *ebiten.Image
 
+// PlayerSprite хранит спрайт игрока
+var PlayerSprite *ebiten.Image
+
+// LifebarSprite хранит спрайт полоски здоровья
+var LifebarSprite *ebiten.Image
+
 // PlatformerPlayer представляет игрока в платформере
 type PlatformerPlayer struct {
 	X         float64
@@ -102,6 +108,35 @@ func (p *PlatformerPlayer) CanJump() bool {
 func (p *PlatformerPlayer) Draw(screen *ebiten.Image, cameraX float64) {
 	screenX := p.X - cameraX
 
+	// Используем спрайт игрока!
+	if PlayerSprite != nil {
+		opts := &ebiten.DrawImageOptions{}
+		
+		// Отражение по горизонтали если смотрим влево
+		if p.Facing == -1 {
+			opts.GeoM.Scale(-1, 1)
+			opts.GeoM.Translate(float64(p.Width), 0)
+		}
+		
+		// Анимация бега (выбор кадра)
+		frame := int(p.AnimFrame*2) % 8
+		frameWidth := 64.0 // Размер кадра
+		frameX := float64(frame % 4) * frameWidth
+		frameY := float64(frame / 4) * frameWidth
+		
+		opts.GeoM.Translate(screenX, p.Y)
+		
+		// Вырезаем кадр из спрайта
+		sprite := PlayerSprite.SubImage(image.Rect(int(frameX), int(frameY), int(frameX)+int(frameWidth), int(frameY)+int(frameWidth))).(*ebiten.Image)
+		screen.DrawImage(sprite, opts)
+	} else {
+		// Резерв - векторная графика
+		p.drawVector(screen, screenX)
+	}
+}
+
+// drawVector рисует игрока векторами (резерв)
+func (p *PlatformerPlayer) drawVector(screen *ebiten.Image, screenX float64) {
 	// Тело (зелёная рубашка, синие штаны)
 	vector.DrawFilledRect(screen, float32(screenX), float32(p.Y), float32(p.Width), float32(p.Height/2), color.RGBA{50, 200, 50, 255}, true)
 	vector.DrawFilledRect(screen, float32(screenX), float32(p.Y+p.Height/2), float32(p.Width), float32(p.Height/2), color.RGBA{50, 50, 200, 255}, true)
