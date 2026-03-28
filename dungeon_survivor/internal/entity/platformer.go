@@ -23,6 +23,9 @@ var PlayerSprite *ebiten.Image
 // LifebarSprite хранит спрайт полоски здоровья
 var LifebarSprite *ebiten.Image
 
+// CitySprite хранит спрайт города
+var CitySprite *ebiten.Image
+
 // PlatformerPlayer представляет игрока в платформере
 type PlatformerPlayer struct {
 	X         float64
@@ -108,7 +111,7 @@ func (p *PlatformerPlayer) CanJump() bool {
 func (p *PlatformerPlayer) Draw(screen *ebiten.Image, cameraX float64) {
 	screenX := p.X - cameraX
 
-	// Используем спрайт игрока!
+	// Используем спрайт PMC Contractor!
 	if PlayerSprite != nil {
 		opts := &ebiten.DrawImageOptions{}
 		
@@ -118,15 +121,15 @@ func (p *PlatformerPlayer) Draw(screen *ebiten.Image, cameraX float64) {
 			opts.GeoM.Translate(float64(p.Width), 0)
 		}
 		
-		// Анимация бега (выбор кадра) - 9 кадров в ряд
-		frame := int(p.AnimFrame*1.5) % 9
-		frameWidth := 50.0 // Размер кадра в Platformer Complete
-		frameHeight := 58.0
+		// Анимация бега (2 кадра: Stand и Crouch)
+		frame := int(p.AnimFrame) % 2
+		frameWidth := 32.0 // Размер кадра PMC
+		frameHeight := 48.0
 		frameX := float64(frame) * frameWidth
 		frameY := 0.0
 		
 		opts.GeoM.Translate(screenX, p.Y)
-		opts.GeoM.Scale(1.2, 1.2) // Увеличим спрайт
+		opts.GeoM.Scale(1.5, 1.5) // Увеличим спрайт PMC
 		
 		// Вырезаем кадр из спрайта
 		sprite := PlayerSprite.SubImage(image.Rect(int(frameX), int(frameY), int(frameX)+int(frameWidth), int(frameY)+int(frameHeight))).(*ebiten.Image)
@@ -408,16 +411,16 @@ func (w *PlatformerWorld) GenerateLevel(level int) {
 		treeSize := 60.0
 
 		r := rng.Float64()
-		if r < 0.25 {
-			treeType = "pine" // Ёлка
+		if r < 0.3 {
+			treeType = "pine" // Ёлка - 30% шанс
 			treeColor = color.RGBA{30, 100, 30, 255}
 			treeSize = 80 + rng.Float64()*40
-		} else if r < 0.4 {
-			treeType = "birch" // Берёза
+		} else if r < 0.45 {
+			treeType = "birch" // Берёза - 15% шанс
 			treeColor = color.RGBA{100, 180, 100, 255}
 			treeSize = 70 + rng.Float64()*30
-		} else if r < 0.5 {
-			treeType = "jungle" // Большое дерево из спрайта
+		} else if r < 0.55 {
+			treeType = "jungle" // Большое дерево - 10% шанс
 			treeColor = color.RGBA{80, 140, 60, 255}
 			treeSize = 150 + rng.Float64()*50
 		}
@@ -629,20 +632,29 @@ func (w *PlatformerWorld) drawTree(screen *ebiten.Image, x float64, tree Tree) {
 		return
 	}
 
+	// Ёлка (pine) - рисуем треугольниками
 	if tree.Type == "pine" {
-		// Ёлка (треугольная)
+		// Ствол
 		trunkWidth := tree.Size * 0.15
 		vector.DrawFilledRect(screen, float32(x-trunkWidth/2), float32(y-tree.Size*0.3), float32(trunkWidth), float32(tree.Size*0.3), color.RGBA{100, 60, 30, 255}, true)
 
-		// Кроны (три треугольника)
+		// Кроны (три треугольника ярусами) - рисуем линиями
 		for i := 0; i < 3; i++ {
-			size := tree.Size * (0.5 - float64(i)*0.1)
-			yOffset := float64(i) * tree.Size * 0.2
-			vector.StrokeLine(screen, float32(x), float32(y-tree.Size*0.8+yOffset), float32(x-size), float32(y-tree.Size*0.3+yOffset), 3, tree.Color, false)
-			vector.StrokeLine(screen, float32(x), float32(y-tree.Size*0.8+yOffset), float32(x+size), float32(y-tree.Size*0.3+yOffset), 3, tree.Color, false)
-			vector.StrokeLine(screen, float32(x-size), float32(y-tree.Size*0.3+yOffset), float32(x+size), float32(y-tree.Size*0.3+yOffset), 3, tree.Color, false)
+			size := tree.Size * (0.5 - float64(i)*0.12)
+			yOffset := float64(i) * tree.Size * 0.18
+			// Вертикальные линии для заполнения
+			for dy := 0.0; dy < tree.Size*0.45; dy += 2 {
+				width := size * (1.0 - dy/(tree.Size*0.45))
+				vector.StrokeLine(screen, 
+					float32(x-width), float32(y-tree.Size*0.8+yOffset+dy),
+					float32(x+width), float32(y-tree.Size*0.8+yOffset+dy),
+					2, tree.Color, false)
+			}
 		}
-	} else if tree.Type == "birch" {
+		return
+	}
+
+	if tree.Type == "birch" {
 		// Берёза (светлый ствол)
 		trunkWidth := tree.Size * 0.12
 		vector.DrawFilledRect(screen, float32(x-trunkWidth/2), float32(y-tree.Size*0.4), float32(trunkWidth), float32(tree.Size*0.4), color.RGBA{240, 240, 220, 255}, true)

@@ -16,18 +16,24 @@ const (
 )
 
 func init() {
-	// Загрузка спрайтов из Platformer Complete!
+	// Загрузка спрайтов из Platformer Complete и новых паков!
 	
-	// Спрайт игрока - используем p1_spritesheet.png
-	playerImg, _, err := ebitenutil.NewImageFromFile("assets/player/p1_spritesheet.png")
+	// Спрайт игрока - PMC Contractor с автоматом!
+	playerImg, _, err := ebitenutil.NewImageFromFile("assets/player/PMC_Stand.bmp")
 	if err == nil {
 		entity.PlayerSprite = playerImg
 	}
 
-	// Спрайт ландшафта - используем tiles_spritesheet.png
+	// Спрайт ландшафта - tiles_spritesheet.png
 	terrainImg, _, err := ebitenutil.NewImageFromFile("assets/tiles/tiles_spritesheet.png")
 	if err == nil {
 		entity.TerrainSprite = terrainImg
+	}
+
+	// City Mega Pack - для зданий и фона
+	cityImg, _, err := ebitenutil.NewImageFromFile("assets/tiles/CITY_MEGA.png")
+	if err == nil {
+		entity.CitySprite = cityImg
 	}
 
 	// Спрайты объектов
