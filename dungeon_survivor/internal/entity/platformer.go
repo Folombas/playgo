@@ -2,6 +2,7 @@
 package entity
 
 import (
+	"image"
 	"image/color"
 	"math"
 	"math/rand"
@@ -9,6 +10,12 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/vector"
 )
+
+// TerrainSprite хранит загруженный спрайт ландшафта
+var TerrainSprite *ebiten.Image
+
+// ObjectsSprite хранит загруженный спрайт объектов
+var ObjectsSprite *ebiten.Image
 
 // PlatformerPlayer представляет игрока в платформере
 type PlatformerPlayer struct {
@@ -364,6 +371,9 @@ func (w *PlatformerWorld) Draw(screen *ebiten.Image, cameraX float64) {
 		}
 	}
 
+	// Земля внизу экрана
+	w.drawGround(screen, cameraX)
+
 	// Монетки
 	for i := range w.Coins {
 		coin := &w.Coins[i]
@@ -518,17 +528,47 @@ func (w *PlatformerWorld) drawHouse(screen *ebiten.Image, x float64, house House
 	vector.StrokeLine(screen, float32(x+house.Width*0.2+windowSize/2), float32(y+house.Height*0.2), float32(x+house.Width*0.2+windowSize/2), float32(y+house.Height*0.2+windowSize), 1, color.RGBA{100, 100, 100, 255}, false)
 }
 
-// drawPlatform рисует платформу
+// drawPlatform рисует платформу со спрайтом
 func (w *PlatformerWorld) drawPlatform(screen *ebiten.Image, x float64, platform Platform) {
-	// Трава сверху
-	vector.DrawFilledRect(screen, float32(x), float32(platform.Y), float32(platform.Width), 8, color.RGBA{100, 200, 100, 255}, true)
+	tileSize := 48.0
+	
+	// Рисуем плитками
+	for tx := 0; tx < int(platform.Width/tileSize)+1; tx++ {
+		screenX := x + float64(tx)*tileSize
+		
+		if TerrainSprite != nil {
+			opts := &ebiten.DrawImageOptions{}
+			opts.GeoM.Translate(screenX, platform.Y)
+			// Вырезаем плитку земли с травой (верхняя левая на спрайте)
+			tile := TerrainSprite.SubImage(image.Rect(0, 0, 48, 48)).(*ebiten.Image)
+			screen.DrawImage(tile, opts)
+		} else {
+			// Резерв - векторная графика
+			vector.DrawFilledRect(screen, float32(screenX), float32(platform.Y), float32(tileSize), 8, color.RGBA{100, 200, 100, 255}, true)
+			vector.DrawFilledRect(screen, float32(screenX), float32(platform.Y+8), float32(tileSize), float32(tileSize-8), color.RGBA{140, 100, 60, 255}, true)
+		}
+	}
+}
 
-	// Земля
-	vector.DrawFilledRect(screen, float32(x), float32(platform.Y+8), float32(platform.Width), float32(platform.Height-8), color.RGBA{140, 100, 60, 255}, true)
-
-	// Детали земли
-	for i := 0; i < int(platform.Width)/20; i++ {
-		vector.DrawFilledCircle(screen, float32(x+float64(i)*20+5), float32(platform.Y+15), 3, color.RGBA{120, 80, 50, 255}, true)
+// drawGround рисует землю внизу экрана
+func (w *PlatformerWorld) drawGround(screen *ebiten.Image, cameraX float64) {
+	groundY := w.GroundY
+	startX := cameraX
+	endX := cameraX + 1280
+	
+	// Рисуем землю плитками
+	for x := startX - 50; x < endX; x += 48 {
+		screenX := x - cameraX
+		if TerrainSprite != nil {
+			opts := &ebiten.DrawImageOptions{}
+			opts.GeoM.Translate(screenX, groundY)
+			// Плитка с травой
+			tile := TerrainSprite.SubImage(image.Rect(0, 0, 48, 48)).(*ebiten.Image)
+			screen.DrawImage(tile, opts)
+		} else {
+			vector.DrawFilledRect(screen, float32(screenX), float32(groundY), 48, 8, color.RGBA{100, 200, 100, 255}, true)
+			vector.DrawFilledRect(screen, float32(screenX), float32(groundY+8), 48, 42, color.RGBA{140, 100, 60, 255}, true)
+		}
 	}
 }
 
