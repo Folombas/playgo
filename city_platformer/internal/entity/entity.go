@@ -23,15 +23,16 @@ func LoadPlayerSprite() {
 }
 
 type Player struct {
-	X, Y      float64
-	Width     float64
-	Height    float64
-	VX, VY    float64
-	Speed     float64
-	JumpForce float64
-	OnGround  bool
-	Facing    int
-	AnimFrame float64
+	X, Y        float64
+	Width       float64
+	Height      float64
+	VX, VY      float64
+	Speed       float64
+	JumpForce   float64
+	OnGround    bool
+	Facing      int
+	AnimFrame   float64
+	Invincible  int // Кадры неуязвимости
 }
 
 func NewPlayer(x, y float64) *Player {
@@ -45,6 +46,9 @@ func NewPlayer(x, y float64) *Player {
 
 func (p *Player) Update() {
 	p.AnimFrame += 0.15
+	if p.Invincible > 0 {
+		p.Invincible--
+	}
 }
 
 func (p *Player) MoveLeft() {
@@ -68,6 +72,11 @@ func (p *Player) CanJump() bool {
 
 func (p *Player) Draw(screen *ebiten.Image, cameraX float64) {
 	screenX := p.X - cameraX
+
+	// Мигание если неуязвим
+	if p.Invincible > 0 && (p.Invincible%4 < 2) {
+		return
+	}
 
 	if PlayerSprite != nil {
 		opts := &ebiten.DrawImageOptions{}
@@ -104,4 +113,5 @@ type Coin struct {
 
 type Enemy struct {
 	X, Y, VX float64
+	Type     string // "ghost", "zombie", "monster"
 }

@@ -115,9 +115,14 @@ func (g *Game) generateCoins() []entity.Coin {
 func (g *Game) generateEnemies() []entity.Enemy {
 	enemies := make([]entity.Enemy, 0)
 	for i := 0; i < 5+g.level; i++ {
+		enemyType := "ghost"
+		if g.rng.Float64() < 0.5 {
+			enemyType = "zombie"
+		}
 		enemies = append(enemies, entity.Enemy{
-			X: float64(500 + i*400),
-			Y: 620,
+			X:    float64(500 + i*400),
+			Y:    620,
+			Type: enemyType,
 		})
 	}
 	return enemies
@@ -212,6 +217,9 @@ func (g *Game) updateGame() {
 	// Частицы
 	g.updateParticles()
 
+	// Враги
+	g.updateEnemies()
+
 	// Смерть от падения
 	if g.player.Y > float64(screenHeight) {
 		g.lives--
@@ -251,6 +259,38 @@ func (g *Game) updateParticles() {
 	g.particles = active
 }
 
+func (g *Game) updateEnemies() {
+	activeEnemies := make([]entity.Enemy, 0)
+	for _, e := range g.enemies {
+		// Движение врага
+		e.X += e.VX
+		if e.VX == 0 {
+			e.VX = 1.0
+		}
+		// Разворот на границах
+		if e.X < g.cameraX || e.X > g.cameraX+float64(screenWidth) {
+			e.VX = -e.VX
+		}
+
+		// Коллизия с игроком
+		if g.checkCollision(g.player.X+10, g.player.Y+20, e.X+10, e.Y+15, 20, 30) {
+			if g.player.Invincible == 0 {
+				g.lives--
+				g.player.Invincible = 120 // 2 секунды
+				g.player.VY = -5
+				g.player.VX = -float64(g.player.Facing) * 3
+				g.spawnParticles(e.X+15, e.Y+15, 0, -2, 15, color.RGBA{255, 0, 0, 255})
+
+				if g.lives <= 0 {
+					g.state = StateGameOver
+				}
+			}
+		}
+		activeEnemies = append(activeEnemies, e)
+	}
+	g.enemies = activeEnemies
+}
+
 func (g *Game) Draw(screen *ebiten.Image) {
 	// Небо
 	for y := 0; y < screenHeight; y++ {
@@ -272,6 +312,11 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	// Монеты
 	for _, coin := range g.coins {
 		g.drawCoin(screen, coin)
+	}
+
+	// Враги
+	for _, enemy := range g.enemies {
+		g.drawEnemy(screen, enemy)
 	}
 
 	// Игрок
@@ -329,6 +374,26 @@ func (g *Game) drawCoin(screen *ebiten.Image, coin entity.Coin) {
 	screenX := coin.X - g.cameraX
 	vector.DrawFilledCircle(screen, float32(screenX+15), float32(coin.Y+15), 12, color.RGBA{255, 215, 0, 255}, true)
 	vector.DrawFilledCircle(screen, float32(screenX+15), float32(coin.Y+15), 8, color.RGBA{255, 255, 150, 255}, true)
+}
+
+func (g *Game) drawEnemy(screen *ebiten.Image, enemy entity.Enemy) {
+	screenX := enemy.X - g.cameraX
+
+	if enemy.Type == "ghost" {
+		// Призрак - полупрозрачный белый
+		vector.DrawFilledCircle(screen, float32(screenX+15), float32(enemy.Y+15), 18, color.RGBA{200, 200, 255, 180}, true)
+		vector.DrawFilledCircle(screen, float32(screenX+8), float32(enemy.Y+10), 5, color.RGBA{0, 0, 50, 255}, true)
+		vector.DrawFilledCircle(screen, float32(screenX+22), float32(enemy.Y+10), 5, color.RGBA{0, 0, 50, 255}, true)
+		// Волнистый низ
+		vector.DrawFilledRect(screen, float32(screenX+5), float32(enemy.Y+25), 8, 8, color.RGBA{200, 200, 255, 180}, true)
+		vector.DrawFilledRect(screen, float32(screenX+17), float32(enemy.Y+25), 8, 8, color.RGBA{200, 200, 255, 180}, true)
+	} else {
+		// Зомби - зелёный
+		vector.DrawFilledRect(screen, float32(screenX+5), float32(enemy.Y+10), 20, 30, color.RGBA{50, 150, 50, 255}, true)
+		vector.DrawFilledCircle(screen, float32(screenX+15), float32(enemy.Y+5), 10, color.RGBA{50, 150, 50, 255}, true)
+		vector.DrawFilledCircle(screen, float32(screenX+10), float32(enemy.Y+3), 3, color.RGBA{255, 0, 0, 255}, true)
+		vector.DrawFilledCircle(screen, float32(screenX+20), float32(enemy.Y+3), 3, color.RGBA{255, 0, 0, 255}, true)
+	}
 }
 
 func (g *Game) drawMenu(screen *ebiten.Image) {
