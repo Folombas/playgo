@@ -1,9 +1,10 @@
-// Package game содержит основную игровую логику Kingdom Garden
+// Package game содержит основную игровую логику Village Platformer
 package game
 
 import (
 	"fmt"
 	"image/color"
+	"math"
 	"math/rand"
 	"time"
 
@@ -20,8 +21,7 @@ const (
 	StateMenu State = iota
 	StatePlaying
 	StatePaused
-	StateBuild
-	StateInventory
+	StateGameOver
 )
 
 // Config содержит конфигурацию игры
@@ -29,7 +29,6 @@ type Config struct {
 	ScreenWidth  int
 	ScreenHeight int
 	TargetFPS    int
-	TileSize     int
 }
 
 // DefaultConfig возвращает конфигурацию по умолчанию
@@ -38,91 +37,58 @@ func DefaultConfig() *Config {
 		ScreenWidth:  1280,
 		ScreenHeight: 720,
 		TargetFPS:    60,
-		TileSize:     48,
 	}
 }
 
 // Game представляет основную игру
 type Game struct {
-	config      *Config
-	state       State
-	cameraX     float64
-	cameraY     float64
-	world       *entity.World
-	player      *entity.Player
-	clouds      []*entity.Cloud
-	particles   []*entity.Particle
-	animals     []*entity.Animal
-	dayTime     float64
-	season      Season
-	coins       int
-	unlocked    map[string]bool
-	rng         *rand.Rand
-	selectedItem string
-	buildMode   bool
+	config     *Config
+	state      State
+	player     *entity.PlatformerPlayer
+	world      *entity.PlatformerWorld
+	cameraX    float64
+	coins      int
+	lives      int
+	score      int
+	level      int
+	particles  []*Particle
+	rng        *rand.Rand
 }
 
-// Season представляет время года
-type Season int
-
-const (
-	SeasonSpring Season = iota
-	SeasonSummer
-	SeasonFall
-	SeasonWinter
-)
+// Particle представляет частицу
+type Particle struct {
+	X      float64
+	Y      float64
+	VX     float64
+	VY     float64
+	Life   float64
+	Color  color.Color
+	Size   float64
+}
 
 // NewGame создаёт новую игру
 func NewGame() *Game {
 	cfg := DefaultConfig()
-	entCfg := &entity.Config{
-		ScreenWidth:  cfg.ScreenWidth,
-		ScreenHeight: cfg.ScreenHeight,
-		TargetFPS:    cfg.TargetFPS,
-		TileSize:     cfg.TileSize,
-	}
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 
 	g := &Game{
 		config:    cfg,
 		state:     StateMenu,
-		world:     entity.NewWorld(entCfg),
-		player:    entity.NewPlayer(640, 360),
-		clouds:    make([]*entity.Cloud, 0),
-		particles: make([]*entity.Particle, 0),
-		animals:   make([]*entity.Animal, 0),
-		dayTime:   0.5, // 0-1, 0.5 = полдень
-		season:    SeasonSpring,
-		coins:     100,
-		unlocked:  make(map[string]bool),
+		player:    entity.NewPlatformerPlayer(100, 500),
+		world:     entity.NewPlatformerWorld(cfg.ScreenWidth, cfg.ScreenHeight),
+		cameraX:   0,
+		coins:     0,
+		lives:     3,
+		score:     0,
+		level:     1,
+		particles: make([]*Particle, 0),
 		rng:       rng,
 	}
 
-	// Инициализация облаков
-	for i := 0; i < 15; i++ {
-		g.clouds = append(g.clouds, entity.NewCloud(rng.Float64()*float64(cfg.ScreenWidth), rng.Float64()*200, rng))
-	}
-
-	// Инициализация животных
-	g.spawnAnimal("bunny", 400, 500)
-	g.spawnAnimal("bird", 800, 300)
-	g.spawnAnimal("butterfly", 600, 400)
-
-	// Размещение деревьев и растений
-	g.world.PlaceTree(300, 400)
-	g.world.PlaceTree(900, 350)
-	g.world.PlaceTree(500, 200)
-	g.world.PlaceFlower(400, 450, "pink")
-	g.world.PlaceFlower(420, 460, "yellow")
-	g.world.PlaceFlower(380, 470, "blue")
-	g.world.PlaceCastle(700, 250)
+	// Генерация уровня
+	g.world.GenerateLevel(1)
 
 	return g
-}
-
-// spawnAnimal создаёт животное
-func (g *Game) spawnAnimal(animalType string, x, y float64) {
-	g.animals = append(g.animals, entity.NewAnimal(animalType, x, y, g.rng))
 }
 
 // Update обновляет логику игры
@@ -132,237 +98,261 @@ func (g *Game) Update() error {
 		switch g.state {
 		case StatePlaying:
 			g.state = StatePaused
-		case StatePaused, StateBuild, StateInventory:
+		case StatePaused:
 			g.state = StatePlaying
-			g.buildMode = false
-		case StateMenu:
+		case StateMenu, StateGameOver:
 			return ebiten.Termination
 		}
 	}
 
-	// Переход из меню в игру
+	// Переход из меню
 	if g.state == StateMenu && ebiten.IsKeyPressed(ebiten.KeySpace) {
+		g.resetGame()
 		g.state = StatePlaying
 	}
 
-	// Режим строительства
-	if g.state == StatePlaying && ebiten.IsKeyPressed(ebiten.KeyB) {
-		g.buildMode = !g.buildMode
-		if g.buildMode {
-			g.state = StateBuild
-		} else {
-			g.state = StatePlaying
-		}
-	}
-
-	// Инвентарь
-	if g.state == StatePlaying && ebiten.IsKeyPressed(ebiten.KeyI) {
-		if g.state == StateInventory {
-			g.state = StatePlaying
-		} else {
-			g.state = StateInventory
-		}
+	// Рестарт
+	if g.state == StateGameOver && ebiten.IsKeyPressed(ebiten.KeySpace) {
+		g.resetGame()
+		g.state = StatePlaying
 	}
 
 	// Обновление игры
-	if g.state == StatePlaying || g.state == StateBuild {
+	if g.state == StatePlaying {
 		g.updateGame()
 	}
 
 	return nil
 }
 
+// resetGame сбрасывает игру
+func (g *Game) resetGame() {
+	g.player = entity.NewPlatformerPlayer(100, 500)
+	g.world = entity.NewPlatformerWorld(g.config.ScreenWidth, g.config.ScreenHeight)
+	g.world.GenerateLevel(1)
+	g.cameraX = 0
+	g.coins = 0
+	g.lives = 3
+	g.score = 0
+	g.level = 1
+	g.particles = make([]*Particle, 0)
+}
+
 // updateGame обновляет игровую логику
 func (g *Game) updateGame() {
-	// Обновление времени суток
-	g.dayTime += 0.0001
-	if g.dayTime > 1 {
-		g.dayTime = 0
-	}
-
 	// Обновление игрока
 	g.player.Update()
 
-	// Управление камерой (слежение за игроком)
-	g.cameraX = g.player.X - float64(g.config.ScreenWidth)/2
-	g.cameraY = g.player.Y - float64(g.config.ScreenHeight)/2
+	// Управление
+	g.handleInput()
 
-	// Ограничение камеры границами мира
+	// Физика игрока
+	g.applyPhysics()
+
+	// Коллизии с миром
+	g.handleCollisions()
+
+	// Камера (слежение за игроком)
+	g.cameraX = g.player.X - float64(g.config.ScreenWidth)/3
 	if g.cameraX < 0 {
 		g.cameraX = 0
 	}
-	if g.cameraY < 0 {
-		g.cameraY = 0
-	}
-	if g.cameraX > float64(g.world.Width*g.config.TileSize)-float64(g.config.ScreenWidth) {
-		g.cameraX = float64(g.world.Width*g.config.TileSize) - float64(g.config.ScreenWidth)
-	}
-	if g.cameraY > float64(g.world.Height*g.config.TileSize)-float64(g.config.ScreenHeight) {
-		g.cameraY = float64(g.world.Height*g.config.TileSize) - float64(g.config.ScreenHeight)
+	if g.cameraX > g.world.Width-float64(g.config.ScreenWidth) {
+		g.cameraX = g.world.Width - float64(g.config.ScreenWidth)
 	}
 
-	// Управление игроком
-	g.handleInput()
-
-	// Обновление облаков
-	for _, cloud := range g.clouds {
-		cloud.Update()
-	}
-
-	// Обновление животных
-	for _, animal := range g.animals {
-		animal.Update()
-	}
+	// Сбор монеток
+	g.collectCoins()
 
 	// Обновление частиц
 	g.updateParticles()
 
-	// Спавн новых животных
-	if g.rng.Float64() < 0.001 {
-		x := g.player.X + (g.rng.Float64()-0.5)*600
-		y := g.player.Y + (g.rng.Float64()-0.5)*400
-		types := []string{"bunny", "bird", "butterfly"}
-		g.spawnAnimal(types[g.rng.Intn(len(types))], x, y)
+	// Проверка падения в пропасть
+	if g.player.Y > float64(g.config.ScreenHeight)+100 {
+		g.lives--
+		if g.lives <= 0 {
+			g.state = StateGameOver
+		} else {
+			g.player.X = 100
+			g.player.Y = 500
+			g.player.VY = 0
+		}
 	}
 
-	// Режим строительства
-	if g.buildMode {
-		g.handleBuildInput()
+	// Проверка победы (достиг флага)
+	if g.checkWin() {
+		g.level++
+		g.world.GenerateLevel(g.level)
+		g.player.X = 100
+		g.player.Y = 500
+		g.player.VY = 0
+		g.cameraX = 0
 	}
 }
 
-// handleInput обрабатывает ввод игрока
+// handleInput обрабатывает ввод
 func (g *Game) handleInput() {
-	speed := g.player.MoveSpeed
-
-	if ebiten.IsKeyPressed(ebiten.KeyW) || ebiten.IsKeyPressed(ebiten.KeyUp) {
-		g.player.Y -= speed
-	}
-	if ebiten.IsKeyPressed(ebiten.KeyS) || ebiten.IsKeyPressed(ebiten.KeyDown) {
-		g.player.Y += speed
-	}
+	// Движение
 	if ebiten.IsKeyPressed(ebiten.KeyA) || ebiten.IsKeyPressed(ebiten.KeyLeft) {
-		g.player.X -= speed
+		g.player.MoveLeft()
 	}
 	if ebiten.IsKeyPressed(ebiten.KeyD) || ebiten.IsKeyPressed(ebiten.KeyRight) {
-		g.player.X += speed
+		g.player.MoveRight()
 	}
 
-	// Взаимодействие (посадка растения)
-	if ebiten.IsKeyPressed(ebiten.KeyE) {
-		g.plantSomething()
+	// Прыжок
+	if (ebiten.IsKeyPressed(ebiten.KeyW) || ebiten.IsKeyPressed(ebiten.KeyUp) || ebiten.IsKeyPressed(ebiten.KeySpace)) && g.player.CanJump() {
+		g.player.Jump()
+		g.spawnParticles(g.player.X+g.player.Width/2, g.player.Y+g.player.Height, -1, -2, 10, color.RGBA{200, 200, 200, 255})
 	}
 }
 
-// handleBuildInput обрабатывает ввод в режиме строительства
-func (g *Game) handleBuildInput() {
-	// Выбор предмета цифрами
-	if ebiten.IsKeyPressed(ebiten.Key1) {
-		g.selectedItem = "tree"
-	}
-	if ebiten.IsKeyPressed(ebiten.Key2) {
-		g.selectedItem = "flower"
-	}
-	if ebiten.IsKeyPressed(ebiten.Key3) {
-		g.selectedItem = "house"
-	}
-	if ebiten.IsKeyPressed(ebiten.Key4) {
-		g.selectedItem = "fence"
-	}
-	if ebiten.IsKeyPressed(ebiten.Key5) {
-		g.selectedItem = "path"
+// applyPhysics применяет физику
+func (g *Game) applyPhysics() {
+	// Гравитация
+	g.player.VY += 0.5
+
+	// Трение
+	if g.player.OnGround {
+		g.player.VX *= 0.8
+	} else {
+		g.player.VX *= 0.95
 	}
 
-	// Размещение левой кнопкой мыши
-	if ebiten.IsMouseButtonPressed(ebiten.MouseButtonLeft) {
-		mx, my := ebiten.CursorPosition()
-		worldX := float64(mx) + g.cameraX
-		worldY := float64(my) + g.cameraY
-		g.placeBuilding(worldX, worldY)
+	// Ограничение скорости
+	maxSpeed := 8.0
+	if g.player.VX > maxSpeed {
+		g.player.VX = maxSpeed
+	}
+	if g.player.VX < -maxSpeed {
+		g.player.VX = -maxSpeed
+	}
+
+	// Применение скорости
+	g.player.X += g.player.VX
+	g.player.Y += g.player.VY
+
+	// Сброс флага земли
+	g.player.OnGround = false
+}
+
+// handleCollisions обрабатывает коллизии
+func (g *Game) handleCollisions() {
+	// Коллизии с платформами
+	for _, platform := range g.world.Platforms {
+		if g.checkPlatformCollision(platform) {
+			g.resolvePlatformCollision(platform)
+		}
+	}
+
+	// Коллизии с землёй
+	groundY := float64(g.config.ScreenHeight) - 50
+	if g.player.Y+g.player.Height > groundY {
+		g.player.Y = groundY - g.player.Height
+		g.player.VY = 0
+		g.player.OnGround = true
 	}
 }
 
-// plantSomething сажает растение рядом с игроком
-func (g *Game) plantSomething() {
-	types := []string{"flower", "tree", "bush"}
-	chosen := types[g.rng.Intn(len(types))]
-
-	// Размещение перед игроком
-	offsetX := 50.0
-	offsetY := 0.0
-
-	targetX := g.player.X + offsetX
-	targetY := g.player.Y + offsetY
-
-	switch chosen {
-	case "flower":
-		colors := []string{"pink", "yellow", "blue", "red"}
-		g.world.PlaceFlower(targetX, targetY, colors[g.rng.Intn(len(colors))])
-		g.spawnParticles(targetX, targetY, 10, color.RGBA{255, 100, 200, 255})
-	case "tree":
-		g.world.PlaceTree(targetX, targetY)
-		g.spawnParticles(targetX, targetY, 15, color.RGBA{50, 200, 50, 255})
-	case "bush":
-		g.world.PlaceBush(targetX, targetY)
-		g.spawnParticles(targetX, targetY, 8, color.RGBA{100, 150, 50, 255})
-	}
-
-	g.coins += 5 // Награда за посадку
+// checkPlatformCollision проверяет коллизию с платформой
+func (g *Game) checkPlatformCollision(platform entity.Platform) bool {
+	return g.player.X < platform.X+platform.Width &&
+		g.player.X+g.player.Width > platform.X &&
+		g.player.Y < platform.Y+platform.Height &&
+		g.player.Y+g.player.Height > platform.Y
 }
 
-// placeBuilding размещает постройку
-func (g *Game) placeBuilding(x, y float64) {
-	switch g.selectedItem {
-	case "tree":
-		if g.coins >= 10 {
-			g.world.PlaceTree(x, y)
-			g.coins -= 10
-			g.spawnParticles(x, y, 10, color.RGBA{50, 200, 50, 255})
+// resolvePlatformCollision разрешает коллизию с платформой
+func (g *Game) resolvePlatformCollision(platform entity.Platform) {
+	// Определяем направление коллизии
+	playerCenterX := g.player.X + g.player.Width/2
+	playerCenterY := g.player.Y + g.player.Height/2
+	platformCenterX := platform.X + platform.Width/2
+	platformCenterY := platform.Y + platform.Height/2
+
+	dx := playerCenterX - platformCenterX
+	dy := playerCenterY - platformCenterY
+
+	overlapX := (g.player.Width/2 + platform.Width/2) - math.Abs(dx)
+	overlapY := (g.player.Height/2 + platform.Height/2) - math.Abs(dy)
+
+	if overlapX < overlapY {
+		// Горизонтальная коллизия
+		if dx > 0 {
+			g.player.X = platform.X + platform.Width
+		} else {
+			g.player.X = platform.X - g.player.Width
 		}
-	case "flower":
-		if g.coins >= 5 {
-			colors := []string{"pink", "yellow", "blue", "red", "purple"}
-			g.world.PlaceFlower(x, y, colors[g.rng.Intn(len(colors))])
-			g.coins -= 5
-			g.spawnParticles(x, y, 8, color.RGBA{255, 100, 200, 255})
-		}
-	case "house":
-		if g.coins >= 50 {
-			g.world.PlaceHouse(x, y)
-			g.coins -= 50
-			g.spawnParticles(x, y, 20, color.RGBA{200, 150, 100, 255})
-		}
-	case "fence":
-		if g.coins >= 3 {
-			g.world.PlaceFence(x, y)
-			g.coins -= 3
-		}
-	case "path":
-		if g.coins >= 2 {
-			g.world.PlacePath(x, y)
-			g.coins -= 2
+		g.player.VX = 0
+	} else {
+		// Вертикальная коллизия
+		if dy > 0 {
+			g.player.Y = platform.Y + platform.Height
+			g.player.VY = 0
+		} else {
+			g.player.Y = platform.Y - g.player.Height
+			g.player.VY = 0
+			g.player.OnGround = true
 		}
 	}
+}
+
+// collectCoins собирает монетки
+func (g *Game) collectCoins() {
+	activeCoins := make([]entity.Coin, 0)
+	for _, coin := range g.world.Coins {
+		if g.checkCoinCollision(coin) {
+			g.coins++
+			g.score += 10
+			g.spawnParticles(coin.X+coin.Size/2, coin.Y+coin.Size/2, 0, -1, 8, color.RGBA{255, 215, 0, 255})
+		} else {
+			activeCoins = append(activeCoins, coin)
+		}
+	}
+	g.world.Coins = activeCoins
+}
+
+// checkCoinCollision проверяет коллизию с монеткой
+func (g *Game) checkCoinCollision(coin entity.Coin) bool {
+	return g.player.X < coin.X+coin.Size &&
+		g.player.X+g.player.Width > coin.X &&
+		g.player.Y < coin.Y+coin.Size &&
+		g.player.Y+g.player.Height > coin.Y
+}
+
+// checkWin проверяет победу
+func (g *Game) checkWin() bool {
+	flag := g.world.Flag
+	return g.player.X < flag.X+flag.Width &&
+		g.player.X+g.player.Width > flag.X &&
+		g.player.Y < flag.Y+flag.Height &&
+		g.player.Y+g.player.Height > flag.Y
 }
 
 // spawnParticles создаёт частицы
-func (g *Game) spawnParticles(x, y float64, count int, c color.Color) {
+func (g *Game) spawnParticles(x, y, vx, vy float64, count int, c color.Color) {
 	for i := 0; i < count; i++ {
-		g.particles = append(g.particles, entity.NewParticle(
-			x,
-			y,
-			(g.rng.Float64()-0.5)*4,
-			(g.rng.Float64()-0.5)*4,
-			c,
-		))
+		g.particles = append(g.particles, &Particle{
+			X:     x,
+			Y:     y,
+			VX:    vx + (g.rng.Float64()-0.5)*2,
+			VY:    vy + (g.rng.Float64()-0.5)*2,
+			Life:  1.0,
+			Color: c,
+			Size:  3 + g.rng.Float64()*4,
+		})
 	}
 }
 
 // updateParticles обновляет частицы
 func (g *Game) updateParticles() {
-	activeParticles := make([]*entity.Particle, 0)
+	activeParticles := make([]*Particle, 0)
 	for _, p := range g.particles {
-		p.Update()
+		p.X += p.VX
+		p.Y += p.VY
+		p.VY += 0.1 // Гравитация
+		p.Life -= 0.02
+
 		if p.Life > 0 {
 			activeParticles = append(activeParticles, p)
 		}
@@ -372,59 +362,39 @@ func (g *Game) updateParticles() {
 
 // Draw отрисовывает игру
 func (g *Game) Draw(screen *ebiten.Image) {
-	// Очистка экрана (небо)
-	screen.Fill(g.getSkyColor())
+	// Небо (градиент)
+	for iy := 0; iy < g.config.ScreenHeight; iy++ {
+		ratio := float64(iy) / float64(g.config.ScreenHeight)
+		r := uint8(135 - ratio*35)
+		gr := uint8(206 - ratio*86)
+		b := uint8(235 - ratio*85)
+		vector.DrawFilledRect(screen, 0, float32(iy), float32(g.config.ScreenWidth), 1, color.RGBA{r, gr, b, 255}, true)
+	}
 
 	// Отрисовка мира
-	g.world.Draw(screen, g.cameraX, g.cameraY)
+	g.world.Draw(screen, g.cameraX)
 
-	// Отрисовка животных
-	for _, animal := range g.animals {
-		animal.Draw(screen, g.cameraX, g.cameraY)
-	}
+	// Отрисовка игрока
+	g.player.Draw(screen, g.cameraX)
 
 	// Отрисовка частиц
 	for _, p := range g.particles {
-		p.Draw(screen, g.cameraX, g.cameraY)
-	}
-
-	// Отрисовка игрока
-	g.player.Draw(screen, g.cameraX, g.cameraY)
-
-	// Отрисовка облаков
-	for _, cloud := range g.clouds {
-		cloud.Draw(screen)
+		screenX := p.X - g.cameraX
+		vector.DrawFilledRect(screen, float32(screenX-p.Size/2), float32(p.Y-p.Size/2), float32(p.Size), float32(p.Size), p.Color, true)
 	}
 
 	// UI
 	switch g.state {
 	case StateMenu:
 		g.drawMenu(screen)
-	case StatePlaying, StateBuild:
+	case StatePlaying:
 		g.drawHUD(screen)
-		if g.buildMode {
-			g.drawBuildMenu(screen)
-		}
-	case StateInventory:
-		g.drawHUD(screen)
-		g.drawInventory(screen)
 	case StatePaused:
 		g.drawHUD(screen)
 		g.drawPause(screen)
+	case StateGameOver:
+		g.drawGameOver(screen)
 	}
-}
-
-// getSkyColor возвращает цвет неба в зависимости от времени суток
-func (g *Game) getSkyColor() color.Color {
-	if g.dayTime < 0.25 || g.dayTime > 0.75 {
-		// Ночь
-		return color.RGBA{20, 20, 60, 255}
-	} else if g.dayTime < 0.3 || g.dayTime > 0.7 {
-		// Рассвет/закат
-		return color.RGBA{255, 150, 100, 255}
-	}
-	// День
-	return color.RGBA{100, 180, 255, 255}
 }
 
 // Layout возвращает размеры экрана
@@ -432,25 +402,24 @@ func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
 	return g.config.ScreenWidth, g.config.ScreenHeight
 }
 
-// drawMenu отрисовывает главное меню
+// drawMenu отрисовывает меню
 func (g *Game) drawMenu(screen *ebiten.Image) {
 	title := `
 ╔═══════════════════════════════════════════╗
-║      🌸 KINGDOM GARDEN 🏰                 ║
-║         Мир Сад Королевства               ║
+║      🏠 VILLAGE PLATFORMER 🌲             ║
+║         Деревенский Платформер            ║
 ╠═══════════════════════════════════════════╣
 ║                                           ║
 ║      [SPACE] - Начать игру                ║
 ║      [ESC] - Выход                        ║
 ║                                           ║
 ║  🎮 Управление:                           ║
-║     WASD / Стрелки - Перемещение          ║
-║     E - Посадить растение                 ║
-║     B - Режим строительства               ║
-║     I - Инвентарь                         ║
+║     A / D или ← / → - Бег                 ║
+║     W / ↑ / SPACE - Прыжок                ║
 ║                                           ║
-║  🌸 Строй, сажай, украшай!                ║
-║  🦋 Никаких врагов - только красота!      ║
+║  🏃 Исследуй деревню!                     ║
+║  💰 Собирай монетки!                      ║
+║  🚩 Достигни флага!                       ║
 ║                                           ║
 ╚═══════════════════════════════════════════╝
 `
@@ -459,88 +428,25 @@ func (g *Game) drawMenu(screen *ebiten.Image) {
 
 // drawHUD отрисовывает интерфейс
 func (g *Game) drawHUD(screen *ebiten.Image) {
-	// Фон HUD
-	vector.DrawFilledRect(screen, 0, 0, 200, 120, color.RGBA{0, 0, 0, 150}, true)
+	hudText := fmt.Sprintf(`┌─────────────────────────┐
+│  🏠 VILLAGE PLATFORMER  │
+├─────────────────────────┤
+│  💰 Монеты: %3d          │
+│  ❤️  Жизни: %3d           │
+│  ⭐ Счёт: %5d            │
+│  📍 Уровень: %2d          │
+└─────────────────────────┘
 
-	hudText := fmt.Sprintf(`┌──────────────────┐
-│  🌸 KINGDOM      │
-├──────────────────┤
-│  💰 Монеты: %4d   │
-│  🏰 Построек: %3d │
-│  🌳 Деревьев: %3d │
-│  🌷 Цветов: %4d   │
-└──────────────────┘
-
-💰 +5 за посадку
-
-[B] Строительство
-[I] Инвентарь
-[ESC] Пауза
-`, g.coins, g.world.BuildingCount(), g.world.TreeCount(), g.world.FlowerCount())
+[ESC] - Пауза
+`, g.coins, g.lives, g.score, g.level)
 
 	ebitenutil.DebugPrint(screen, hudText)
-
-	// Выбранный предмет в режиме строительства
-	if g.buildMode {
-		itemText := fmt.Sprintf("🔨 Строим: %s", g.selectedItem)
-		ebitenutil.DebugPrintAt(screen, itemText, g.config.ScreenWidth-200, 20)
-	}
 }
 
-// drawBuildMenu отрисовывает меню строительства
-func (g *Game) drawBuildMenu(screen *ebiten.Image) {
-	menu := `
-╔═══════════════════════════════════════╗
-║         🛠️ СТРОИТЕЛЬСТВО 🛠️            ║
-╠═══════════════════════════════════════╣
-║  [1] 🌳 Дерево (10💰)                 ║
-║  [2] 🌷 Цветок (5💰)                  ║
-║  [3] 🏠 Домик (50💰)                  ║
-║  [4] 🚪 Забор (3💰)                   ║
-║  [5] 🛤️ Дорожка (2💰)                 ║
-╠═══════════════════════════════════════╣
-║  ЛКМ - Разместить                     ║
-║  [B] - Выход                          ║
-╚═══════════════════════════════════════╝
-`
-	ebitenutil.DebugPrintAt(screen, menu, g.config.ScreenWidth/2-180, g.config.ScreenHeight/2-150)
-}
-
-// drawInventory отрисовывает инвентарь
-func (g *Game) drawInventory(screen *ebiten.Image) {
-	// Полупрозрачный фон
-	overlay := ebiten.NewImage(g.config.ScreenWidth, g.config.ScreenHeight)
-	overlay.Fill(color.RGBA{0, 0, 0, 180})
-
-	op := &ebiten.DrawImageOptions{}
-	screen.DrawImage(overlay, op)
-
-	invText := `
-╔═══════════════════════════════════════╗
-║            🎒 ИНВЕНТАРЬ 🎒            ║
-╠═══════════════════════════════════════╣
-║                                       ║
-║  🌳 Семена деревьев: ∞                ║
-║  🌷 Семена цветов: ∞                  ║
-║  🏠 Чертежи домов: 3                  ║
-║  🚪 Секции забора: 20                 ║
-║  🛤️ Плитки дорожки: 50                ║
-║                                       ║
-║  💰 Монеты: %d                         ║
-║                                       ║
-╠═══════════════════════════════════════╣
-║  [I] - Закрыть                        ║
-╚═══════════════════════════════════════╝
-`
-	ebitenutil.DebugPrintAt(screen, fmt.Sprintf(invText, g.coins), g.config.ScreenWidth/2-180, g.config.ScreenHeight/2-150)
-}
-
-// drawPause отрисовывает меню паузы
+// drawPause отрисовывает паузу
 func (g *Game) drawPause(screen *ebiten.Image) {
-	// Полупрозрачный фон
 	overlay := ebiten.NewImage(g.config.ScreenWidth, g.config.ScreenHeight)
 	overlay.Fill(color.RGBA{0, 0, 0, 128})
-
 	op := &ebiten.DrawImageOptions{}
 	screen.DrawImage(overlay, op)
 
@@ -551,9 +457,31 @@ func (g *Game) drawPause(screen *ebiten.Image) {
 ║                                       ║
 ║     [ESC] - Продолжить                ║
 ║                                       ║
-║     Твой сад прекрасен! 🌸            ║
-║                                       ║
 ╚═══════════════════════════════════════╝
 `
 	ebitenutil.DebugPrintAt(screen, pauseText, g.config.ScreenWidth/2-180, g.config.ScreenHeight/2-100)
+}
+
+// drawGameOver отрисовывает проигрыш
+func (g *Game) drawGameOver(screen *ebiten.Image) {
+	overlay := ebiten.NewImage(g.config.ScreenWidth, g.config.ScreenHeight)
+	overlay.Fill(color.RGBA{50, 0, 0, 180})
+	op := &ebiten.DrawImageOptions{}
+	screen.DrawImage(overlay, op)
+
+	gameOverText := fmt.Sprintf(`
+╔═══════════════════════════════════════╗
+║          💀 GAME OVER 💀              ║
+╠═══════════════════════════════════════╣
+║                                       ║
+║     Счёт: %5d                          ║
+║     Уровень: %2d                        ║
+║                                       ║
+║     [SPACE] - Начать заново           ║
+║     [ESC] - Выход                     ║
+║                                       ║
+╚═══════════════════════════════════════╝
+`, g.score, g.level)
+
+	ebitenutil.DebugPrintAt(screen, gameOverText, g.config.ScreenWidth/2-180, g.config.ScreenHeight/2-120)
 }
