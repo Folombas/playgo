@@ -16,21 +16,24 @@ const (
 )
 
 func init() {
-	// Загрузка спрайтов
-	terrainImg, _, err := ebitenutil.NewImageFromFile("assets/Jungle_terrain.png")
+	// Загрузка спрайтов из Platformer Complete!
+	
+	// Спрайт игрока - используем p1_spritesheet.png
+	playerImg, _, err := ebitenutil.NewImageFromFile("assets/player/p1_spritesheet.png")
+	if err == nil {
+		entity.PlayerSprite = playerImg
+	}
+
+	// Спрайт ландшафта - используем tiles_spritesheet.png
+	terrainImg, _, err := ebitenutil.NewImageFromFile("assets/tiles/tiles_spritesheet.png")
 	if err == nil {
 		entity.TerrainSprite = terrainImg
 	}
 
-	objectsImg, _, err := ebitenutil.NewImageFromFile("assets/objects.PNG")
+	// Спрайты объектов
+	objectsImg, _, err := ebitenutil.NewImageFromFile("assets/items/items_spritesheet.png")
 	if err == nil {
 		entity.ObjectsSprite = objectsImg
-	}
-
-	// Спрайт игрока
-	playerImg, _, err := ebitenutil.NewImageFromFile("assets/8-bits-characters-gaming-assets.jpg")
-	if err == nil {
-		entity.PlayerSprite = playerImg
 	}
 
 	// Полоска здоровья

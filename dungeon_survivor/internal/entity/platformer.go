@@ -118,16 +118,18 @@ func (p *PlatformerPlayer) Draw(screen *ebiten.Image, cameraX float64) {
 			opts.GeoM.Translate(float64(p.Width), 0)
 		}
 		
-		// Анимация бега (выбор кадра)
-		frame := int(p.AnimFrame*2) % 8
-		frameWidth := 64.0 // Размер кадра
-		frameX := float64(frame % 4) * frameWidth
-		frameY := float64(frame / 4) * frameWidth
+		// Анимация бега (выбор кадра) - 9 кадров в ряд
+		frame := int(p.AnimFrame*1.5) % 9
+		frameWidth := 50.0 // Размер кадра в Platformer Complete
+		frameHeight := 58.0
+		frameX := float64(frame) * frameWidth
+		frameY := 0.0
 		
 		opts.GeoM.Translate(screenX, p.Y)
+		opts.GeoM.Scale(1.2, 1.2) // Увеличим спрайт
 		
 		// Вырезаем кадр из спрайта
-		sprite := PlayerSprite.SubImage(image.Rect(int(frameX), int(frameY), int(frameX)+int(frameWidth), int(frameY)+int(frameWidth))).(*ebiten.Image)
+		sprite := PlayerSprite.SubImage(image.Rect(int(frameX), int(frameY), int(frameX)+int(frameWidth), int(frameY)+int(frameHeight))).(*ebiten.Image)
 		screen.DrawImage(sprite, opts)
 	} else {
 		// Резерв - векторная графика
@@ -716,15 +718,17 @@ func (w *PlatformerWorld) drawHouse(screen *ebiten.Image, x float64, house House
 func (w *PlatformerWorld) drawPlatform(screen *ebiten.Image, x float64, platform Platform) {
 	tileSize := 48.0
 	
-	// Рисуем плитками
+	// Рисуем плитками из Platformer Complete
 	for tx := 0; tx < int(platform.Width/tileSize)+1; tx++ {
 		screenX := x + float64(tx)*tileSize
 		
 		if TerrainSprite != nil {
 			opts := &ebiten.DrawImageOptions{}
 			opts.GeoM.Translate(screenX, platform.Y)
-			// Вырезаем плитку земли с травой (верхняя левая на спрайте)
-			tile := TerrainSprite.SubImage(image.Rect(0, 0, 48, 48)).(*ebiten.Image)
+			
+			// Плитка травы (координаты из tiles_spritesheet.png)
+			// grassMid.png ~ 48x48
+			tile := TerrainSprite.SubImage(image.Rect(48, 0, 96, 48)).(*ebiten.Image)
 			screen.DrawImage(tile, opts)
 		} else {
 			// Резерв - векторная графика
@@ -746,8 +750,8 @@ func (w *PlatformerWorld) drawGround(screen *ebiten.Image, cameraX float64) {
 		if TerrainSprite != nil {
 			opts := &ebiten.DrawImageOptions{}
 			opts.GeoM.Translate(screenX, groundY)
-			// Плитка с травой
-			tile := TerrainSprite.SubImage(image.Rect(0, 0, 48, 48)).(*ebiten.Image)
+			// Плитка травы
+			tile := TerrainSprite.SubImage(image.Rect(48, 0, 96, 48)).(*ebiten.Image)
 			screen.DrawImage(tile, opts)
 		} else {
 			vector.DrawFilledRect(screen, float32(screenX), float32(groundY), 48, 8, color.RGBA{100, 200, 100, 255}, true)
@@ -761,27 +765,43 @@ func (w *PlatformerWorld) drawCoin(screen *ebiten.Image, x float64, coin *Coin) 
 	// Анимация вращения
 	scale := math.Abs(math.Sin(coin.AnimFrame))
 	
-	var coinColor color.Color
-	var size float64
-	
-	switch coin.Type {
-	case "gem":
-		coinColor = color.RGBA{255, 0, 255, 255}
-		size = 12 * scale
-	case "powerup":
-		coinColor = color.RGBA{0, 255, 255, 255}
-		size = 14 * scale
-	default:
-		coinColor = color.RGBA{255, 215, 0, 255}
-		size = 10 * scale
-	}
+	if ObjectsSprite != nil {
+		opts := &ebiten.DrawImageOptions{}
+		opts.GeoM.Translate(x, coin.Y)
+		opts.GeoM.Scale(scale, scale)
+		
+		var tile *ebiten.Image
+		switch coin.Type {
+		case "gem":
+			// Гем (синий)
+			tile = ObjectsSprite.SubImage(image.Rect(0, 0, 32, 32)).(*ebiten.Image)
+		case "powerup":
+			// Звезда
+			tile = ObjectsSprite.SubImage(image.Rect(96, 0, 128, 32)).(*ebiten.Image)
+		default:
+			// Золотая монета
+			tile = ObjectsSprite.SubImage(image.Rect(64, 0, 96, 32)).(*ebiten.Image)
+		}
+		screen.DrawImage(tile, opts)
+	} else {
+		// Резерв - векторная графика
+		var coinColor color.Color
+		var size float64
+		
+		switch coin.Type {
+		case "gem":
+			coinColor = color.RGBA{255, 0, 255, 255}
+			size = 12 * scale
+		case "powerup":
+			coinColor = color.RGBA{0, 255, 255, 255}
+			size = 14 * scale
+		default:
+			coinColor = color.RGBA{255, 215, 0, 255}
+			size = 10 * scale
+		}
 
-	vector.DrawFilledCircle(screen, float32(x+10), float32(coin.Y+10), float32(size), coinColor, true)
-	vector.DrawFilledCircle(screen, float32(x+10), float32(coin.Y+10), float32(size*0.6), color.RGBA{255, 255, 255, 255}, true)
-	
-	// Сияние для бонусов
-	if coin.Type == "powerup" || coin.Type == "gem" {
-		vector.DrawFilledCircle(screen, float32(x+10), float32(coin.Y+10), float32(size*1.5), color.RGBA{255, 255, 255, 100}, true)
+		vector.DrawFilledCircle(screen, float32(x+10), float32(coin.Y+10), float32(size), coinColor, true)
+		vector.DrawFilledCircle(screen, float32(x+10), float32(coin.Y+10), float32(size*0.6), color.RGBA{255, 255, 255, 255}, true)
 	}
 }
 
