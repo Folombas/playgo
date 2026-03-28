@@ -17,7 +17,7 @@
 
 ## 🎯 Текущий проект
 
-### 🏰 Dungeon Survivor (Go90) ⭐ NEW!
+### 🏰 Dungeon Survivor ⭐ NEW!
 
 **Roguelike Survivor** — Vampire Survivors-like игра!
 
@@ -25,8 +25,8 @@
 - Автоматическая атака ближайших врагов
 - Управление только перемещением (WASD/Стрелки)
 - Волны врагов с прогрессией сложности
-- Система случайных улучшений
-- Permadeath с мета-прогрессией
+- Система случайных улучшений (в разработке)
+- Permadeath с мета-прогрессией (в разработке)
 
 **Технологии:**
 - Go 1.25
@@ -34,7 +34,7 @@
 
 **Запуск:**
 ```bash
-cd Go90
+cd dungeon_survivor
 go mod tidy
 go run main.go
 ```
@@ -100,7 +100,7 @@ git clone <repository-url>
 cd playgo
 
 # Запустить текущую игру
-cd Go90
+cd dungeon_survivor
 go mod tidy
 go run main.go
 ```
