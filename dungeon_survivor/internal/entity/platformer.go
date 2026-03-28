@@ -181,6 +181,22 @@ type PlatformerWorld struct {
 	Hills      []Hill
 	Clouds     []Cloud
 	GroundY    float64
+	Ladders    []Ladder
+	Bridges    []Bridge
+}
+
+// Ladder представляет лестницу
+type Ladder struct {
+	X      float64
+	Y      float64
+	Height float64
+}
+
+// Bridge представляет мост
+type Bridge struct {
+	X      float64
+	Y      float64
+	Width  float64
 }
 
 // NewPlatformerWorld создаёт новый мир
@@ -206,6 +222,8 @@ func (w *PlatformerWorld) GenerateLevel(level int) {
 	w.Trees = make([]Tree, 0)
 	w.Hills = make([]Hill, 0)
 	w.Clouds = make([]Cloud, 0)
+	w.Ladders = make([]Ladder, 0)
+	w.Bridges = make([]Bridge, 0)
 
 	rng := rand.New(rand.NewSource(int64(level * 1000)))
 
@@ -230,11 +248,26 @@ func (w *PlatformerWorld) GenerateLevel(level int) {
 		Type:   "grass",
 	})
 
-	// Платформы
-	for i := 0; i < 15+level*3; i++ {
-		x := 200 + rng.Float64()*(w.Width-400)
-		y := w.GroundY - 80 - rng.Float64()*200
-		width := 80 + rng.Float64()*120
+	// Платформы на разной высоте - больше и разнообразнее!
+	numPlatforms := 20 + level*5
+	for i := 0; i < numPlatforms; i++ {
+		x := 150 + rng.Float64()*(w.Width-300)
+		// Разная высота: низкие, средние, высокие
+		heightLevel := rng.Intn(3)
+		var y float64
+		var width float64
+
+		switch heightLevel {
+		case 0: // Низкие платформы
+			y = w.GroundY - 80 - rng.Float64()*60
+			width = 100 + rng.Float64()*100
+		case 1: // Средние платформы
+			y = w.GroundY - 180 - rng.Float64()*80
+			width = 80 + rng.Float64()*120
+		case 2: // Высокие платформы
+			y = w.GroundY - 300 - rng.Float64()*100
+			width = 60 + rng.Float64()*80
+		}
 
 		w.Platforms = append(w.Platforms, Platform{
 			X:      x,
@@ -245,7 +278,7 @@ func (w *PlatformerWorld) GenerateLevel(level int) {
 		})
 
 		// Монетки на платформах
-		if rng.Float64() < 0.7 {
+		if rng.Float64() < 0.8 {
 			w.Coins = append(w.Coins, Coin{
 				X:         x + width/2 - 10,
 				Y:         y - 30,
@@ -253,14 +286,38 @@ func (w *PlatformerWorld) GenerateLevel(level int) {
 				AnimFrame: rng.Float64() * 10,
 			})
 		}
+
+		// Лестницы между платформами
+		if i > 0 && rng.Float64() < 0.3 {
+			prevPlatform := w.Platforms[len(w.Platforms)-2]
+			ladderX := prevPlatform.X + prevPlatform.Width/2
+			ladderHeight := prevPlatform.Y - y
+			if ladderHeight > 40 && ladderHeight < 200 {
+				w.Ladders = append(w.Ladders, Ladder{
+					X:      ladderX,
+					Y:      y,
+					Height: ladderHeight,
+				})
+			}
+		}
 	}
 
-	// Домики
+	// Мосты
+	for i := 0; i < 3+level; i++ {
+		x := 300 + float64(i)*600 + rng.Float64()*300
+		w.Bridges = append(w.Bridges, Bridge{
+			X:     x,
+			Y:     w.GroundY - 30,
+			Width: 120 + rng.Float64()*80,
+		})
+	}
+
+	// Домики - теперь НА земле!
 	for i := 0; i < 3+level; i++ {
 		x := 300 + float64(i)*500 + rng.Float64()*200
 		w.Houses = append(w.Houses, House{
 			X:          x,
-			Y:          w.GroundY - 120,
+			Y:          w.GroundY - 120, // На земле!
 			Width:      100,
 			Height:     120,
 			RoofType:   "gable",
@@ -269,27 +326,46 @@ func (w *PlatformerWorld) GenerateLevel(level int) {
 		})
 	}
 
-	// Деревья
-	for i := 0; i < 10+level*2; i++ {
+	// Деревья - больше и разные типы!
+	for i := 0; i < 15+level*3; i++ {
 		x := 100 + rng.Float64()*(w.Width-200)
 		treeType := "oak"
 		treeColor := color.RGBA{50, 150, 50, 255}
+		treeSize := 60.0
 
 		r := rng.Float64()
-		if r < 0.3 {
-			treeType = "pine"
+		if r < 0.25 {
+			treeType = "pine" // Ёлка
 			treeColor = color.RGBA{30, 100, 30, 255}
-		} else if r < 0.5 {
-			treeType = "birch"
+			treeSize = 80 + rng.Float64()*40
+		} else if r < 0.4 {
+			treeType = "birch" // Берёза
 			treeColor = color.RGBA{100, 180, 100, 255}
+			treeSize = 70 + rng.Float64()*30
+		} else if r < 0.5 {
+			treeType = "jungle" // Большое дерево из спрайта
+			treeColor = color.RGBA{80, 140, 60, 255}
+			treeSize = 150 + rng.Float64()*50
 		}
 
 		w.Trees = append(w.Trees, Tree{
 			X:     x,
 			Y:     w.GroundY,
 			Type:  treeType,
-			Size:  60 + rng.Float64()*40,
+			Size:  treeSize,
 			Color: treeColor,
+		})
+	}
+
+	// Кусты и трава
+	for i := 0; i < 20+level*2; i++ {
+		x := rng.Float64() * w.Width
+		w.Trees = append(w.Trees, Tree{
+			X:     x,
+			Y:     w.GroundY,
+			Type:  "bush",
+			Size:  20 + rng.Float64()*20,
+			Color: color.RGBA{60, 160, 60, 255},
 		})
 	}
 
@@ -360,6 +436,20 @@ func (w *PlatformerWorld) Draw(screen *ebiten.Image, cameraX float64) {
 		screenX := house.X - cameraX
 		if screenX > -150 && screenX < 1380 {
 			w.drawHouse(screen, screenX, house)
+		}
+	}
+
+	// Лестницы
+	for _, ladder := range w.Ladders {
+		screenX := ladder.X - cameraX
+		w.drawLadder(screen, screenX, ladder.Y, ladder)
+	}
+
+	// Мосты
+	for _, bridge := range w.Bridges {
+		screenX := bridge.X - cameraX
+		if screenX > -200 && screenX < 1380 {
+			w.drawBridge(screen, screenX, bridge.Y, bridge)
 		}
 	}
 
@@ -442,6 +532,28 @@ func (w *PlatformerWorld) drawHill(screen *ebiten.Image, x float64, hill Hill) {
 // drawTree рисует дерево
 func (w *PlatformerWorld) drawTree(screen *ebiten.Image, x float64, tree Tree) {
 	y := tree.Y
+
+	// Используем спрайты для деревьев!
+	if TerrainSprite != nil && (tree.Type == "jungle" || tree.Type == "bush") {
+		if tree.Type == "jungle" {
+			// Большое дерево из спрайта (справа на спрайте)
+			opts := &ebiten.DrawImageOptions{}
+			opts.GeoM.Scale(tree.Size/200, tree.Size/200)
+			opts.GeoM.Translate(x-50, y-tree.Size)
+			// Большое дерево ~300x400
+			tile := TerrainSprite.SubImage(image.Rect(550, 150, 750, 400)).(*ebiten.Image)
+			screen.DrawImage(tile, opts)
+		} else if tree.Type == "bush" {
+			// Куст из спрайта
+			opts := &ebiten.DrawImageOptions{}
+			opts.GeoM.Scale(tree.Size/40, tree.Size/40)
+			opts.GeoM.Translate(x-tree.Size/2, y-tree.Size)
+			// Куст ~50x50
+			tile := TerrainSprite.SubImage(image.Rect(450, 250, 500, 300)).(*ebiten.Image)
+			screen.DrawImage(tile, opts)
+		}
+		return
+	}
 
 	if tree.Type == "pine" {
 		// Ёлка (треугольная)
@@ -579,6 +691,46 @@ func (w *PlatformerWorld) drawCoin(screen *ebiten.Image, x float64, coin *Coin) 
 
 	vector.DrawFilledCircle(screen, float32(x+10), float32(coin.Y+10), float32(10*scale), color.RGBA{255, 215, 0, 255}, true)
 	vector.DrawFilledCircle(screen, float32(x+10), float32(coin.Y+10), float32(6*scale), color.RGBA{255, 255, 150, 255}, true)
+}
+
+// drawLadder рисует лестницу из спрайта
+func (w *PlatformerWorld) drawLadder(screen *ebiten.Image, x, y float64, ladder Ladder) {
+	if ObjectsSprite != nil {
+		// Рисуем лестницу плитками 48x48
+		tileHeight := 48.0
+		for ty := 0.0; ty < ladder.Height; ty += tileHeight {
+			opts := &ebiten.DrawImageOptions{}
+			opts.GeoM.Translate(x-24, y+ladder.Height-ty-tileHeight)
+			// Лестница из спрайта (примерные координаты)
+			tile := ObjectsSprite.SubImage(image.Rect(180, 0, 228, 48)).(*ebiten.Image)
+			screen.DrawImage(tile, opts)
+		}
+	} else {
+		// Резерв - векторная графика
+		for ty := 0.0; ty < ladder.Height; ty += 20 {
+			vector.StrokeLine(screen, float32(x-10), float32(y+ladder.Height-ty), float32(x+10), float32(y+ladder.Height-ty), 3, color.RGBA{150, 100, 50, 255}, false)
+		}
+		vector.StrokeLine(screen, float32(x-10), float32(y), float32(x-10), float32(y+ladder.Height), 3, color.RGBA{150, 100, 50, 255}, false)
+		vector.StrokeLine(screen, float32(x+10), float32(y), float32(x+10), float32(y+ladder.Height), 3, color.RGBA{150, 100, 50, 255}, false)
+	}
+}
+
+// drawBridge рисует мост из спрайта
+func (w *PlatformerWorld) drawBridge(screen *ebiten.Image, x, y float64, bridge Bridge) {
+	if ObjectsSprite != nil {
+		opts := &ebiten.DrawImageOptions{}
+		opts.GeoM.Scale(float64(bridge.Width)/120, 1.0)
+		opts.GeoM.Translate(x, y)
+		// Мост из спрайта
+		tile := ObjectsSprite.SubImage(image.Rect(0, 400, 120, 448)).(*ebiten.Image)
+		screen.DrawImage(tile, opts)
+	} else {
+		// Резерв - векторная графика
+		vector.DrawFilledRect(screen, float32(x), float32(y), float32(bridge.Width), 10, color.RGBA{150, 100, 50, 255}, true)
+		for i := 0.0; i < bridge.Width; i += 20 {
+			vector.StrokeLine(screen, float32(x+i), float32(y), float32(x+i), float32(y+30), 3, color.RGBA{120, 80, 40, 255}, false)
+		}
+	}
 }
 
 // drawFlag рисует флаг
