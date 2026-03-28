@@ -286,13 +286,13 @@ func (w *PlatformerWorld) GenerateLevel(level int) {
 		})
 	}
 
-	// Облака
-	for i := 0; i < 10; i++ {
+	// Облака - больше и разнообразнее
+	for i := 0; i < 15; i++ {
 		w.Clouds = append(w.Clouds, Cloud{
 			X:     rng.Float64() * w.Width,
-			Y:     50 + rng.Float64()*100,
-			Size:  40 + rng.Float64()*40,
-			Speed: 0.1 + rng.Float64()*0.2,
+			Y:     30 + rng.Float64()*150,
+			Size:  50 + rng.Float64()*60,
+			Speed: 0.05 + rng.Float64()*0.15,
 		})
 	}
 
@@ -307,24 +307,29 @@ func (w *PlatformerWorld) GenerateLevel(level int) {
 
 // Draw отрисовывает мир
 func (w *PlatformerWorld) Draw(screen *ebiten.Image, cameraX float64) {
-	// Солнце
-	vector.DrawFilledCircle(screen, 100, 60, 40, color.RGBA{255, 255, 100, 255}, true)
-	// Лучи солнца
-	for i := 0; i < 8; i++ {
-		angle := float64(i) * math.Pi / 4
-		rx := 100 + math.Cos(angle)*55
-		ry := 60 + math.Sin(angle)*55
-		vector.DrawFilledRect(screen, float32(rx-3), float32(ry-3), 6, 6, color.RGBA{255, 255, 50, 200}, true)
+	// Яркое синее небо с градиентом
+	for iy := 0; iy < int(w.Height); iy++ {
+		ratio := float64(iy) / w.Height
+		// От ярко-синего вверху к более светлому внизу
+		r := uint8(float64(135) * (1 - ratio*0.3))
+		g := uint8(float64(206) * (1 - ratio*0.2))
+		b := uint8(235)
+		vector.DrawFilledRect(screen, 0, float32(iy), float32(w.Width), 1, color.RGBA{r, g, b, 255}, true)
 	}
 
-	// Облака
-	for _, cloud := range w.Clouds {
+	// Солнце с сиянием
+	w.drawSun(screen, 80, 60)
+
+	// Облака (передний план, параллакс)
+	for i := range w.Clouds {
+		cloud := &w.Clouds[i]
 		cloud.X += cloud.Speed
-		if cloud.X > w.Width {
-			cloud.X = -100
+		if cloud.X > w.Width+200 {
+			cloud.X = -200
+			cloud.Y = 30 + rand.Float64()*150
 		}
-		screenX := cloud.X - cameraX
-		if screenX > -100 && screenX < 1380 {
+		screenX := cloud.X - cameraX*0.3 // Лёгкий параллакс
+		if screenX > -200 && screenX < w.Width+200 {
 			w.drawCloud(screen, screenX, cloud.Y, cloud.Size)
 		}
 	}
@@ -373,10 +378,45 @@ func (w *PlatformerWorld) Draw(screen *ebiten.Image, cameraX float64) {
 
 // drawCloud рисует облако
 func (w *PlatformerWorld) drawCloud(screen *ebiten.Image, x, y, size float64) {
-	vector.DrawFilledCircle(screen, float32(x), float32(y), float32(size), color.RGBA{255, 255, 255, 220}, true)
-	vector.DrawFilledCircle(screen, float32(x+size*0.5), float32(y+size*0.1), float32(size*0.7), color.RGBA{255, 255, 255, 220}, true)
-	vector.DrawFilledCircle(screen, float32(x-size*0.5), float32(y+size*0.1), float32(size*0.7), color.RGBA{255, 255, 255, 220}, true)
-	vector.DrawFilledCircle(screen, float32(x), float32(y+size*0.3), float32(size*0.8), color.RGBA{255, 255, 255, 220}, true)
+	// Пушистое облако из нескольких кругов
+	// Основной слой
+	vector.DrawFilledCircle(screen, float32(x), float32(y), float32(size), color.RGBA{255, 255, 255, 240}, true)
+	vector.DrawFilledCircle(screen, float32(x+size*0.6), float32(y+size*0.1), float32(size*0.8), color.RGBA{255, 255, 255, 240}, true)
+	vector.DrawFilledCircle(screen, float32(x-size*0.6), float32(y+size*0.1), float32(size*0.8), color.RGBA{255, 255, 255, 240}, true)
+	vector.DrawFilledCircle(screen, float32(x), float32(y+size*0.4), float32(size*0.9), color.RGBA{255, 255, 255, 240}, true)
+	vector.DrawFilledCircle(screen, float32(x+size*0.3), float32(y+size*0.3), float32(size*0.7), color.RGBA{255, 255, 255, 240}, true)
+	vector.DrawFilledCircle(screen, float32(x-size*0.3), float32(y+size*0.3), float32(size*0.7), color.RGBA{255, 255, 255, 240}, true)
+	
+	// Блик (светлая середина)
+	vector.DrawFilledCircle(screen, float32(x), float32(y-size*0.1), float32(size*0.5), color.RGBA{255, 255, 255, 255}, true)
+}
+
+// drawSun рисует солнце с сиянием
+func (w *PlatformerWorld) drawSun(screen *ebiten.Image, x, y float64) {
+	// Сияние (большой полупрозрачный круг)
+	vector.DrawFilledCircle(screen, float32(x), float32(y), 60, color.RGBA{255, 255, 200, 100}, true)
+	vector.DrawFilledCircle(screen, float32(x), float32(y), 50, color.RGBA{255, 255, 150, 150}, true)
+	
+	// Основное солнце
+	vector.DrawFilledCircle(screen, float32(x), float32(y), 40, color.RGBA{255, 255, 100, 255}, true)
+	vector.DrawFilledCircle(screen, float32(x), float32(y), 30, color.RGBA{255, 255, 150, 255}, true)
+	
+	// Лучи солнца (8 направлений)
+	for i := 0; i < 8; i++ {
+		angle := float64(i)*math.Pi/4 + math.Pi/8
+		innerRadius := 45.0
+		outerRadius := 65.0
+		x1 := x + math.Cos(angle)*innerRadius
+		y1 := y + math.Sin(angle)*innerRadius
+		x2 := x + math.Cos(angle)*outerRadius
+		y2 := y + math.Sin(angle)*outerRadius
+		
+		// Рисуем луч как линию
+		vector.StrokeLine(screen, float32(x1), float32(y1), float32(x2), float32(y2), 4, color.RGBA{255, 255, 100, 200}, false)
+	}
+	
+	// Яркий центр
+	vector.DrawFilledCircle(screen, float32(x), float32(y), 15, color.RGBA{255, 255, 255, 255}, true)
 }
 
 // drawHill рисует холм
