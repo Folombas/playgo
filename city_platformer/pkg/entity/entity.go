@@ -32,7 +32,7 @@ type Player struct {
 // NewPlayer - создание нового игрока
 func NewPlayer(x, y float64) *Player {
 	return &Player{
-		X: x, Y: y, Width: 32, Height: 32,
+		X: x, Y: y, Width: 66, Height: 92,
 		Speed: 6.0, JumpForce: -14.0,
 		Facing: 1,
 	}
@@ -123,28 +123,28 @@ func (p *Player) Draw(screen *ebiten.Image, cameraX, cameraY float64) {
 		return
 	}
 	
-	// Временная отрисовка (пока без спрайтов)
+	// Временная отрисовка (если спрайт не загружен)
 	if p.IsCrouching {
 		// Приседание
-		ebitenutil.DrawRect(screen, screenX, screenY+12, 32, 20, color.RGBA{50, 150, 255, 255})
+		ebitenutil.DrawRect(screen, screenX, screenY+20, p.Width, 20, color.RGBA{100, 200, 100, 255})
 	} else {
 		// Стоя/бег
-		ebitenutil.DrawRect(screen, screenX, screenY, 32, 32, color.RGBA{50, 150, 255, 255})
+		ebitenutil.DrawRect(screen, screenX, screenY, p.Width, p.Height, color.RGBA{100, 200, 100, 255})
 	}
 	
 	// Направление взгляда (глаза)
-	eyeX := screenX + 20
+	eyeX := screenX + p.Width - 20
 	if p.Facing == -1 {
-		eyeX = screenX + 8
+		eyeX = screenX + 10
 	}
-	ebitenutil.DrawRect(screen, eyeX, screenY+8, 6, 6, color.RGBA{255, 255, 255, 255})
+	ebitenutil.DrawRect(screen, eyeX, screenY+15, 12, 12, color.RGBA{255, 255, 255, 255})
 	
 	// Оружие
-	gunX := screenX + 20
+	gunX := screenX + p.Width - 10
 	if p.Facing == -1 {
-		gunX = screenX - 4
+		gunX = screenX - 10
 	}
-	ebitenutil.DrawRect(screen, gunX, screenY+18, 16, 6, color.RGBA{80, 80, 80, 255})
+	ebitenutil.DrawRect(screen, gunX, screenY+35, 24, 10, color.RGBA{80, 80, 80, 255})
 }
 
 // Enemy - враг
@@ -162,7 +162,7 @@ type Enemy struct {
 // NewEnemy - создание врага
 func NewEnemy(x, y float64, enemyType string) *Enemy {
 	e := &Enemy{
-		X: x, Y: y, Width: 32, Height: 32,
+		X: x, Y: y, Width: 70, Height: 70,
 		Type: enemyType,
 		Health: 1,
 	}
@@ -170,13 +170,15 @@ func NewEnemy(x, y float64, enemyType string) *Enemy {
 	// Настройка параметров по типу
 	switch enemyType {
 	case "fly":
-		e.Y = y - 50 // Летает выше
-		e.Height = 24
+		e.Y = y - 30
+		e.Height = 50
+		e.Width = 60
 	case "snail":
-		e.Width = 36
-		e.Height = 28
+		e.Width = 70
+		e.Height = 40
 	case "fish":
-		e.Height = 20
+		e.Height = 40
+		e.Width = 60
 	}
 	
 	return e

@@ -302,10 +302,10 @@ func (g *Game) applyPhysics() {
 	// Коллизии с платформами
 	g.player.OnGround = false
 	for _, p := range g.platforms {
-		if g.checkCollision(g.player.X+4, g.player.Y+4, p.X, p.Y, p.Width-8, p.Height-8) {
+		if g.checkCollision(g.player.X+8, g.player.Y+8, p.X, p.Y, p.Width-16, p.Height-16) {
 			// Приземление сверху
-			if g.player.VY > 0 && g.player.Y+32 < p.Y+20 {
-				g.player.Y = p.Y - 32
+			if g.player.VY > 0 && g.player.Y+g.player.Height < p.Y+30 {
+				g.player.Y = p.Y - g.player.Height
 				g.player.VY = 0
 				g.player.OnGround = true
 			}
@@ -561,38 +561,57 @@ func (g *Game) checkCollision(x1, y1, x2, y2, w2, h2 float64) bool {
 
 // Draw - отрисовка игры
 func (g *Game) Draw(screen *ebiten.Image) {
-	// Небо (градиент)
-	g.drawSky(screen)
-	
-	// Параллакс фон
-	g.drawParallaxBackground(screen)
+	// Фон (небо и облака)
+	if g.renderer != nil {
+		g.renderer.DrawBackground(screen, g.cameraX, g.cameraY)
+	} else {
+		g.drawSky(screen)
+	}
 	
 	// Платформы
 	for _, p := range g.platforms {
-		g.renderer.DrawPlatform(screen, p, g.cameraX, g.cameraY)
+		if g.renderer != nil {
+			g.renderer.DrawPlatform(screen, p, g.cameraX, g.cameraY)
+		} else {
+			g.drawPlatformFallback(screen, p)
+		}
 	}
 	
 	// Коллекционные предметы
 	for _, coin := range g.coins {
-		g.renderer.DrawCollectible(screen, coin, g.cameraX, g.cameraY)
+		if g.renderer != nil {
+			g.renderer.DrawCollectible(screen, coin, g.cameraX, g.cameraY)
+		}
 	}
 	
 	// Враги
 	for _, enemy := range g.enemies {
-		g.renderer.DrawEnemy(screen, enemy, g.cameraX, g.cameraY)
+		if g.renderer != nil {
+			g.renderer.DrawEnemy(screen, enemy, g.cameraX, g.cameraY)
+		} else {
+			g.drawEnemyFallback(screen, enemy)
+		}
 	}
 	
 	// Босс
 	if g.bossActive && g.boss != nil {
-		g.renderer.DrawBoss(screen, *g.boss, g.cameraX, g.cameraY)
+		if g.renderer != nil {
+			g.renderer.DrawBoss(screen, *g.boss, g.cameraX, g.cameraY)
+		}
 	}
 	
 	// Игрок
-	g.renderer.DrawPlayer(screen, *g.player, g.cameraX, g.cameraY)
+	if g.renderer != nil {
+		g.renderer.DrawPlayer(screen, *g.player, g.cameraX, g.cameraY)
+	} else {
+		g.player.Draw(screen, g.cameraX, g.cameraY)
+	}
 	
 	// Пули
 	for _, p := range g.projectiles {
-		g.renderer.DrawProjectile(screen, p, g.cameraX, g.cameraY)
+		if g.renderer != nil {
+			g.renderer.DrawProjectile(screen, p, g.cameraX, g.cameraY)
+		}
 	}
 	
 	// Частицы
@@ -630,27 +649,65 @@ func (g *Game) Draw(screen *ebiten.Image) {
 
 // drawSky - отрисовка неба
 func (g *Game) drawSky(screen *ebiten.Image) {
-	// Небо в лесном стиле - светло-голубое
+	// Небо в стиле PlatformerComplete - светло-голубое
 	for y := 0; y < screenHeight; y++ {
 		ratio := float64(y) / float64(screenHeight)
-		r := uint8(180 - ratio*30)
-		gr := uint8(220 - ratio*20)
-		b := uint8(255 - ratio*10)
+		r := uint8(135 - ratio*35)
+		gr := uint8(206 - ratio*86)
+		b := uint8(235)
 		vector.DrawFilledRect(screen, 0, float32(y), float32(screenWidth), 1, color.RGBA{r, gr, b, 255}, true)
 	}
 }
 
-// drawParallaxBackground - параллакс фон из Forest Pack
+// drawPlatformFallback - резервная отрисовка платформы
+func (g *Game) drawPlatformFallback(screen *ebiten.Image, p level.Platform) {
+	screenX := p.X - g.cameraX
+	screenY := p.Y - g.cameraY
+	
+	var c color.RGBA
+	switch p.Type {
+	case "grass":
+		c = color.RGBA{100, 180, 100, 255}
+	case "dirt":
+		c = color.RGBA{139, 90, 43, 255}
+	case "stone":
+		c = color.RGBA{150, 150, 150, 255}
+	case "castle":
+		c = color.RGBA{180, 100, 80, 255}
+	default:
+		c = color.RGBA{100, 180, 100, 255}
+	}
+	
+	vector.DrawFilledRect(screen, float32(screenX), float32(screenY), float32(p.Width), float32(p.Height), c, true)
+}
+
+// drawEnemyFallback - резервная отрисовка врага
+func (g *Game) drawEnemyFallback(screen *ebiten.Image, enemy entity.Enemy) {
+	screenX := enemy.X - g.cameraX
+	screenY := enemy.Y - g.cameraY
+	
+	var c color.RGBA
+	switch enemy.Type {
+	case "slime":
+		c = color.RGBA{150, 50, 150, 255}
+	case "fly":
+		c = color.RGBA{200, 200, 50, 255}
+	case "snail":
+		c = color.RGBA{180, 100, 50, 255}
+	case "fish":
+		c = color.RGBA{50, 100, 200, 255}
+	default:
+		c = color.RGBA{150, 150, 150, 255}
+	}
+	
+	vector.DrawFilledRect(screen, float32(screenX), float32(screenY), float32(enemy.Width), float32(enemy.Height), c, true)
+}
+
+// drawParallaxBackground - параллакс фон из PlatformerComplete
 func (g *Game) drawParallaxBackground(screen *ebiten.Image) {
 	// Используем рендерер для отрисовки слоёв
 	if g.renderer != nil {
 		g.renderer.DrawBackground(screen, g.cameraX, g.cameraY)
-	}
-	
-	// Деревья на заднем плане (параллакс)
-	for i := 0; i < 10; i++ {
-		x := float64(i*200) - g.cameraX*0.4
-		g.renderer.DrawDecoration(screen, "tree", x, float64(screenHeight)-180, g.cameraX, g.cameraY)
 	}
 }
 

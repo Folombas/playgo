@@ -1,5 +1,5 @@
-// Package render - система отрисовки
-// Go365 Day 88 - Forest Pack
+// Package render - система отрисовки PlatformerComplete
+// Go365 Day 88
 package render
 
 import (
@@ -15,12 +15,17 @@ import (
 // Renderer - система отрисовки
 type Renderer struct {
 	spriteSheet *sprite.SpriteSheet
+	tileWidth   int
+	tileHeight  int
 }
 
 // NewRenderer - создание рендерера
 func NewRenderer(ss *sprite.SpriteSheet) *Renderer {
+	tileW, tileH := ss.GetTileSize()
 	return &Renderer{
 		spriteSheet: ss,
+		tileWidth:   tileW,
+		tileHeight:  tileH,
 	}
 }
 
@@ -34,10 +39,10 @@ func (r *Renderer) DrawPlayer(screen *ebiten.Image, p entity.Player, cameraX, ca
 		return
 	}
 	
-	// Получаем спрайт игрока
+	// Определяем состояние
 	state := "stand"
 	if p.IsCrouching {
-		state = "crouch"
+		state = "duck"
 	} else if !p.OnGround {
 		state = "jump"
 	} else if p.IsMoving {
@@ -50,46 +55,31 @@ func (r *Renderer) DrawPlayer(screen *ebiten.Image, p entity.Player, cameraX, ca
 	if playerSprite != nil {
 		opts := &ebiten.DrawImageOptions{}
 		
-		// Отражение по горизонтали если смотрим влево
+		// Отражение по горизонтали
 		if p.Facing == -1 {
 			opts.GeoM.Scale(-1, 1)
 			opts.GeoM.Translate(float64(p.Width), 0)
 		}
 		
 		opts.GeoM.Translate(screenX, screenY)
-		opts.GeoM.Scale(1.5, 1.5)
 		
 		screen.DrawImage(playerSprite, opts)
 	} else {
-		// Резервная отрисовка
 		r.drawPlayerFallback(screen, p, cameraX, cameraY)
 	}
 }
 
-// drawPlayerFallback - резервная отрисовка игрока
+// drawPlayerFallback - резервная отрисовка
 func (r *Renderer) drawPlayerFallback(screen *ebiten.Image, p entity.Player, cameraX, cameraY float64) {
 	screenX := p.X - cameraX
 	screenY := p.Y - cameraY
 	
+	c := color.RGBA{100, 200, 100, 255}
 	if p.IsCrouching {
-		vector.DrawFilledRect(screen, float32(screenX), float32(screenY+12), 32, 20, color.RGBA{100, 180, 100, 255}, true)
+		vector.DrawFilledRect(screen, float32(screenX), float32(screenY+20), 32, 20, c, true)
 	} else {
-		vector.DrawFilledRect(screen, float32(screenX), float32(screenY), 32, 32, color.RGBA{100, 180, 100, 255}, true)
+		vector.DrawFilledRect(screen, float32(screenX), float32(screenY), 32, 40, c, true)
 	}
-	
-	// Глаза
-	eyeX := float32(screenX + 20)
-	if p.Facing == -1 {
-		eyeX = float32(screenX + 8)
-	}
-	vector.DrawFilledRect(screen, eyeX, float32(screenY+8), 6, 6, color.RGBA{255, 255, 255, 255}, true)
-	
-	// Оружие
-	gunX := float32(screenX + 20)
-	if p.Facing == -1 {
-		gunX = float32(screenX - 4)
-	}
-	vector.DrawFilledRect(screen, gunX, float32(screenY+18), 16, 6, color.RGBA{80, 80, 80, 255}, true)
 }
 
 // DrawEnemy - отрисовка врага
@@ -97,7 +87,6 @@ func (r *Renderer) DrawEnemy(screen *ebiten.Image, e entity.Enemy, cameraX, came
 	screenX := e.X - cameraX
 	screenY := e.Y - cameraY
 	
-	// Получаем спрайт врага
 	frame := int(e.AnimFrame)
 	enemySprite := r.spriteSheet.GetEnemyFrame(e.Type, frame)
 	
@@ -106,7 +95,6 @@ func (r *Renderer) DrawEnemy(screen *ebiten.Image, e entity.Enemy, cameraX, came
 		opts.GeoM.Translate(screenX, screenY)
 		screen.DrawImage(enemySprite, opts)
 	} else {
-		// Резервная отрисовка
 		r.drawEnemyFallback(screen, e, cameraX, cameraY)
 	}
 }
@@ -116,27 +104,21 @@ func (r *Renderer) drawEnemyFallback(screen *ebiten.Image, e entity.Enemy, camer
 	screenX := e.X - cameraX
 	screenY := e.Y - cameraY
 	
-	var bodyColor color.RGBA
-	
+	var c color.RGBA
 	switch e.Type {
 	case "slime":
-		bodyColor = color.RGBA{50, 180, 50, 255}
+		c = color.RGBA{150, 50, 150, 255}
 	case "fly":
-		bodyColor = color.RGBA{200, 180, 50, 255}
+		c = color.RGBA{200, 200, 50, 255}
 	case "snail":
-		bodyColor = color.RGBA{180, 100, 50, 255}
+		c = color.RGBA{180, 100, 50, 255}
 	case "fish":
-		bodyColor = color.RGBA{50, 100, 200, 255}
+		c = color.RGBA{50, 100, 200, 255}
 	default:
-		bodyColor = color.RGBA{150, 150, 150, 255}
+		c = color.RGBA{150, 150, 150, 255}
 	}
 	
-	vector.DrawFilledRect(screen, float32(screenX), float32(screenY), float32(e.Width), float32(e.Height), bodyColor, true)
-	
-	// Глаза
-	eyeY := float32(screenY + 8)
-	vector.DrawFilledRect(screen, float32(screenX+8), eyeY, 6, 6, color.RGBA{255, 255, 255, 255}, true)
-	vector.DrawFilledRect(screen, float32(screenX)+float32(e.Width)-14, eyeY, 6, 6, color.RGBA{255, 255, 255, 255}, true)
+	vector.DrawFilledRect(screen, float32(screenX), float32(screenY), float32(e.Width), float32(e.Height), c, true)
 }
 
 // DrawBoss - отрисовка босса
@@ -144,25 +126,17 @@ func (r *Renderer) DrawBoss(screen *ebiten.Image, b entity.Boss, cameraX, camera
 	screenX := b.X - cameraX
 	screenY := b.Y - cameraY
 	
-	// Тело босса (огромный лесной монстр)
-	vector.DrawFilledRect(screen, float32(screenX), float32(screenY), float32(b.Width), float32(b.Height), color.RGBA{80, 60, 40, 255}, true)
+	// Босс - большой слизень
+	bossColor := color.RGBA{180, 50, 180, 255}
+	vector.DrawFilledRect(screen, float32(screenX), float32(screenY), float32(b.Width), float32(b.Height), bossColor, true)
 	
-	// Мох/трава на боссе
-	vector.DrawFilledRect(screen, float32(screenX+5), float32(screenY+5), float32(b.Width-10), 15, color.RGBA{60, 120, 60, 255}, true)
-	
-	// Глаза (светящиеся)
-	vector.DrawFilledRect(screen, float32(screenX+15), float32(screenY+20), 18, 18, color.RGBA{255, 200, 50, 255}, true)
-	vector.DrawFilledRect(screen, float32(screenX+47), float32(screenY+20), 18, 18, color.RGBA{255, 200, 50, 255}, true)
+	// Глаза
+	vector.DrawFilledRect(screen, float32(screenX+15), float32(screenY+15), 20, 20, color.RGBA{0, 0, 0, 255}, true)
+	vector.DrawFilledRect(screen, float32(screenX+45), float32(screenY+15), 20, 20, color.RGBA{0, 0, 0, 255}, true)
 	
 	// Зрачки
-	vector.DrawFilledRect(screen, float32(screenX+22), float32(screenY+26), 7, 7, color.RGBA{0, 0, 0, 255}, true)
-	vector.DrawFilledRect(screen, float32(screenX+54), float32(screenY+26), 7, 7, color.RGBA{0, 0, 0, 255}, true)
-	
-	// Рога/ветки
-	for i := 0; i < 4; i++ {
-		x := float32(screenX) + float32(i*22)
-		vector.DrawFilledRect(screen, x, float32(screenY-10), 10, 15, color.RGBA{100, 60, 40, 255}, true)
-	}
+	vector.DrawFilledRect(screen, float32(screenX+22), float32(screenY+20), 10, 10, color.RGBA{255, 255, 255, 255}, true)
+	vector.DrawFilledRect(screen, float32(screenX+52), float32(screenY+20), 10, 10, color.RGBA{255, 255, 255, 255}, true)
 }
 
 // DrawPlatform - отрисовка платформы
@@ -171,90 +145,137 @@ func (r *Renderer) DrawPlatform(screen *ebiten.Image, p level.Platform, cameraX,
 	screenY := p.Y - cameraY
 	
 	switch p.Type {
-	case "ground":
-		r.drawGround(screen, screenX, screenY, p.Width, p.Height, cameraX, cameraY)
+	case "grass":
+		r.drawGrassPlatform(screen, screenX, screenY, p.Width, p.Height)
+	case "dirt":
+		r.drawDirtPlatform(screen, screenX, screenY, p.Width, p.Height)
 	case "stone":
 		r.drawStonePlatform(screen, screenX, screenY, p.Width, p.Height)
-	case "brick":
-		r.drawBrickPlatform(screen, screenX, screenY, p.Width, p.Height)
-	case "metal":
-		r.drawMetalPlatform(screen, screenX, screenY, p.Width, p.Height)
+	case "castle":
+		r.drawCastlePlatform(screen, screenX, screenY, p.Width, p.Height)
+	case "box":
+		r.drawBoxPlatform(screen, screenX, screenY, p.Width, p.Height)
 	default:
 		r.drawGrassPlatform(screen, screenX, screenY, p.Width, p.Height)
 	}
 }
 
-// drawGround - отрисовка земли
-func (r *Renderer) drawGround(screen *ebiten.Image, x, y, width, height, cameraX, cameraY float64) {
-	// Верхний слой с травой
-	groundTop := r.spriteSheet.Tiles["ground_top"]
-	if groundTop != nil {
-		tileW := float64(groundTop.Bounds().Dx())
-		tileH := float64(groundTop.Bounds().Dy())
+// drawGrassPlatform - травяная платформа
+func (r *Renderer) drawGrassPlatform(screen *ebiten.Image, x, y, width, height float64) {
+	tileW := float64(r.tileWidth)
+	tileH := float64(r.tileHeight)
+	
+	// Верхний ряд
+	for tx := x; tx < x+width; tx += tileW {
+		opts := &ebiten.DrawImageOptions{}
+		opts.GeoM.Translate(tx, y)
 		
+		// Выбираем подходящий тайл
+		var tile *ebiten.Image
+		if tx == x {
+			tile = r.spriteSheet.GetTile("grassHalfLeft")
+		} else if tx+tileW >= x+width {
+			tile = r.spriteSheet.GetTile("grassHalfRight")
+		} else {
+			tile = r.spriteSheet.GetTile("grassHalf")
+		}
+		
+		if tile == nil {
+			tile = r.spriteSheet.GetTile("grassMid")
+		}
+		
+		if tile != nil {
+			screen.DrawImage(tile, opts)
+		}
+	}
+	
+	// Заполняем середину
+	for ty := y + tileH; ty < y+height; ty += tileH {
 		for tx := x; tx < x+width; tx += tileW {
 			opts := &ebiten.DrawImageOptions{}
-			opts.GeoM.Translate(tx, y)
-			screen.DrawImage(groundTop, opts)
-		}
-		
-		// Средний слой земли
-		groundMid := r.spriteSheet.Tiles["ground_mid"]
-		if groundMid != nil {
-			for ty := y + tileH; ty < y+height; ty += tileH {
-				for tx := x; tx < x+width; tx += tileW {
-					opts := &ebiten.DrawImageOptions{}
-					opts.GeoM.Translate(tx, ty)
-					screen.DrawImage(groundMid, opts)
-				}
+			opts.GeoM.Translate(tx, ty)
+			
+			var tile *ebiten.Image
+			if tx == x {
+				tile = r.spriteSheet.GetTile("dirtLeft")
+			} else if tx+tileW >= x+width {
+				tile = r.spriteSheet.GetTile("dirtRight")
+			} else {
+				tile = r.spriteSheet.GetTile("dirtCenter")
+			}
+			
+			if tile == nil {
+				tile = r.spriteSheet.GetTile("dirtMid")
+			}
+			
+			if tile != nil {
+				screen.DrawImage(tile, opts)
 			}
 		}
-	} else {
-		// Резервная отрисовка
-		vector.DrawFilledRect(screen, float32(x), float32(y), float32(width), 8, color.RGBA{100, 180, 100, 255}, true)
-		vector.DrawFilledRect(screen, float32(x), float32(y)+8, float32(width), float32(height)-8, color.RGBA{139, 90, 43, 255}, true)
 	}
 }
 
-// drawGrassPlatform - отрисовка травяной платформы
-func (r *Renderer) drawGrassPlatform(screen *ebiten.Image, x, y, width, height float64) {
-	vector.DrawFilledRect(screen, float32(x), float32(y), float32(width), 8, color.RGBA{100, 180, 100, 255}, true)
-	vector.DrawFilledRect(screen, float32(x), float32(y)+8, float32(width), float32(height)-8, color.RGBA{139, 90, 43, 255}, true)
+// drawDirtPlatform - земляная платформа
+func (r *Renderer) drawDirtPlatform(screen *ebiten.Image, x, y, width, height float64) {
+	r.drawTiledPlatform(screen, x, y, width, height, "dirtMid", "dirtLeft", "dirtRight", "dirtCenter")
 }
 
-// drawStonePlatform - отрисовка каменной платформы
+// drawStonePlatform - каменная платформа
 func (r *Renderer) drawStonePlatform(screen *ebiten.Image, x, y, width, height float64) {
-	vector.DrawFilledRect(screen, float32(x), float32(y), float32(width), float32(height), color.RGBA{150, 150, 150, 255}, true)
+	r.drawTiledPlatform(screen, x, y, width, height, "stoneMid", "stoneLeft", "stoneRight", "stoneCenter")
+}
+
+// drawCastlePlatform - платформа замка
+func (r *Renderer) drawCastlePlatform(screen *ebiten.Image, x, y, width, height float64) {
+	r.drawTiledPlatform(screen, x, y, width, height, "castleMid", "castleLeft", "castleRight", "castleCenter")
+}
+
+// drawBoxPlatform - платформа из ящиков
+func (r *Renderer) drawBoxPlatform(screen *ebiten.Image, x, y, width, height float64) {
+	tile := r.spriteSheet.GetTile("box")
+	if tile == nil {
+		vector.DrawFilledRect(screen, float32(x), float32(y), float32(width), float32(height), color.RGBA{180, 100, 50, 255}, true)
+		return
+	}
 	
-	// Детали камня
-	for i := 0; i < int(width)/20; i++ {
-		for j := 0; j < int(height)/20; j++ {
-			vector.DrawFilledRect(screen, float32(x)+float32(i*20)+5, float32(y)+float32(j*20)+5, 10, 10, color.RGBA{130, 130, 130, 255}, true)
+	tileW := float64(tile.Bounds().Dx())
+	tileH := float64(tile.Bounds().Dy())
+	
+	for ty := y; ty < y+height; ty += tileH {
+		for tx := x; tx < x+width; tx += tileW {
+			opts := &ebiten.DrawImageOptions{}
+			opts.GeoM.Translate(tx, ty)
+			screen.DrawImage(tile, opts)
 		}
 	}
 }
 
-// drawBrickPlatform - отрисовка кирпичной платформы
-func (r *Renderer) drawBrickPlatform(screen *ebiten.Image, x, y, width, height float64) {
-	vector.DrawFilledRect(screen, float32(x), float32(y), float32(width), float32(height), color.RGBA{180, 100, 80, 255}, true)
+// drawTiledPlatform - общая функция отрисовки тайлами
+func (r *Renderer) drawTiledPlatform(screen *ebiten.Image, x, y, width, height float64, midTile, leftTile, rightTile, centerTile string) {
+	tileW := float64(r.tileWidth)
+	tileH := float64(r.tileHeight)
 	
-	// Кирпичи
-	for i := 0; i < int(width)/30; i++ {
-		for j := 0; j < int(height)/15; j++ {
-			offset := float32((j % 2) * 15)
-			vector.DrawFilledRect(screen, float32(x)+float32(i*30)+offset, float32(y)+float32(j*15), 28, 13, color.RGBA{150, 80, 60, 255}, true)
-		}
-	}
-}
-
-// drawMetalPlatform - отрисовка металлической платформы
-func (r *Renderer) drawMetalPlatform(screen *ebiten.Image, x, y, width, height float64) {
-	vector.DrawFilledRect(screen, float32(x), float32(y), float32(width), float32(height), color.RGBA{180, 180, 200, 255}, true)
-	
-	// Заклёпки
-	for i := 0; i < int(width)/40; i++ {
-		for j := 0; j < int(height)/40; j++ {
-			vector.DrawFilledCircle(screen, float32(x)+float32(i*40)+20, float32(y)+float32(j*40)+20, 4, color.RGBA{120, 120, 140, 255}, true)
+	for ty := y; ty < y+height; ty += tileH {
+		for tx := x; tx < x+width; tx += tileW {
+			opts := &ebiten.DrawImageOptions{}
+			opts.GeoM.Translate(tx, ty)
+			
+			var tile *ebiten.Image
+			if tx == x {
+				tile = r.spriteSheet.GetTile(leftTile)
+			} else if tx+tileW >= x+width {
+				tile = r.spriteSheet.GetTile(rightTile)
+			} else {
+				tile = r.spriteSheet.GetTile(centerTile)
+			}
+			
+			if tile == nil {
+				tile = r.spriteSheet.GetTile(midTile)
+			}
+			
+			if tile != nil {
+				screen.DrawImage(tile, opts)
+			}
 		}
 	}
 }
@@ -268,45 +289,34 @@ func (r *Renderer) DrawCollectible(screen *ebiten.Image, c level.Collectible, ca
 	screenX := c.X - cameraX
 	screenY := c.Y - cameraY
 	
-	// Получаем спрайт предмета
-	itemSprite := r.spriteSheet.GetItem(c.Type)
+	var itemSprite *ebiten.Image
+	
+	switch c.Type {
+	case "coin", "coin_gold":
+		itemSprite = r.spriteSheet.GetCoin("gold")
+	case "coin_silver":
+		itemSprite = r.spriteSheet.GetCoin("silver")
+	case "coin_bronze":
+		itemSprite = r.spriteSheet.GetCoin("bronze")
+	case "gem_red":
+		itemSprite = r.spriteSheet.GetGem("red")
+	case "gem_blue":
+		itemSprite = r.spriteSheet.GetGem("blue")
+	case "gem_green":
+		itemSprite = r.spriteSheet.GetGem("green")
+	case "gem_yellow":
+		itemSprite = r.spriteSheet.GetGem("yellow")
+	case "star":
+		itemSprite = r.spriteSheet.Star
+	default:
+		itemSprite = r.spriteSheet.GetCoin("gold")
+	}
 	
 	if itemSprite != nil {
 		opts := &ebiten.DrawImageOptions{}
 		opts.GeoM.Translate(screenX, screenY)
 		screen.DrawImage(itemSprite, opts)
-	} else {
-		// Резервная отрисовка
-		r.drawCollectibleFallback(screen, c, cameraX, cameraY)
 	}
-}
-
-// drawCollectibleFallback - резервная отрисовка предмета
-func (r *Renderer) drawCollectibleFallback(screen *ebiten.Image, c level.Collectible, cameraX, cameraY float64) {
-	screenX := c.X - cameraX
-	screenY := c.Y - cameraY
-	
-	var gemColor color.RGBA
-	
-	switch c.Type {
-	case "coin":
-		gemColor = color.RGBA{255, 200, 50, 255}
-	case "gem_red":
-		gemColor = color.RGBA{255, 80, 80, 255}
-	case "gem_blue":
-		gemColor = color.RGBA{80, 150, 255, 255}
-	case "gem_green":
-		gemColor = color.RGBA{80, 255, 100, 255}
-	default:
-		gemColor = color.RGBA{255, 200, 50, 255}
-	}
-	
-	centerX := float32(screenX) + float32(c.Width)/2
-	centerY := float32(screenY) + float32(c.Height)/2
-	
-	vector.DrawFilledRect(screen, centerX-8, centerY-10, 16, 20, gemColor, true)
-	vector.DrawFilledRect(screen, centerX-10, centerY-6, 20, 12, gemColor, true)
-	vector.DrawFilledRect(screen, centerX-3, centerY-5, 6, 10, color.RGBA{255, 255, 255, 200}, true)
 }
 
 // DrawProjectile - отрисовка снаряда
@@ -319,63 +329,83 @@ func (r *Renderer) DrawProjectile(screen *ebiten.Image, p entity.Projectile, cam
 	screenY := p.Y - cameraY
 	
 	if p.IsEnemy {
-		// Вражеский снаряд (зелёный энергетический шар)
-		vector.DrawFilledCircle(screen, float32(screenX)+6, float32(screenY)+6, 8, color.RGBA{100, 255, 100, 255}, true)
-		vector.DrawFilledCircle(screen, float32(screenX)+6, float32(screenY)+6, 4, color.RGBA{200, 255, 200, 255}, true)
+		// Вражеский снаряд - фиолетовый шар
+		vector.DrawFilledCircle(screen, float32(screenX)+6, float32(screenY)+6, 8, color.RGBA{180, 50, 180, 255}, true)
+		vector.DrawFilledCircle(screen, float32(screenX)+6, float32(screenY)+6, 4, color.RGBA{255, 150, 255, 255}, true)
 	} else {
-		// Пуля игрока (жёлтый прямоугольник)
-		vector.DrawFilledRect(screen, float32(screenX), float32(screenY), float32(p.Width), float32(p.Height), color.RGBA{255, 220, 50, 255}, true)
-		vector.DrawFilledRect(screen, float32(screenX)+2, float32(screenY)+1, float32(p.Width-4), float32(p.Height-2), color.RGBA{255, 255, 180, 255}, true)
+		// Пуля игрока - оранжевый шар
+		vector.DrawFilledCircle(screen, float32(screenX)+4, float32(screenY)+4, 6, color.RGBA{255, 150, 50, 255}, true)
+		vector.DrawFilledCircle(screen, float32(screenX)+4, float32(screenY)+4, 3, color.RGBA{255, 255, 200, 255}, true)
 	}
 }
 
 // DrawBackground - отрисовка фона
 func (r *Renderer) DrawBackground(screen *ebiten.Image, cameraX, cameraY float64) {
-	// Слои параллакса
-	r.drawParallaxLayer(screen, r.spriteSheet.BgLayerC, cameraX*0.1, 0)
-	r.drawParallaxLayer(screen, r.spriteSheet.BgLayerB, cameraX*0.3, 0)
-	r.drawParallaxLayer(screen, r.spriteSheet.BgLayerA, cameraX*0.5, 0)
-}
-
-// drawParallaxLayer - отрисовка слоя параллакса
-func (r *Renderer) drawParallaxLayer(screen *ebiten.Image, layer *ebiten.Image, offsetX, offsetY float64) {
-	if layer == nil {
-		return
+	// Небо - градиент
+	for y := 0; y < screen.Bounds().Dy(); y++ {
+		ratio := float64(y) / float64(screen.Bounds().Dy())
+		r := uint8(135 - ratio*35)
+		g := uint8(206 - ratio*86)
+		b := uint8(235)
+		vector.DrawFilledRect(screen, 0, float32(y), float32(screen.Bounds().Dx()), 1, color.RGBA{r, g, b, 255}, true)
 	}
 	
-	layerW := float64(layer.Bounds().Dx())
-	layerH := float64(layer.Bounds().Dy())
+	// Облака (параллакс)
+	r.drawClouds(screen, cameraX*0.2, 50)
+	r.drawClouds(screen, cameraX*0.4, 150)
+}
+
+// drawClouds - отрисовка облаков
+func (r *Renderer) drawClouds(screen *ebiten.Image, offsetX float64, baseY float64) {
+	clouds := []string{"cloud1", "cloud2", "cloud3"}
 	
-	// Рисуем слой с повторением
-	for x := offsetX; x < float64(screen.Bounds().Dx()); x += layerW {
-		for y := offsetY; y < float64(screen.Bounds().Dy()); y += layerH {
+	for i := 0; i < 8; i++ {
+		cloudType := clouds[i%len(clouds)]
+		cloud := r.spriteSheet.GetDecoration(cloudType)
+		
+		if cloud != nil {
+			x := float64(i*200) - offsetX
+			y := baseY + float64((i%3)*30)
+			
 			opts := &ebiten.DrawImageOptions{}
 			opts.GeoM.Translate(x, y)
-			screen.DrawImage(layer, opts)
+			screen.DrawImage(cloud, opts)
 		}
 	}
 }
 
 // DrawDecoration - отрисовка декораций
 func (r *Renderer) DrawDecoration(screen *ebiten.Image, decType string, x, y, cameraX, cameraY float64) {
-	var dec *ebiten.Image
-	
-	switch decType {
-	case "tree":
-		dec = r.spriteSheet.Tree
-	case "flower":
-		dec = r.spriteSheet.Flower
-	case "mushroom":
-		dec = r.spriteSheet.Mushroom
-	case "rock":
-		dec = r.spriteSheet.Rock
-	case "stone":
-		dec = r.spriteSheet.Stone
-	}
+	dec := r.spriteSheet.GetDecoration(decType)
 	
 	if dec != nil {
 		opts := &ebiten.DrawImageOptions{}
 		opts.GeoM.Translate(x-cameraX, y-cameraY)
 		screen.DrawImage(dec, opts)
 	}
+}
+
+// DrawHUD - отрисовка интерфейса
+func (r *Renderer) DrawHUD(screen *ebiten.Image, score, lives, level, wave, combo int) {
+	// Фон HUD
+	vector.DrawFilledRect(screen, 10, 10, 250, 100, color.RGBA{0, 0, 0, 128}, true)
+	vector.DrawFilledRect(screen, 10, 10, 250, 100, color.RGBA{255, 255, 255, 64}, false)
+}
+
+// DrawBossHealthBar - полоска здоровья босса
+func (r *Renderer) DrawBossHealthBar(screen *ebiten.Image, health, maxHealth int) {
+	barWidth := 400
+	barHeight := 20
+	x := float32(screen.Bounds().Dx())/2 - float32(barWidth)/2
+	y := float32(50)
+	
+	// Фон
+	vector.DrawFilledRect(screen, x, y, float32(barWidth), float32(barHeight), color.RGBA{50, 50, 50, 255}, true)
+	
+	// Здоровье
+	healthPercent := float32(health) / float32(maxHealth)
+	vector.DrawFilledRect(screen, x+2, y+2, float32(barWidth-4)*healthPercent, float32(barHeight-4), color.RGBA{255, 50, 50, 255}, true)
+	
+	// Рамка
+	vector.DrawFilledRect(screen, x, y, float32(barWidth), float32(barHeight), color.RGBA{255, 255, 255, 255}, false)
 }

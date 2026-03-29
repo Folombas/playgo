@@ -1,190 +1,236 @@
 // Package sprite - загрузка и управление спрайтами
-// Go365 Day 88 - Forest Pack
+// Go365 Day 88 - PlatformerComplete Pack
 package sprite
 
 import (
+	"fmt"
 	"image"
 	"image/color"
+	"os"
+	"strings"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 )
 
-// SpriteSheet - атлас спрайтов
+// SpriteSheet - атлас спрайтов PlatformerComplete
 type SpriteSheet struct {
-	// Игрок
+	// Игрок (Player 1)
 	PlayerStand  *ebiten.Image
 	PlayerWalk   []*ebiten.Image
 	PlayerJump   *ebiten.Image
-	PlayerCrouch *ebiten.Image
+	PlayerDuck   *ebiten.Image
+	PlayerHurt   *ebiten.Image
+	PlayerFront  *ebiten.Image
 	
 	// Враги
 	EnemySlime   []*ebiten.Image
 	EnemyFly     []*ebiten.Image
 	EnemySnail   []*ebiten.Image
+	EnemyFish    []*ebiten.Image
 	
 	// Платформы и земля
 	Tiles        map[string]*ebiten.Image
-	GroundTop    *ebiten.Image
-	GroundMid    *ebiten.Image
-	
-	// Декорации
-	Tree         *ebiten.Image
-	Flower       *ebiten.Image
-	Mushroom     *ebiten.Image
-	Rock         *ebiten.Image
-	Stone        *ebiten.Image
-	
-	// Фон
-	BgForest     *ebiten.Image
-	BgLayerA     *ebiten.Image
-	BgLayerB     *ebiten.Image
-	BgLayerC     *ebiten.Image
 	
 	// Предметы
-	Items        map[string]*ebiten.Image
+	CoinGold     *ebiten.Image
+	CoinSilver   *ebiten.Image
+	CoinBronze   *ebiten.Image
+	GemRed       *ebiten.Image
+	GemBlue      *ebiten.Image
+	GemGreen     *ebiten.Image
+	GemYellow    *ebiten.Image
+	Star         *ebiten.Image
+	MushroomRed  *ebiten.Image
+	MushroomBrown *ebiten.Image
+	
+	// Декорации
+	Cloud1       *ebiten.Image
+	Cloud2       *ebiten.Image
+	Cloud3       *ebiten.Image
+	Bush         *ebiten.Image
+	Plant        *ebiten.Image
+	PlantPurple  *ebiten.Image
+	Rock         *ebiten.Image
+	Cactus       *ebiten.Image
 }
 
-// LoadSpriteSheet - загрузка спрайт-листа
+// LoadSpriteSheet - загрузка спрайт-листа PlatformerComplete
 func LoadSpriteSheet() *SpriteSheet {
 	ss := &SpriteSheet{
-		PlayerWalk: make([]*ebiten.Image, 4),
+		PlayerWalk: make([]*ebiten.Image, 11),
 		EnemySlime: make([]*ebiten.Image, 2),
 		EnemyFly:   make([]*ebiten.Image, 2),
 		EnemySnail: make([]*ebiten.Image, 2),
+		EnemyFish:  make([]*ebiten.Image, 2),
 		Tiles:      make(map[string]*ebiten.Image),
-		Items:      make(map[string]*ebiten.Image),
 	}
 	
-	// Загрузка тайлов земли
-	ss.loadGroundTiles()
+	// Загрузка игрока
+	ss.loadPlayer()
 	
-	// Загрузка фона
-	ss.loadBackground()
+	// Загрузка врагов
+	ss.loadEnemies()
+	
+	// Загрузка тайлов
+	ss.loadTiles()
+	
+	// Загрузка предметов
+	ss.loadItems()
 	
 	// Загрузка декораций
 	ss.loadDecorations()
 	
-	// Создание временных спрайтов для сущностей
-	ss.createEntitySprites()
-	
 	return ss
 }
 
-// loadGroundTiles - загрузка тайлов земли
-func (ss *SpriteSheet) loadGroundTiles() {
-	// Основной тайл земли с травой
-	groundTop, err := LoadImageFromFile("assets/forest_pack_03.png")
-	if err == nil {
-		ss.GroundTop = groundTop
-		ss.Tiles["ground_top"] = groundTop
+// loadPlayer - загрузка спрайтов игрока
+func (ss *SpriteSheet) loadPlayer() {
+	// Стойка
+	ss.PlayerStand = ss.loadImage("Player/p1_stand.png")
+	
+	// Ходьба (11 кадров)
+	for i := 1; i <= 11; i++ {
+		filename := fmt.Sprintf("Player/p1_walk/PNG/p1_walk%02d.png", i)
+		ss.PlayerWalk[i-1] = ss.loadImage(filename)
 	}
 	
-	// Средний тайл земли
-	groundMid, err := LoadImageFromFile("assets/forest_pack_35.png")
-	if err == nil {
-		ss.GroundMid = groundMid
-		ss.Tiles["ground_mid"] = groundMid
-	}
+	// Прыжок
+	ss.PlayerJump = ss.loadImage("Player/p1_jump.png")
 	
-	// Тайлы для платформ
-	ss.Tiles["grass"] = ss.loadTile("forest_pack_03.png", 32, 32)
-	ss.Tiles["dirt"] = ss.loadTile("forest_pack_35.png", 32, 32)
+	// Присед
+	ss.PlayerDuck = ss.loadImage("Player/p1_duck.png")
+	
+	// Получение урона
+	ss.PlayerHurt = ss.loadImage("Player/p1_hurt.png")
+	
+	// Вид спереди
+	ss.PlayerFront = ss.loadImage("Player/p1_front.png")
 }
 
-// loadBackground - загрузка фона
-func (ss *SpriteSheet) loadBackground() {
-	// Основной фон леса
-	bg, err := LoadImageFromFile("assets/bg_forest.png")
-	if err == nil {
-		ss.BgForest = bg
-	}
+// loadEnemies - загрузка спрайтов врагов
+func (ss *SpriteSheet) loadEnemies() {
+	// Слайм (2 кадра)
+	ss.EnemySlime[0] = ss.loadImage("Enemies/slimeWalk1.png")
+	ss.EnemySlime[1] = ss.loadImage("Enemies/slimeWalk2.png")
 	
-	// Слои параллакса
-	ss.BgLayerA = ss.loadLayer("bg_forest_layers/bg_forest_a.png")
-	ss.BgLayerB = ss.loadLayer("bg_forest_layers/bg_forest_b.png")
-	ss.BgLayerC = ss.loadLayer("bg_forest_layers/bg_forest_c.png")
+	// Муха
+	ss.EnemyFly[0] = ss.loadImage("Enemies/flyFly1.png")
+	ss.EnemyFly[1] = ss.loadImage("Enemies/flyFly2.png")
+	
+	// Улитка
+	ss.EnemySnail[0] = ss.loadImage("Enemies/snailWalk1.png")
+	ss.EnemySnail[1] = ss.loadImage("Enemies/snailWalk2.png")
+	
+	// Рыба
+	ss.EnemyFish[0] = ss.loadImage("Enemies/fishSwim1.png")
+	ss.EnemyFish[1] = ss.loadImage("Enemies/fishSwim2.png")
 }
 
-// loadLayer - загрузка слоя фона
-func (ss *SpriteSheet) loadLayer(path string) *ebiten.Image {
-	img, err := LoadImageFromFile("assets/" + path)
-	if err != nil {
-		return nil
-	}
-	return img
+// loadTiles - загрузка тайлов
+func (ss *SpriteSheet) loadTiles() {
+	// Земля с травой
+	ss.Tiles["grassMid"] = ss.loadImage("Tiles/grassMid.png")
+	ss.Tiles["grassLeft"] = ss.loadImage("Tiles/grassLeft.png")
+	ss.Tiles["grassRight"] = ss.loadImage("Tiles/grassRight.png")
+	ss.Tiles["grassHalf"] = ss.loadImage("Tiles/grassHalf.png")
+	ss.Tiles["grassHalfLeft"] = ss.loadImage("Tiles/grassHalfLeft.png")
+	ss.Tiles["grassHalfRight"] = ss.loadImage("Tiles/grassHalfRight.png")
+	ss.Tiles["grassCenter"] = ss.loadImage("Tiles/grassCenter.png")
+	
+	// Dirt
+	ss.Tiles["dirtMid"] = ss.loadImage("Tiles/dirtMid.png")
+	ss.Tiles["dirtLeft"] = ss.loadImage("Tiles/dirtLeft.png")
+	ss.Tiles["dirtRight"] = ss.loadImage("Tiles/dirtRight.png")
+	ss.Tiles["dirtCenter"] = ss.loadImage("Tiles/dirtCenter.png")
+	
+	// Камень
+	ss.Tiles["stoneMid"] = ss.loadImage("Tiles/stoneMid.png")
+	ss.Tiles["stoneLeft"] = ss.loadImage("Tiles/stoneLeft.png")
+	ss.Tiles["stoneRight"] = ss.loadImage("Tiles/stoneRight.png")
+	ss.Tiles["stoneCenter"] = ss.loadImage("Tiles/stoneCenter.png")
+	
+	// Замок
+	ss.Tiles["castleMid"] = ss.loadImage("Tiles/castleMid.png")
+	ss.Tiles["castleLeft"] = ss.loadImage("Tiles/castleLeft.png")
+	ss.Tiles["castleRight"] = ss.loadImage("Tiles/castleRight.png")
+	ss.Tiles["castleCenter"] = ss.loadImage("Tiles/castleCenter.png")
+	
+	// Стены
+	ss.Tiles["brickWall"] = ss.loadImage("Tiles/brickWall.png")
+	ss.Tiles["stoneWall"] = ss.loadImage("Tiles/stoneWall.png")
+	
+	// Холмы
+	ss.Tiles["grassHillLeft"] = ss.loadImage("Tiles/grassHillLeft.png")
+	ss.Tiles["grassHillRight"] = ss.loadImage("Tiles/grassHillRight.png")
+	ss.Tiles["grassHillLeft2"] = ss.loadImage("Tiles/grassHillLeft2.png")
+	ss.Tiles["grassHillRight2"] = ss.loadImage("Tiles/grassHillRight2.png")
+	
+	// Лестницы
+	ss.Tiles["ladder_mid"] = ss.loadImage("Tiles/ladder_mid.png")
+	ss.Tiles["ladder_top"] = ss.loadImage("Tiles/ladder_top.png")
+	
+	// Вода/лава
+	ss.Tiles["liquidWaterTop"] = ss.loadImage("Tiles/liquidWaterTop.png")
+	ss.Tiles["liquidWater"] = ss.loadImage("Tiles/liquidWater.png")
+	ss.Tiles["liquidLavaTop"] = ss.loadImage("Tiles/liquidLavaTop.png")
+	ss.Tiles["liquidLava"] = ss.loadImage("Tiles/liquidLava.png")
+	
+	// Ящики
+	ss.Tiles["box"] = ss.loadImage("Tiles/box.png")
+	ss.Tiles["boxCoin"] = ss.loadImage("Tiles/boxCoin.png")
+	ss.Tiles["boxItem"] = ss.loadImage("Tiles/boxItem.png")
+	ss.Tiles["boxExplosive"] = ss.loadImage("Tiles/boxExplosive.png")
+	
+	// Забор
+	ss.Tiles["fence"] = ss.loadImage("Tiles/fence.png")
+	
+	// Шипы
+	ss.Tiles["spikes"] = ss.loadImage("Items/spikes.png")
+}
+
+// loadItems - загрузка предметов
+func (ss *SpriteSheet) loadItems() {
+	ss.CoinGold = ss.loadImage("Items/coinGold.png")
+	ss.CoinSilver = ss.loadImage("Items/coinSilver.png")
+	ss.CoinBronze = ss.loadImage("Items/coinBronze.png")
+	
+	ss.GemRed = ss.loadImage("Items/gemRed.png")
+	ss.GemBlue = ss.loadImage("Items/gemBlue.png")
+	ss.GemGreen = ss.loadImage("Items/gemGreen.png")
+	ss.GemYellow = ss.loadImage("Items/gemYellow.png")
+	
+	ss.Star = ss.loadImage("Items/star.png")
+	
+	ss.MushroomRed = ss.loadImage("Items/mushroomRed.png")
+	ss.MushroomBrown = ss.loadImage("Items/mushroomBrown.png")
 }
 
 // loadDecorations - загрузка декораций
 func (ss *SpriteSheet) loadDecorations() {
-	ss.Tree = ss.loadDecoration("forest_pack_92.png")
-	ss.Flower = ss.loadDecoration("forest_pack_103.png")
-	ss.Mushroom = ss.loadDecoration("forest_pack_104.png")
-	ss.Rock = ss.loadDecoration("forest_pack_105.png")
-	ss.Stone = ss.loadDecoration("forest_pack_106.png")
+	ss.Cloud1 = ss.loadImage("Items/cloud1.png")
+	ss.Cloud2 = ss.loadImage("Items/cloud2.png")
+	ss.Cloud3 = ss.loadImage("Items/cloud3.png")
+	
+	ss.Bush = ss.loadImage("Items/bush.png")
+	ss.Plant = ss.loadImage("Items/plant.png")
+	ss.PlantPurple = ss.loadImage("Items/plantPurple.png")
+	ss.Rock = ss.loadImage("Items/rock.png")
+	ss.Cactus = ss.loadImage("Items/cactus.png")
 }
 
-// loadDecoration - загрузка элемента декорации
-func (ss *SpriteSheet) loadDecoration(filename string) *ebiten.Image {
-	img, err := LoadImageFromFile("assets/" + filename)
+// loadImage - загрузка изображения
+func (ss *SpriteSheet) loadImage(path string) *ebiten.Image {
+	fullPath := "assets/" + strings.ReplaceAll(path, "\\", "/")
+	img, _, err := ebitenutil.NewImageFromFile(fullPath)
 	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: Could not load %s: %v\n", fullPath, err)
 		return nil
 	}
 	return img
 }
 
-// loadTile - загрузка тайла с указанным размером
-func (ss *SpriteSheet) loadTile(filename string, width, height int) *ebiten.Image {
-	img, err := LoadImageFromFile("assets/" + filename)
-	if err != nil {
-		return nil
-	}
-	
-	// Возвращаем суб-изображение нужного размера
-	return img.SubImage(image.Rect(0, 0, width, height)).(*ebiten.Image)
-}
-
-// createEntitySprites - создание спрайтов для сущностей
-func (ss *SpriteSheet) createEntitySprites() {
-	// Игрок - используем цвета Forest Pack (зелёные/коричневые тона)
-	ss.PlayerStand = createPlaceholderImage(32, 32, color.RGBA{100, 180, 100, 255})
-	
-	for i := 0; i < 4; i++ {
-		ss.PlayerWalk[i] = createPlaceholderImage(32, 32, color.RGBA{100, 180, 100, 255})
-	}
-	
-	ss.PlayerJump = createPlaceholderImage(32, 32, color.RGBA{100, 180, 100, 255})
-	ss.PlayerCrouch = createPlaceholderImage(32, 20, color.RGBA{100, 180, 100, 255})
-	
-	// Враги - лесные цвета
-	for i := 0; i < 2; i++ {
-		ss.EnemySlime[i] = createPlaceholderImage(32, 32, color.RGBA{50, 150, 50, 255})
-		ss.EnemyFly[i] = createPlaceholderImage(32, 24, color.RGBA{180, 150, 50, 255})
-		ss.EnemySnail[i] = createPlaceholderImage(36, 28, color.RGBA{150, 100, 50, 255})
-	}
-	
-	// Предметы
-	ss.Items["coin"] = createPlaceholderImage(24, 24, color.RGBA{255, 200, 50, 255})
-	ss.Items["gem_red"] = createPlaceholderImage(28, 28, color.RGBA{255, 80, 80, 255})
-	ss.Items["gem_blue"] = createPlaceholderImage(28, 28, color.RGBA{80, 150, 255, 255})
-	ss.Items["gem_green"] = createPlaceholderImage(28, 28, color.RGBA{80, 255, 100, 255})
-}
-
-// createPlaceholderImage - создание изображения-заглушки
-func createPlaceholderImage(width, height int, c color.RGBA) *ebiten.Image {
-	img := image.NewRGBA(image.Rect(0, 0, width, height))
-	
-	// Заполняем цветом
-	for y := 0; y < height; y++ {
-		for x := 0; x < width; x++ {
-			img.Set(x, y, c)
-		}
-	}
-	
-	return ebiten.NewImageFromImage(img)
-}
-
-// LoadImageFromFile - загрузка изображения из файла
+// LoadImageFromFile - публичная функция загрузки
 func LoadImageFromFile(path string) (*ebiten.Image, error) {
 	img, _, err := ebitenutil.NewImageFromFile(path)
 	return img, err
@@ -201,8 +247,12 @@ func (ss *SpriteSheet) GetPlayerFrame(state string, frame int) *ebiten.Image {
 		}
 	case "jump":
 		return ss.PlayerJump
-	case "crouch":
-		return ss.PlayerCrouch
+	case "duck":
+		return ss.PlayerDuck
+	case "hurt":
+		return ss.PlayerHurt
+	case "front":
+		return ss.PlayerFront
 	}
 	return ss.PlayerStand
 }
@@ -222,45 +272,131 @@ func (ss *SpriteSheet) GetEnemyFrame(enemyType string, frame int) *ebiten.Image 
 		if frame >= 0 && frame < len(ss.EnemySnail) {
 			return ss.EnemySnail[frame%len(ss.EnemySnail)]
 		}
+	case "fish":
+		if frame >= 0 && frame < len(ss.EnemyFish) {
+			return ss.EnemyFish[frame%len(ss.EnemyFish)]
+		}
 	}
-	return ss.EnemySlime[0]
+	if len(ss.EnemySlime) > 0 {
+		return ss.EnemySlime[0]
+	}
+	return nil
 }
 
-// GetItem - получение предмета
-func (ss *SpriteSheet) GetItem(itemType string) *ebiten.Image {
-	if img, ok := ss.Items[itemType]; ok {
-		return img
+// GetCoin - получение монеты
+func (ss *SpriteSheet) GetCoin(coinType string) *ebiten.Image {
+	switch coinType {
+	case "gold":
+		return ss.CoinGold
+	case "silver":
+		return ss.CoinSilver
+	case "bronze":
+		return ss.CoinBronze
+	default:
+		return ss.CoinGold
 	}
-	return ss.Items["coin"]
 }
 
-// GetTile - получение плитки
+// GetGem - получение гема
+func (ss *SpriteSheet) GetGem(gemType string) *ebiten.Image {
+	switch gemType {
+	case "red":
+		return ss.GemRed
+	case "blue":
+		return ss.GemBlue
+	case "green":
+		return ss.GemGreen
+	case "yellow":
+		return ss.GemYellow
+	default:
+		return ss.GemRed
+	}
+}
+
+// GetTile - получение тайла
 func (ss *SpriteSheet) GetTile(tileType string) *ebiten.Image {
 	if img, ok := ss.Tiles[tileType]; ok {
 		return img
 	}
-	return ss.Tiles["grass"]
+	return ss.Tiles["grassMid"]
 }
 
-// DrawTiled - отрисовка тайлами
-func (ss *SpriteSheet) DrawTiled(screen *ebiten.Image, tile *ebiten.Image, x, y, width, height float64, cameraX, cameraY float64) {
-	if tile == nil {
-		return
+// GetDecoration - получение декорации
+func (ss *SpriteSheet) GetDecoration(decType string) *ebiten.Image {
+	switch decType {
+	case "cloud1":
+		return ss.Cloud1
+	case "cloud2":
+		return ss.Cloud2
+	case "cloud3":
+		return ss.Cloud3
+	case "bush":
+		return ss.Bush
+	case "plant":
+		return ss.Plant
+	case "plantPurple":
+		return ss.PlantPurple
+	case "rock":
+		return ss.Rock
+	case "cactus":
+		return ss.Cactus
+	default:
+		return ss.Cloud1
 	}
-	
-	tileW := float64(tile.Bounds().Dx())
-	tileH := float64(tile.Bounds().Dy())
-	
-	startX := int((x - cameraX) / tileW) * int(tileW)
-	startY := int((y - cameraY) / tileH) * int(tileH)
-	
-	for ty := startY; ty < int(y+height-cameraY); ty += int(tileH) {
-		for tx := startX; tx < int(x+width-cameraX); tx += int(tileW) {
-			if tx >= -int(tileW) && tx < int(width) && ty >= -int(tileH) && ty < int(height) {
-				op := &ebiten.DrawImageOptions{}
-				op.GeoM.Translate(float64(tx), float64(ty))
-				screen.DrawImage(tile, op)
-			}
+}
+
+// GetTileSize - размер тайла
+func (ss *SpriteSheet) GetTileSize() (int, int) {
+	if tile := ss.Tiles["grassMid"]; tile != nil {
+		bounds := tile.Bounds()
+		return bounds.Dx(), bounds.Dy()
+	}
+	return 70, 70 // Размер по умолчанию
+}
+
+// GetPlayerSize - размер игрока
+func (ss *SpriteSheet) GetPlayerSize() (int, int) {
+	if ss.PlayerStand != nil {
+		bounds := ss.PlayerStand.Bounds()
+		return bounds.Dx(), bounds.Dy()
+	}
+	return 66, 92 // Размер по умолчанию из спрайт-листа
+}
+
+// GetEnemySize - размер врага
+func (ss *SpriteSheet) GetEnemySize(enemyType string) (int, int) {
+	switch enemyType {
+	case "slime":
+		if ss.EnemySlime[0] != nil {
+			bounds := ss.EnemySlime[0].Bounds()
+			return bounds.Dx(), bounds.Dy()
+		}
+	case "fly":
+		if ss.EnemyFly[0] != nil {
+			bounds := ss.EnemyFly[0].Bounds()
+			return bounds.Dx(), bounds.Dy()
+		}
+	case "snail":
+		if ss.EnemySnail[0] != nil {
+			bounds := ss.EnemySnail[0].Bounds()
+			return bounds.Dx(), bounds.Dy()
+		}
+	case "fish":
+		if ss.EnemyFish[0] != nil {
+			bounds := ss.EnemyFish[0].Bounds()
+			return bounds.Dx(), bounds.Dy()
 		}
 	}
+	return 70, 70
+}
+
+// CreateColorImage - создание цветного изображения для частиц
+func CreateColorImage(width, height int, c color.RGBA) *ebiten.Image {
+	img := image.NewRGBA(image.Rect(0, 0, width, height))
+	for y := 0; y < height; y++ {
+		for x := 0; x < width; x++ {
+			img.Set(x, y, c)
+		}
+	}
+	return ebiten.NewImageFromImage(img)
 }
