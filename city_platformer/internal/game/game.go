@@ -494,34 +494,39 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	// Фон
 	g.renderer.DrawBackground(screen, g.cameraX, g.cameraY)
 
-	// Платформы
-	for _, p := range g.level.Platforms {
-		g.renderer.DrawPlatform(screen, p, g.cameraX, g.cameraY)
-	}
+	// Отрисовка игровых объектов только если уровень загружен
+	if g.level != nil {
+		// Платформы
+		for _, p := range g.level.Platforms {
+			g.renderer.DrawPlatform(screen, p, g.cameraX, g.cameraY)
+		}
 
-	// Предметы
-	for _, item := range g.level.Items {
-		g.renderer.DrawItem(screen, item, g.cameraX, g.cameraY)
-	}
+		// Предметы
+		for _, item := range g.level.Items {
+			g.renderer.DrawItem(screen, item, g.cameraX, g.cameraY)
+		}
 
-	// Враги
-	for _, enemy := range g.enemies {
-		g.renderer.DrawEnemy(screen, enemy, g.cameraX, g.cameraY)
-	}
+		// Враги
+		for _, enemy := range g.enemies {
+			g.renderer.DrawEnemy(screen, enemy, g.cameraX, g.cameraY)
+		}
 
-	// Снаряды
-	for _, p := range g.projectiles {
-		g.renderer.DrawProjectile(screen, p, g.cameraX, g.cameraY)
-	}
+		// Снаряды
+		for _, p := range g.projectiles {
+			g.renderer.DrawProjectile(screen, p, g.cameraX, g.cameraY)
+		}
 
-	// Игрок
-	g.renderer.DrawPlayer(screen, g.player, g.cameraX, g.cameraY)
+		// Игрок
+		if g.player != nil {
+			g.renderer.DrawPlayer(screen, g.player, g.cameraX, g.cameraY)
+		}
+
+		// Выход
+		g.renderer.DrawExit(screen, g.level.ExitX, 590, g.cameraX, g.cameraY)
+	}
 
 	// Частицы
 	g.renderer.DrawParticles(screen, g.particles, g.cameraX, g.cameraY)
-
-	// Выход
-	g.renderer.DrawExit(screen, g.level.ExitX, 590, g.cameraX, g.cameraY)
 
 	// UI
 	switch g.state {
