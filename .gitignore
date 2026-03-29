@@ -5,6 +5,25 @@ sprites/PlatformerComplete/
 sprites/city_tileset/
 sprites/Horizontal-2D-BG-PNG/
 sprites/parallax-*/
+sprites/*.png
+sprites/*.jpg
+sprites/*.jpeg
+sprites/*.bmp
+sprites/*.svg
+sprites/*.xcf
+sprites/*.psd
+sprites/*.tar.gz
+sprites/*.7z
+sprites/fonts/
+sprites/sounds/
+sprites/UI/
+sprites/mario_90912/
+sprites/vecteezy_*/
+sprites/Не подтвержден*.crdownload
+
+# Игнорировать все ассеты игры
+city_platformer/assets/
+city_platformer/*.exe
 
 # Игнорировать скомпилированные бинарники в подпапках
 castle_defender/*.exe
@@ -13,7 +32,7 @@ go_mario/*.exe
 go_mario/assets/
 go_legends/*.exe
 go_legends/assets/
-go_legends/go.sum
+go_legards/go.sum
 space_empire/*.exe
 space_empire/assets/
 space_empire/go.sum
