@@ -1,5 +1,5 @@
-// Package game - основная игровая логика City Platformer
-// Переписано с нуля для Go365 Day 88
+// Package game - основная игровая логика Food Platformer
+// Go365 Day 88 - Food Edition
 package game
 
 import (
@@ -39,14 +39,13 @@ type Game struct {
 	state       GameState
 	player      *entity.Player
 	platforms   []level.Platform
-	coins       []level.Collectible
+	foods       []level.Collectible
 	enemies     []entity.Enemy
 	projectiles []entity.Projectile
-	particles   []Particle
+	particles   []render.Particle
 	cameraX     float64
 	cameraY     float64
 	score       int
-	lives       int
 	level       int
 	wave        int
 	combo       int
@@ -61,16 +60,6 @@ type Game struct {
 	// Босс
 	boss        *entity.Boss
 	bossActive  bool
-}
-
-// Particle - система частиц
-type Particle struct {
-	X, Y   float64
-	VX, VY float64
-	Life   float64
-	MaxLife float64
-	Color  color.Color
-	Size   float64
 }
 
 // NewGame - создание новой игры
@@ -90,7 +79,6 @@ func (g *Game) Reset() {
 	g.level = 1
 	g.wave = 1
 	g.score = 0
-	g.lives = 5
 	g.cameraX = 0
 	g.cameraY = 0
 	g.combo = 0
@@ -98,7 +86,7 @@ func (g *Game) Reset() {
 	g.bossActive = false
 	g.boss = nil
 	g.projectiles = make([]entity.Projectile, 0)
-	g.particles = make([]Particle, 0)
+	g.particles = make([]render.Particle, 0)
 	
 	// Загрузка спрайтов
 	g.spriteSheet = sprite.LoadSpriteSheet()
@@ -108,21 +96,24 @@ func (g *Game) Reset() {
 	g.generateLevel()
 }
 
-// generateLevel - генерация уровня
+// generateLevel - генерация уровня (кухня)
 func (g *Game) generateLevel() {
 	g.levelData = level.GenerateLevel(g.level, g.rng)
 	g.platforms = g.levelData.Platforms
-	g.coins = g.levelData.Collectibles
+	g.foods = g.levelData.Collectibles
 	g.enemies = g.generateEnemies()
 }
 
-// generateEnemies - генерация врагов
+// generateEnemies - генерация врагов (испорченная еда/жуки)
 func (g *Game) generateEnemies() []entity.Enemy {
 	enemies := make([]entity.Enemy, 0)
 	enemyCount := 3 + g.level*2
 	
 	for i := 0; i < enemyCount; i++ {
-		enemyType := g.chooseEnemyType()
+		enemyType := "rotten"
+		if g.rng.Float64() < 0.5 {
+			enemyType = "bug"
+		}
 		x := float64(400 + i*300 + g.rng.Intn(100))
 		y := float64(600 - g.rng.Intn(200))
 		
@@ -130,19 +121,6 @@ func (g *Game) generateEnemies() []entity.Enemy {
 	}
 	
 	return enemies
-}
-
-// chooseEnemyType - выбор типа врага
-func (g *Game) chooseEnemyType() string {
-	r := g.rng.Float64()
-	if r < 0.4 {
-		return "slime"
-	} else if r < 0.7 {
-		return "fly"
-	} else if r < 0.9 {
-		return "snail"
-	}
-	return "fish"
 }
 
 // Update - обновление игрового состояния
@@ -200,6 +178,9 @@ func (g *Game) updateGame() {
 	// Обновление камеры
 	g.updateCamera()
 	
+	// Сбор еды
+	g.collectFood()
+	
 	// Обновление пуль
 	g.updateProjectiles()
 	
@@ -217,7 +198,6 @@ func (g *Game) updateGame() {
 	// Проверка победы (все враги убиты)
 	if len(g.enemies) == 0 && !g.bossActive {
 		if g.level % 3 == 0 && g.wave >= 3 {
-			// Спавн босса каждые 3 уровня после 3 волны
 			g.spawnBoss()
 		} else {
 			g.state = StateVictory
@@ -230,6 +210,11 @@ func (g *Game) updateGame() {
 		if g.comboTimer <= 0 {
 			g.combo = 0
 		}
+	}
+	
+	// Проверка смерти
+	if g.player.Health <= 0 {
+		g.state = StateGameOver
 	}
 }
 
@@ -246,7 +231,7 @@ func (g *Game) handlePlayerInput() {
 	// Прыжок
 	if (ebiten.IsKeyPressed(ebiten.KeyW) || ebiten.IsKeyPressed(ebiten.KeyUp)) && g.player.CanJump() {
 		g.player.Jump()
-		g.spawnParticles(g.player.X+16, g.player.Y+32, 0, -2, 8, color.RGBA{200, 200, 200, 255})
+		g.spawnParticles(g.player.X+20, g.player.Y+25, 0, -2, 8, color.RGBA{200, 200, 200, 255})
 	}
 	
 	// Приседание
@@ -256,42 +241,58 @@ func (g *Game) handlePlayerInput() {
 		g.player.Stand()
 	}
 	
-	// Стрельба
+	// Бросок ингредиентом
 	if ebiten.IsKeyPressed(ebiten.KeyJ) && g.player.CanShoot() {
 		g.shoot()
 	}
 }
 
-// shoot - стрельба
+// collectFood - сбор еды
+func (g *Game) collectFood() {
+	score, healthChange := g.levelData.CheckCollection(
+		g.player.X, g.player.Y, g.player.Width, g.player.Height,
+	)
+	
+	if score > 0 {
+		g.score += score * (1 + g.combo)
+		g.addCombo()
+		g.spawnParticles(g.player.X+20, g.player.Y+20, 0, -2, 10, color.RGBA{255, 200, 50, 255})
+	}
+	
+	if healthChange != 0 {
+		if healthChange > 0 {
+			g.player.Heal(healthChange)
+		} else {
+			g.player.TakeDamage(-healthChange)
+		}
+	}
+}
+
+// shoot - бросок ингредиентом
 func (g *Game) shoot() {
 	g.player.Shoot()
 	
 	dirX := float64(g.player.Facing)
 	dirY := 0.0
 	
-	// Если присели, стреляем под углом
 	if g.player.IsCrouching {
 		dirY = 0.3
 	}
 	
-	projectile := entity.Projectile{
-		X:    g.player.X + 20,
-		Y:    g.player.Y + 16,
-		VX:   dirX * 12,
-		VY:   dirY * 12,
-		Width:  8,
-		Height: 4,
-		Active: true,
-	}
+	projectile := entity.NewProjectile(
+		g.player.X+20, g.player.Y+16,
+		dirX*10, dirY*10,
+		0, // тип еды
+		false,
+	)
 	
-	g.projectiles = append(g.projectiles, projectile)
+	g.projectiles = append(g.projectiles, *projectile)
 }
 
 // applyPhysics - применение физики
 func (g *Game) applyPhysics() {
 	g.player.VY += 0.6 // Гравитация
 	
-	// Горизонтальное движение с трением
 	if !g.player.IsMoving {
 		g.player.VX *= 0.8
 	}
@@ -303,7 +304,6 @@ func (g *Game) applyPhysics() {
 	g.player.OnGround = false
 	for _, p := range g.platforms {
 		if g.checkCollision(g.player.X+8, g.player.Y+8, p.X, p.Y, p.Width-16, p.Height-16) {
-			// Приземление сверху
 			if g.player.VY > 0 && g.player.Y+g.player.Height < p.Y+30 {
 				g.player.Y = p.Y - g.player.Height
 				g.player.VY = 0
@@ -312,29 +312,27 @@ func (g *Game) applyPhysics() {
 		}
 	}
 	
-	// Пол по умолчанию
-	if g.player.Y > 650 {
-		g.player.Y = 650
+	// Пол
+	if g.player.Y > 620 {
+		g.player.Y = 620
 		g.player.VY = 0
 		g.player.OnGround = true
 	}
 	
 	// Смерть от падения
 	if g.player.Y > float64(screenHeight)+100 {
-		g.playerDie()
+		g.player.TakeDamage(100)
 	}
 }
 
 // updateCamera - обновление камеры
 func (g *Game) updateCamera() {
-	// Плавное следование за игроком
 	targetX := g.player.X - screenWidth/2
 	targetY := g.player.Y - screenHeight/2
 	
 	g.cameraX += (targetX - g.cameraX) * 0.1
 	g.cameraY += (targetY - g.cameraY) * 0.1
 	
-	// Ограничения камеры
 	if g.cameraX < 0 {
 		g.cameraX = 0
 	}
@@ -343,16 +341,14 @@ func (g *Game) updateCamera() {
 	}
 }
 
-// updateProjectiles - обновление пуль
+// updateProjectiles - обновление снарядов
 func (g *Game) updateProjectiles() {
 	active := make([]entity.Projectile, 0)
 	
 	for _, p := range g.projectiles {
-		p.X += p.VX
-		p.Y += p.VY
-		p.Life--
+		p.Update()
 		
-		if p.Life > 0 && p.Active {
+		if p.Active {
 			// Коллизия с врагами
 			for i, enemy := range g.enemies {
 				if g.checkCollision(p.X, p.Y, enemy.X, enemy.Y, p.Width, p.Height) {
@@ -366,7 +362,7 @@ func (g *Game) updateProjectiles() {
 			// Коллизия с боссом
 			if g.bossActive && g.boss != nil && p.Active {
 				if g.checkCollision(p.X, p.Y, g.boss.X, g.boss.Y, p.Width, p.Height) {
-					g.boss.TakeDamage(1)
+					g.boss.TakeDamage(p.Damage)
 					p.Active = false
 					g.spawnParticles(p.X, p.Y, p.VX, p.VY, 5, color.RGBA{255, 100, 100, 255})
 					
@@ -481,54 +477,31 @@ func (g *Game) killBoss() {
 func (g *Game) killEnemy(index int, x, y float64) {
 	g.enemies = append(g.enemies[:index], g.enemies[index+1:]...)
 	g.score += 25 * (1 + g.combo)
-	g.spawnParticles(x+16, y+16, 0, -3, 15, color.RGBA{100, 200, 100, 255})
-}
-
-// playerHit - игрок получил урон
-func (g *Game) playerHit() {
-	g.lives--
-	g.player.Invincible = 120 // 2 секунды
-	g.player.VY = -8
-	g.player.VX = float64(-g.player.Facing) * 5
-	g.combo = 0
-	g.spawnParticles(g.player.X+16, g.player.Y+16, 0, -2, 20, color.RGBA{255, 0, 0, 255})
-	
-	if g.lives <= 0 {
-		g.state = StateGameOver
-	}
-}
-
-// playerDie - смерть игрока
-func (g *Game) playerDie() {
-	g.lives--
-	g.combo = 0
-	
-	if g.lives <= 0 {
-		g.state = StateGameOver
-	} else {
-		g.player.X = 100
-		g.player.Y = 500
-		g.player.VX = 0
-		g.player.VY = 0
-	}
+	g.spawnParticles(x+16, y+16, 0, -3, 15, color.RGBA{100, 150, 50, 255})
 }
 
 // addCombo - добавление комбо
 func (g *Game) addCombo() {
 	g.combo++
-	g.comboTimer = 3.0 // 3 секунды на комбо
+	g.comboTimer = 3.0
+}
+
+// playerHit - игрок получил урон
+func (g *Game) playerHit() {
+	g.combo = 0
+	g.spawnParticles(g.player.X+20, g.player.Y+25, 0, -2, 20, color.RGBA{255, 0, 0, 255})
 }
 
 // updateParticles - обновление частиц
 func (g *Game) updateParticles() {
-	active := make([]Particle, 0)
+	active := make([]render.Particle, 0)
 	
 	for _, p := range g.particles {
 		p.X += p.VX
 		p.Y += p.VY
-		p.VY += 0.1 // Гравитация для частиц
+		p.VY += 0.1
 		p.Life -= 0.02
-		p.VX *= 0.98 // Сопротивление
+		p.VX *= 0.98
 		
 		if p.Life > 0 {
 			active = append(active, p)
@@ -541,15 +514,13 @@ func (g *Game) updateParticles() {
 // spawnParticles - создание частиц
 func (g *Game) spawnParticles(x, y, vx, vy float64, count int, c color.Color) {
 	for i := 0; i < count; i++ {
-		g.particles = append(g.particles, Particle{
-			X:      x,
-			Y:      y,
-			VX:     vx + (g.rng.Float64()-0.5)*4,
-			VY:     vy + (g.rng.Float64()-0.5)*4,
-			Life:   1.0,
-			MaxLife: 1.0,
-			Color:  c,
-			Size:   3 + g.rng.Float64()*5,
+		g.particles = append(g.particles, render.Particle{
+			X: x, Y: y,
+			VX: vx + (g.rng.Float64()-0.5)*4,
+			VY: vy + (g.rng.Float64()-0.5)*4,
+			Life: 1.0, MaxLife: 1.0,
+			Color: c,
+			Size: 3 + g.rng.Float64()*5,
 		})
 	}
 }
@@ -561,26 +532,26 @@ func (g *Game) checkCollision(x1, y1, x2, y2, w2, h2 float64) bool {
 
 // Draw - отрисовка игры
 func (g *Game) Draw(screen *ebiten.Image) {
-	// Фон (небо и облака)
+	// Фон (кухня)
 	if g.renderer != nil {
 		g.renderer.DrawBackground(screen, g.cameraX, g.cameraY)
-	} else {
-		g.drawSky(screen)
 	}
 	
 	// Платформы
 	for _, p := range g.platforms {
 		if g.renderer != nil {
 			g.renderer.DrawPlatform(screen, p, g.cameraX, g.cameraY)
-		} else {
-			g.drawPlatformFallback(screen, p)
 		}
 	}
 	
-	// Коллекционные предметы
-	for _, coin := range g.coins {
+	// Еда
+	for _, food := range g.foods {
+		f := entity.NewFood(food.X, food.Y, food.TypeInt, food.Value)
+		f.AnimFrame = food.AnimFrame
 		if g.renderer != nil {
-			g.renderer.DrawCollectible(screen, coin, g.cameraX, g.cameraY)
+			g.renderer.DrawFood(screen, f, g.cameraX, g.cameraY)
+		} else {
+			f.Draw(screen, g.cameraX, g.cameraY)
 		}
 	}
 	
@@ -589,7 +560,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		if g.renderer != nil {
 			g.renderer.DrawEnemy(screen, enemy, g.cameraX, g.cameraY)
 		} else {
-			g.drawEnemyFallback(screen, enemy)
+			enemy.Draw(screen, g.cameraX, g.cameraY)
 		}
 	}
 	
@@ -607,28 +578,18 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		g.player.Draw(screen, g.cameraX, g.cameraY)
 	}
 	
-	// Пули
+	// Снаряды
 	for _, p := range g.projectiles {
 		if g.renderer != nil {
 			g.renderer.DrawProjectile(screen, p, g.cameraX, g.cameraY)
+		} else {
+			p.Draw(screen, g.cameraX, g.cameraY)
 		}
 	}
 	
 	// Частицы
-	for _, p := range g.particles {
-		screenX := p.X - g.cameraX
-		screenY := p.Y - g.cameraY
-		alpha := uint8(255 * (p.Life / p.MaxLife))
-		c := p.Color
-		r, gr, b, _ := c.RGBA()
-		vector.DrawFilledCircle(
-			screen,
-			float32(screenX),
-			float32(screenY),
-			float32(p.Size),
-			color.RGBA{uint8(r >> 8), uint8(gr >> 8), uint8(b >> 8), alpha},
-			true,
-		)
+	if g.renderer != nil {
+		g.renderer.DrawParticles(screen, g.particles, g.cameraX, g.cameraY)
 	}
 	
 	// UI
@@ -649,7 +610,6 @@ func (g *Game) Draw(screen *ebiten.Image) {
 
 // drawSky - отрисовка неба
 func (g *Game) drawSky(screen *ebiten.Image) {
-	// Небо в стиле PlatformerComplete - светло-голубое
 	for y := 0; y < screenHeight; y++ {
 		ratio := float64(y) / float64(screenHeight)
 		r := uint8(135 - ratio*35)
@@ -666,16 +626,14 @@ func (g *Game) drawPlatformFallback(screen *ebiten.Image, p level.Platform) {
 	
 	var c color.RGBA
 	switch p.Type {
-	case "grass":
-		c = color.RGBA{100, 180, 100, 255}
-	case "dirt":
-		c = color.RGBA{139, 90, 43, 255}
-	case "stone":
-		c = color.RGBA{150, 150, 150, 255}
-	case "castle":
-		c = color.RGBA{180, 100, 80, 255}
+	case "counter":
+		c = color.RGBA{180, 140, 100, 255}
+	case "floor":
+		c = color.RGBA{200, 200, 200, 255}
+	case "shelf":
+		c = color.RGBA{160, 120, 80, 255}
 	default:
-		c = color.RGBA{100, 180, 100, 255}
+		c = color.RGBA{150, 150, 150, 255}
 	}
 	
 	vector.DrawFilledRect(screen, float32(screenX), float32(screenY), float32(p.Width), float32(p.Height), c, true)
@@ -683,29 +641,11 @@ func (g *Game) drawPlatformFallback(screen *ebiten.Image, p level.Platform) {
 
 // drawEnemyFallback - резервная отрисовка врага
 func (g *Game) drawEnemyFallback(screen *ebiten.Image, enemy entity.Enemy) {
-	screenX := enemy.X - g.cameraX
-	screenY := enemy.Y - g.cameraY
-	
-	var c color.RGBA
-	switch enemy.Type {
-	case "slime":
-		c = color.RGBA{150, 50, 150, 255}
-	case "fly":
-		c = color.RGBA{200, 200, 50, 255}
-	case "snail":
-		c = color.RGBA{180, 100, 50, 255}
-	case "fish":
-		c = color.RGBA{50, 100, 200, 255}
-	default:
-		c = color.RGBA{150, 150, 150, 255}
-	}
-	
-	vector.DrawFilledRect(screen, float32(screenX), float32(screenY), float32(enemy.Width), float32(enemy.Height), c, true)
+	enemy.Draw(screen, g.cameraX, g.cameraY)
 }
 
-// drawParallaxBackground - параллакс фон из PlatformerComplete
+// drawParallaxBackground - параллакс фон
 func (g *Game) drawParallaxBackground(screen *ebiten.Image) {
-	// Используем рендерер для отрисовки слоёв
 	if g.renderer != nil {
 		g.renderer.DrawBackground(screen, g.cameraX, g.cameraY)
 	}
@@ -715,8 +655,8 @@ func (g *Game) drawParallaxBackground(screen *ebiten.Image) {
 func (g *Game) drawMenu(screen *ebiten.Image) {
 	title := `
 ╔═══════════════════════════════════════════════╗
-║     🏙️ CITY PLATFORMER 🎖️                    ║
-║        LAST SURVIVOR EDITION                  ║
+║     🍳 FOOD PLATFORMER 🎖️                    ║
+║        LAST COOK STANDING                     ║
 ╠═══════════════════════════════════════════════╣
 ║                                               ║
 ║           [SPACE] - Начать игру               ║
@@ -726,11 +666,11 @@ func (g *Game) drawMenu(screen *ebiten.Image) {
 ║     A/D или ←/→ - Бег                         ║
 ║     W/↑ - Прыжок                              ║
 ║     S/↓ - Присесть                            ║
-║     J - Стрелять                              ║
+║     J - Бросить ингредиент                    ║
 ║                                               ║
-║  🎯 Цель: Убей всех врагов!                   ║
-║  💀 Остерегайся боссов!                       ║
-║  🔥 Набирай комбо для бонусов!                ║
+║  🎯 Цель: Собери всю еду!                     ║
+║  🤢 Остерегайся гнилой еды и жуков!           ║
+║  🍎 Полезная еда восстанавливает здоровье!    ║
 ║                                               ║
 ╚═══════════════════════════════════════════════╝
 `
@@ -739,50 +679,28 @@ func (g *Game) drawMenu(screen *ebiten.Image) {
 
 // drawHUD - отрисовка интерфейса
 func (g *Game) drawHUD(screen *ebiten.Image) {
-	comboText := ""
-	if g.combo > 1 {
-		comboText = fmt.Sprintf("🔥 Комбо x%d!", g.combo)
+	if g.renderer != nil {
+		g.renderer.DrawHUD(screen, g.score, 0, g.level, g.player.Health, g.player.MaxHealth)
 	}
 	
-	hudText := fmt.Sprintf(`┌─────────────────────────────────────┐
-│  🏙️ CITY PLATFORMER     %-15s │
-├─────────────────────────────────────┤
-│  💰 Счёт: %6d    ❤️  Жизни: %2d       │
-│  📍 Уровень: %2d   🌊 Волна: %2d        │
-│  %s                     │
-└─────────────────────────────────────┘
-
-[ESC] - Пауза  [J] - Огонь
-`, comboText, g.score, g.lives, g.level, g.wave, " ")
-
-	ebitenutil.DebugPrint(screen, hudText)
+	// Название уровня
+	levelName := "Кухня"
+	if g.levelData != nil && g.levelData.Name != "" {
+		levelName = g.levelData.Name
+	}
+	ebitenutil.DebugPrintAt(screen, fmt.Sprintf("📍 %s", levelName), 10, 110)
+	
+	// Комбо
+	if g.combo > 1 {
+		ebitenutil.DebugPrintAt(screen, fmt.Sprintf("🔥 Комбо x%d!", g.combo), 10, 130)
+	}
+	
+	ebitenutil.DebugPrintAt(screen, "[ESC] - Пауза  [J] - Бросок", 10, screenHeight-30)
 	
 	// Полоска здоровья босса
-	if g.bossActive && g.boss != nil {
-		g.drawBossHealthBar(screen)
+	if g.bossActive && g.boss != nil && g.renderer != nil {
+		g.renderer.DrawBossHealthBar(screen, g.boss.Health, g.boss.MaxHealth)
 	}
-}
-
-// drawBossHealthBar - полоска здоровья босса
-func (g *Game) drawBossHealthBar(screen *ebiten.Image) {
-	if g.boss == nil {
-		return
-	}
-	
-	barWidth := 400
-	barHeight := 20
-	x := float32(screenWidth/2 - barWidth/2)
-	y := float32(50)
-	
-	// Фон
-	vector.DrawFilledRect(screen, x, y, float32(barWidth), float32(barHeight), color.RGBA{50, 50, 50, 255}, true)
-	
-	// Здоровье
-	healthPercent := float32(g.boss.Health) / float32(g.boss.MaxHealth)
-	vector.DrawFilledRect(screen, x+2, y+2, float32(barWidth-4)*healthPercent, float32(barHeight-4), color.RGBA{255, 50, 50, 255}, true)
-	
-	// Текст
-	ebitenutil.DebugPrintAt(screen, fmt.Sprintf("BOSS: %d/%d", g.boss.Health, g.boss.MaxHealth), int(x)+100, int(y)-5)
 }
 
 // drawPause - отрисовка паузы
@@ -812,16 +730,16 @@ func (g *Game) drawGameOver(screen *ebiten.Image) {
 	
 	gameOverText := fmt.Sprintf(`
 ╔═══════════════════════════════════════╗
-║          💀 МИССИЯ ПРОВАЛЕНА 💀       ║
+║       🤢 ПОВАР УВОЛЕН! 🤢             ║
 ╠═══════════════════════════════════════╣
 ║     Финальный счёт: %6d                ║
-║     Уровень: %2d    Волна: %2d            ║
-║     Макс комбо: %3d                    ║
+║     Уровень: %2d                        ║
+║     Комбо: %3d                         ║
 ║                                       ║
 ║     [SPACE] - Новая попытка           ║
 ║     [ESC] - Выход                     ║
 ╚═══════════════════════════════════════╝
-`, g.score, g.level, g.wave, g.combo)
+`, g.score, g.level, g.combo)
 
 	ebitenutil.DebugPrintAt(screen, gameOverText, screenWidth/2-180, screenHeight/2-120)
 }
@@ -835,7 +753,7 @@ func (g *Game) drawVictory(screen *ebiten.Image) {
 	
 	victoryText := fmt.Sprintf(`
 ╔═══════════════════════════════════════╗
-║          🎉 УРОВЕНЬ ПРОЙДЕН! 🎉       ║
+║       🍳 УРОВЕНЬ ПРОЙДЕН! 🍳          ║
 ╠═══════════════════════════════════════╣
 ║     Счёт: %6d                          ║
 ║     Уровень: %2d                        ║

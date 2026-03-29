@@ -1,5 +1,5 @@
 // Package sprite - загрузка и управление спрайтами
-// Go365 Day 88 - PlatformerComplete Pack
+// Go365 Day 88 - Food Platformer
 package sprite
 
 import (
@@ -13,230 +13,259 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 )
 
-// SpriteSheet - атлас спрайтов PlatformerComplete
+// FoodType - типы еды
+type FoodType int
+
+const (
+	FoodFruit FoodType = iota
+	FoodVegetable
+	FoodMeat
+	FoodDairy
+	FoodBakery
+	FoodJunk
+	FoodDrink
+	FoodSweet
+)
+
+// SpriteSheet - атлас спрайтов Food Platformer
 type SpriteSheet struct {
-	// Игрок (Player 1)
+	// Игрок (повар)
 	PlayerStand  *ebiten.Image
 	PlayerWalk   []*ebiten.Image
 	PlayerJump   *ebiten.Image
-	PlayerDuck   *ebiten.Image
-	PlayerHurt   *ebiten.Image
-	PlayerFront  *ebiten.Image
+	PlayerCook   *ebiten.Image
 	
-	// Враги
-	EnemySlime   []*ebiten.Image
-	EnemyFly     []*ebiten.Image
-	EnemySnail   []*ebiten.Image
-	EnemyFish    []*ebiten.Image
+	// Еда (разные стили)
+	Food7Soul1    []*ebiten.Image
+	FoodDCSS      []*ebiten.Image
+	FoodBluecarrot []*ebiten.Image
+	FoodGlitch    []*ebiten.Image
+	FoodOCAL      []*ebiten.Image
+	FoodOther     []*ebiten.Image
 	
-	// Платформы и земля
+	// Категории еды
+	Fruits      []*ebiten.Image
+	Vegetables  []*ebiten.Image
+	Meats       []*ebiten.Image
+	Dairy       []*ebiten.Image
+	Bakery      []*ebiten.Image
+	Junk        []*ebiten.Image
+	Drinks      []*ebiten.Image
+	
+	// Враги (испорченная еда)
+	EnemyRotten  []*ebiten.Image
+	EnemyBug     []*ebiten.Image
+	
+	// Платформы
 	Tiles        map[string]*ebiten.Image
 	
-	// Предметы
-	CoinGold     *ebiten.Image
-	CoinSilver   *ebiten.Image
-	CoinBronze   *ebiten.Image
-	GemRed       *ebiten.Image
-	GemBlue      *ebiten.Image
-	GemGreen     *ebiten.Image
-	GemYellow    *ebiten.Image
-	Star         *ebiten.Image
-	MushroomRed  *ebiten.Image
-	MushroomBrown *ebiten.Image
-	
 	// Декорации
-	Cloud1       *ebiten.Image
-	Cloud2       *ebiten.Image
-	Cloud3       *ebiten.Image
-	Bush         *ebiten.Image
-	Plant        *ebiten.Image
-	PlantPurple  *ebiten.Image
-	Rock         *ebiten.Image
-	Cactus       *ebiten.Image
+	Kitchen      []*ebiten.Image
 }
 
-// LoadSpriteSheet - загрузка спрайт-листа PlatformerComplete
+// LoadSpriteSheet - загрузка спрайт-листа Food Platformer
 func LoadSpriteSheet() *SpriteSheet {
 	ss := &SpriteSheet{
-		PlayerWalk: make([]*ebiten.Image, 11),
-		EnemySlime: make([]*ebiten.Image, 2),
-		EnemyFly:   make([]*ebiten.Image, 2),
-		EnemySnail: make([]*ebiten.Image, 2),
-		EnemyFish:  make([]*ebiten.Image, 2),
-		Tiles:      make(map[string]*ebiten.Image),
+		PlayerWalk:   make([]*ebiten.Image, 4),
+		Food7Soul1:   make([]*ebiten.Image, 0),
+		FoodDCSS:     make([]*ebiten.Image, 0),
+		FoodBluecarrot: make([]*ebiten.Image, 0),
+		FoodGlitch:   make([]*ebiten.Image, 0),
+		FoodOCAL:     make([]*ebiten.Image, 0),
+		FoodOther:    make([]*ebiten.Image, 0),
+		Fruits:       make([]*ebiten.Image, 0),
+		Vegetables:   make([]*ebiten.Image, 0),
+		Meats:        make([]*ebiten.Image, 0),
+		Dairy:        make([]*ebiten.Image, 0),
+		Bakery:       make([]*ebiten.Image, 0),
+		Junk:         make([]*ebiten.Image, 0),
+		Drinks:       make([]*ebiten.Image, 0),
+		EnemyRotten:  make([]*ebiten.Image, 2),
+		EnemyBug:     make([]*ebiten.Image, 2),
+		Tiles:        make(map[string]*ebiten.Image),
 	}
 	
-	// Загрузка игрока
+	// Загрузка игрока (создаём заглушки)
 	ss.loadPlayer()
 	
-	// Загрузка врагов
-	ss.loadEnemies()
+	// Загрузка еды из спрайт-листов
+	ss.loadFoodSheets()
 	
 	// Загрузка тайлов
 	ss.loadTiles()
 	
-	// Загрузка предметов
-	ss.loadItems()
-	
-	// Загрузка декораций
-	ss.loadDecorations()
+	// Загрузка врагов
+	ss.loadEnemies()
 	
 	return ss
 }
 
 // loadPlayer - загрузка спрайтов игрока
 func (ss *SpriteSheet) loadPlayer() {
-	// Стойка
-	ss.PlayerStand = ss.loadImage("Player/p1_stand.png")
+	// Создаём цветные заглушки для игрока-повара
+	ss.PlayerStand = ss.createColoredImage(40, 50, color.RGBA{255, 200, 150, 255})
 	
-	// Ходьба (11 кадров)
-	for i := 1; i <= 11; i++ {
-		filename := fmt.Sprintf("Player/p1_walk/PNG/p1_walk%02d.png", i)
-		ss.PlayerWalk[i-1] = ss.loadImage(filename)
+	for i := 0; i < 4; i++ {
+		ss.PlayerWalk[i] = ss.createColoredImage(40, 50, color.RGBA{255, 200, 150, 255})
 	}
 	
-	// Прыжок
-	ss.PlayerJump = ss.loadImage("Player/p1_jump.png")
-	
-	// Присед
-	ss.PlayerDuck = ss.loadImage("Player/p1_duck.png")
-	
-	// Получение урона
-	ss.PlayerHurt = ss.loadImage("Player/p1_hurt.png")
-	
-	// Вид спереди
-	ss.PlayerFront = ss.loadImage("Player/p1_front.png")
+	ss.PlayerJump = ss.createColoredImage(40, 50, color.RGBA{255, 200, 150, 255})
+	ss.PlayerCook = ss.createColoredImage(40, 50, color.RGBA{255, 255, 255, 255})
 }
 
-// loadEnemies - загрузка спрайтов врагов
-func (ss *SpriteSheet) loadEnemies() {
-	// Слайм (2 кадра)
-	ss.EnemySlime[0] = ss.loadImage("Enemies/slimeWalk1.png")
-	ss.EnemySlime[1] = ss.loadImage("Enemies/slimeWalk2.png")
+// loadFoodSheets - загрузка листов с едой
+func (ss *SpriteSheet) loadFoodSheets() {
+	// 7Soul1 стиль (16x16)
+	ss.loadFoodFromSheet("Food/food-7Soul1.png", 16, 16, ss.Food7Soul1)
 	
-	// Муха
-	ss.EnemyFly[0] = ss.loadImage("Enemies/flyFly1.png")
-	ss.EnemyFly[1] = ss.loadImage("Enemies/flyFly2.png")
+	// DCSS стиль
+	ss.loadFoodFromSheet("Food/food-DCSS.png", 32, 32, ss.FoodDCSS)
 	
-	// Улитка
-	ss.EnemySnail[0] = ss.loadImage("Enemies/snailWalk1.png")
-	ss.EnemySnail[1] = ss.loadImage("Enemies/snailWalk2.png")
+	// bluecarrot16 стиль (32x32)
+	ss.loadFoodFromSheet("Food/food-bluecarrot16.png", 32, 32, ss.FoodBluecarrot)
 	
-	// Рыба
-	ss.EnemyFish[0] = ss.loadImage("Enemies/fishSwim1.png")
-	ss.EnemyFish[1] = ss.loadImage("Enemies/fishSwim2.png")
+	// Glitch стиль
+	ss.loadFoodFromSheet("Food/food-Glitch.png", 32, 32, ss.FoodGlitch)
+	
+	// OCAL стиль
+	ss.loadFoodFromSheet("Food/food-OCAL.png", 32, 32, ss.FoodOCAL)
+	
+	// Other стиль
+	ss.loadFoodFromSheet("Food/food-other.png", 32, 32, ss.FoodOther)
 }
 
-// loadTiles - загрузка тайлов
-func (ss *SpriteSheet) loadTiles() {
-	// Земля с травой
-	ss.Tiles["grassMid"] = ss.loadImage("Tiles/grassMid.png")
-	ss.Tiles["grassLeft"] = ss.loadImage("Tiles/grassLeft.png")
-	ss.Tiles["grassRight"] = ss.loadImage("Tiles/grassRight.png")
-	ss.Tiles["grassHalf"] = ss.loadImage("Tiles/grassHalf.png")
-	ss.Tiles["grassHalfLeft"] = ss.loadImage("Tiles/grassHalfLeft.png")
-	ss.Tiles["grassHalfRight"] = ss.loadImage("Tiles/grassHalfRight.png")
-	ss.Tiles["grassCenter"] = ss.loadImage("Tiles/grassCenter.png")
-	
-	// Dirt
-	ss.Tiles["dirtMid"] = ss.loadImage("Tiles/dirtMid.png")
-	ss.Tiles["dirtLeft"] = ss.loadImage("Tiles/dirtLeft.png")
-	ss.Tiles["dirtRight"] = ss.loadImage("Tiles/dirtRight.png")
-	ss.Tiles["dirtCenter"] = ss.loadImage("Tiles/dirtCenter.png")
-	
-	// Камень
-	ss.Tiles["stoneMid"] = ss.loadImage("Tiles/stoneMid.png")
-	ss.Tiles["stoneLeft"] = ss.loadImage("Tiles/stoneLeft.png")
-	ss.Tiles["stoneRight"] = ss.loadImage("Tiles/stoneRight.png")
-	ss.Tiles["stoneCenter"] = ss.loadImage("Tiles/stoneCenter.png")
-	
-	// Замок
-	ss.Tiles["castleMid"] = ss.loadImage("Tiles/castleMid.png")
-	ss.Tiles["castleLeft"] = ss.loadImage("Tiles/castleLeft.png")
-	ss.Tiles["castleRight"] = ss.loadImage("Tiles/castleRight.png")
-	ss.Tiles["castleCenter"] = ss.loadImage("Tiles/castleCenter.png")
-	
-	// Стены
-	ss.Tiles["brickWall"] = ss.loadImage("Tiles/brickWall.png")
-	ss.Tiles["stoneWall"] = ss.loadImage("Tiles/stoneWall.png")
-	
-	// Холмы
-	ss.Tiles["grassHillLeft"] = ss.loadImage("Tiles/grassHillLeft.png")
-	ss.Tiles["grassHillRight"] = ss.loadImage("Tiles/grassHillRight.png")
-	ss.Tiles["grassHillLeft2"] = ss.loadImage("Tiles/grassHillLeft2.png")
-	ss.Tiles["grassHillRight2"] = ss.loadImage("Tiles/grassHillRight2.png")
-	
-	// Лестницы
-	ss.Tiles["ladder_mid"] = ss.loadImage("Tiles/ladder_mid.png")
-	ss.Tiles["ladder_top"] = ss.loadImage("Tiles/ladder_top.png")
-	
-	// Вода/лава
-	ss.Tiles["liquidWaterTop"] = ss.loadImage("Tiles/liquidWaterTop.png")
-	ss.Tiles["liquidWater"] = ss.loadImage("Tiles/liquidWater.png")
-	ss.Tiles["liquidLavaTop"] = ss.loadImage("Tiles/liquidLavaTop.png")
-	ss.Tiles["liquidLava"] = ss.loadImage("Tiles/liquidLava.png")
-	
-	// Ящики
-	ss.Tiles["box"] = ss.loadImage("Tiles/box.png")
-	ss.Tiles["boxCoin"] = ss.loadImage("Tiles/boxCoin.png")
-	ss.Tiles["boxItem"] = ss.loadImage("Tiles/boxItem.png")
-	ss.Tiles["boxExplosive"] = ss.loadImage("Tiles/boxExplosive.png")
-	
-	// Забор
-	ss.Tiles["fence"] = ss.loadImage("Tiles/fence.png")
-	
-	// Шипы
-	ss.Tiles["spikes"] = ss.loadImage("Items/spikes.png")
-}
-
-// loadItems - загрузка предметов
-func (ss *SpriteSheet) loadItems() {
-	ss.CoinGold = ss.loadImage("Items/coinGold.png")
-	ss.CoinSilver = ss.loadImage("Items/coinSilver.png")
-	ss.CoinBronze = ss.loadImage("Items/coinBronze.png")
-	
-	ss.GemRed = ss.loadImage("Items/gemRed.png")
-	ss.GemBlue = ss.loadImage("Items/gemBlue.png")
-	ss.GemGreen = ss.loadImage("Items/gemGreen.png")
-	ss.GemYellow = ss.loadImage("Items/gemYellow.png")
-	
-	ss.Star = ss.loadImage("Items/star.png")
-	
-	ss.MushroomRed = ss.loadImage("Items/mushroomRed.png")
-	ss.MushroomBrown = ss.loadImage("Items/mushroomBrown.png")
-}
-
-// loadDecorations - загрузка декораций
-func (ss *SpriteSheet) loadDecorations() {
-	ss.Cloud1 = ss.loadImage("Items/cloud1.png")
-	ss.Cloud2 = ss.loadImage("Items/cloud2.png")
-	ss.Cloud3 = ss.loadImage("Items/cloud3.png")
-	
-	ss.Bush = ss.loadImage("Items/bush.png")
-	ss.Plant = ss.loadImage("Items/plant.png")
-	ss.PlantPurple = ss.loadImage("Items/plantPurple.png")
-	ss.Rock = ss.loadImage("Items/rock.png")
-	ss.Cactus = ss.loadImage("Items/cactus.png")
-}
-
-// loadImage - загрузка изображения
-func (ss *SpriteSheet) loadImage(path string) *ebiten.Image {
+// loadFoodFromSheet - загрузка еды из спрайт-листа
+func (ss *SpriteSheet) loadFoodFromSheet(path string, tileW, tileH int, target []*ebiten.Image) {
 	fullPath := "assets/" + strings.ReplaceAll(path, "\\", "/")
 	img, _, err := ebitenutil.NewImageFromFile(fullPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: Could not load %s: %v\n", fullPath, err)
-		return nil
+		return
 	}
-	return img
+	
+	bounds := img.Bounds()
+	cols := bounds.Dx() / tileW
+	rows := bounds.Dy() / tileH
+	
+	for row := 0; row < rows; row++ {
+		for col := 0; col < cols; col++ {
+			rect := image.Rect(col*tileW, row*tileH, (col+1)*tileW, (row+1)*tileH)
+			sprite := img.SubImage(rect).(*ebiten.Image)
+			ss.FoodGlitch = append(ss.FoodGlitch, sprite)
+		}
+	}
 }
 
-// LoadImageFromFile - публичная функция загрузки
-func LoadImageFromFile(path string) (*ebiten.Image, error) {
-	img, _, err := ebitenutil.NewImageFromFile(path)
-	return img, err
+// loadTiles - загрузка тайлов
+func (ss *SpriteSheet) loadTiles() {
+	// Кухонные тайлы - создаём заглушки
+	ss.Tiles["counter"] = ss.createColoredImage(64, 64, color.RGBA{180, 140, 100, 255})
+	ss.Tiles["floor"] = ss.createColoredImage(64, 64, color.RGBA{200, 200, 200, 255})
+	ss.Tiles["wall"] = ss.createColoredImage(64, 64, color.RGBA{220, 220, 220, 255})
+	ss.Tiles["shelf"] = ss.createColoredImage(64, 48, color.RGBA{160, 120, 80, 255})
+	ss.Tiles["stove"] = ss.createColoredImage(64, 64, color.RGBA{100, 100, 100, 255})
 }
 
-// GetPlayerFrame - получение кадра анимации игрока
+// loadEnemies - загрузка врагов
+func (ss *SpriteSheet) loadEnemies() {
+	// Испорченная еда
+	ss.EnemyRotten[0] = ss.createColoredImage(32, 32, color.RGBA{100, 150, 50, 255})
+	ss.EnemyRotten[1] = ss.createColoredImage(32, 32, color.RGBA{120, 160, 60, 255})
+	
+	// Насекомые
+	ss.EnemyBug[0] = ss.createColoredImage(24, 24, color.RGBA{80, 60, 40, 255})
+	ss.EnemyBug[1] = ss.createColoredImage(24, 24, color.RGBA{90, 70, 50, 255})
+}
+
+// createColoredImage - создание цветного изображения
+func (ss *SpriteSheet) createColoredImage(width, height int, c color.RGBA) *ebiten.Image {
+	img := image.NewRGBA(image.Rect(0, 0, width, height))
+	for y := 0; y < height; y++ {
+		for x := 0; x < width; x++ {
+			img.Set(x, y, c)
+		}
+	}
+	return ebiten.NewImageFromImage(img)
+}
+
+// GetFood - получение спрайта еды по типу
+func (ss *SpriteSheet) GetFood(foodType FoodType, index int) *ebiten.Image {
+	var foods []*ebiten.Image
+	
+	switch foodType {
+	case FoodFruit:
+		foods = ss.Fruits
+	case FoodVegetable:
+		foods = ss.Vegetables
+	case FoodMeat:
+		foods = ss.Meats
+	case FoodDairy:
+		foods = ss.Dairy
+	case FoodBakery:
+		foods = ss.Bakery
+	case FoodJunk:
+		foods = ss.Junk
+	case FoodDrink:
+		foods = ss.Drinks
+	case FoodSweet:
+		foods = ss.FoodGlitch
+	}
+	
+	if len(foods) > 0 && index >= 0 && index < len(foods) {
+		return foods[index]
+	}
+	
+	// Возвращаем случайную еду из Glitch набора
+	if len(ss.FoodGlitch) > 0 {
+		return ss.FoodGlitch[index%len(ss.FoodGlitch)]
+	}
+	
+	return nil
+}
+
+// GetRandomFood - получение случайной еды
+func (ss *SpriteSheet) GetRandomFood(index int) *ebiten.Image {
+	allFoods := []*ebiten.Image{
+		ss.Food7Soul1[0],
+		ss.FoodDCSS[0],
+		ss.FoodBluecarrot[0],
+		ss.FoodGlitch[0],
+		ss.FoodOCAL[0],
+	}
+	
+	for _, foods := range allFoods {
+		if foods != nil {
+			return foods
+		}
+	}
+	
+	return ss.createColoredImage(32, 32, color.RGBA{255, 200, 50, 255})
+}
+
+// GetEnemy - получение спрайта врага
+func (ss *SpriteSheet) GetEnemy(enemyType string, frame int) *ebiten.Image {
+	switch enemyType {
+	case "rotten":
+		if frame >= 0 && frame < len(ss.EnemyRotten) {
+			return ss.EnemyRotten[frame%len(ss.EnemyRotten)]
+		}
+	case "bug":
+		if frame >= 0 && frame < len(ss.EnemyBug) {
+			return ss.EnemyBug[frame%len(ss.EnemyBug)]
+		}
+	}
+	return ss.EnemyRotten[0]
+}
+
+// GetTile - получение тайла
+func (ss *SpriteSheet) GetTile(tileType string) *ebiten.Image {
+	if img, ok := ss.Tiles[tileType]; ok {
+		return img
+	}
+	return ss.Tiles["counter"]
+}
+
+// GetPlayerFrame - получение кадра игрока
 func (ss *SpriteSheet) GetPlayerFrame(state string, frame int) *ebiten.Image {
 	switch state {
 	case "stand":
@@ -247,156 +276,56 @@ func (ss *SpriteSheet) GetPlayerFrame(state string, frame int) *ebiten.Image {
 		}
 	case "jump":
 		return ss.PlayerJump
-	case "duck":
-		return ss.PlayerDuck
-	case "hurt":
-		return ss.PlayerHurt
-	case "front":
-		return ss.PlayerFront
+	case "cook":
+		return ss.PlayerCook
 	}
 	return ss.PlayerStand
 }
 
-// GetEnemyFrame - получение кадра анимации врага
-func (ss *SpriteSheet) GetEnemyFrame(enemyType string, frame int) *ebiten.Image {
-	switch enemyType {
-	case "slime":
-		if frame >= 0 && frame < len(ss.EnemySlime) {
-			return ss.EnemySlime[frame%len(ss.EnemySlime)]
-		}
-	case "fly":
-		if frame >= 0 && frame < len(ss.EnemyFly) {
-			return ss.EnemyFly[frame%len(ss.EnemyFly)]
-		}
-	case "snail":
-		if frame >= 0 && frame < len(ss.EnemySnail) {
-			return ss.EnemySnail[frame%len(ss.EnemySnail)]
-		}
-	case "fish":
-		if frame >= 0 && frame < len(ss.EnemyFish) {
-			return ss.EnemyFish[frame%len(ss.EnemyFish)]
-		}
-	}
-	if len(ss.EnemySlime) > 0 {
-		return ss.EnemySlime[0]
-	}
-	return nil
+// LoadImageFromFile - публичная функция загрузки
+func LoadImageFromFile(path string) (*ebiten.Image, error) {
+	img, _, err := ebitenutil.NewImageFromFile(path)
+	return img, err
 }
 
-// GetCoin - получение монеты
-func (ss *SpriteSheet) GetCoin(coinType string) *ebiten.Image {
-	switch coinType {
-	case "gold":
-		return ss.CoinGold
-	case "silver":
-		return ss.CoinSilver
-	case "bronze":
-		return ss.CoinBronze
+// GetFoodValue - получение ценности еды
+func GetFoodValue(foodType FoodType) int {
+	switch foodType {
+	case FoodFruit, FoodVegetable:
+		return 10 // Полезная еда
+	case FoodMeat, FoodDairy, FoodBakery:
+		return 15 // Средняя ценность
+	case FoodSweet:
+		return 20 // Сладости
+	case FoodDrink:
+		return 5 // Напитки
+	case FoodJunk:
+		return -10 // Вредная еда (штраф)
 	default:
-		return ss.CoinGold
+		return 10
 	}
 }
 
-// GetGem - получение гема
-func (ss *SpriteSheet) GetGem(gemType string) *ebiten.Image {
-	switch gemType {
-	case "red":
-		return ss.GemRed
-	case "blue":
-		return ss.GemBlue
-	case "green":
-		return ss.GemGreen
-	case "yellow":
-		return ss.GemYellow
+// GetFoodColor - получение цвета для еды
+func GetFoodColor(foodType FoodType) color.RGBA {
+	switch foodType {
+	case FoodFruit:
+		return color.RGBA{255, 100, 100, 255} // Красный
+	case FoodVegetable:
+		return color.RGBA{100, 200, 100, 255} // Зелёный
+	case FoodMeat:
+		return color.RGBA{180, 80, 80, 255} // Коричневый
+	case FoodDairy:
+		return color.RGBA{255, 255, 200, 255} // Белый
+	case FoodBakery:
+		return color.RGBA{200, 150, 80, 255} // Золотой
+	case FoodJunk:
+		return color.RGBA{150, 100, 50, 255} // Коричневый
+	case FoodDrink:
+		return color.RGBA{100, 150, 255, 255} // Синий
+	case FoodSweet:
+		return color.RGBA{255, 100, 200, 255} // Розовый
 	default:
-		return ss.GemRed
+		return color.RGBA{255, 200, 50, 255}
 	}
-}
-
-// GetTile - получение тайла
-func (ss *SpriteSheet) GetTile(tileType string) *ebiten.Image {
-	if img, ok := ss.Tiles[tileType]; ok {
-		return img
-	}
-	return ss.Tiles["grassMid"]
-}
-
-// GetDecoration - получение декорации
-func (ss *SpriteSheet) GetDecoration(decType string) *ebiten.Image {
-	switch decType {
-	case "cloud1":
-		return ss.Cloud1
-	case "cloud2":
-		return ss.Cloud2
-	case "cloud3":
-		return ss.Cloud3
-	case "bush":
-		return ss.Bush
-	case "plant":
-		return ss.Plant
-	case "plantPurple":
-		return ss.PlantPurple
-	case "rock":
-		return ss.Rock
-	case "cactus":
-		return ss.Cactus
-	default:
-		return ss.Cloud1
-	}
-}
-
-// GetTileSize - размер тайла
-func (ss *SpriteSheet) GetTileSize() (int, int) {
-	if tile := ss.Tiles["grassMid"]; tile != nil {
-		bounds := tile.Bounds()
-		return bounds.Dx(), bounds.Dy()
-	}
-	return 70, 70 // Размер по умолчанию
-}
-
-// GetPlayerSize - размер игрока
-func (ss *SpriteSheet) GetPlayerSize() (int, int) {
-	if ss.PlayerStand != nil {
-		bounds := ss.PlayerStand.Bounds()
-		return bounds.Dx(), bounds.Dy()
-	}
-	return 66, 92 // Размер по умолчанию из спрайт-листа
-}
-
-// GetEnemySize - размер врага
-func (ss *SpriteSheet) GetEnemySize(enemyType string) (int, int) {
-	switch enemyType {
-	case "slime":
-		if ss.EnemySlime[0] != nil {
-			bounds := ss.EnemySlime[0].Bounds()
-			return bounds.Dx(), bounds.Dy()
-		}
-	case "fly":
-		if ss.EnemyFly[0] != nil {
-			bounds := ss.EnemyFly[0].Bounds()
-			return bounds.Dx(), bounds.Dy()
-		}
-	case "snail":
-		if ss.EnemySnail[0] != nil {
-			bounds := ss.EnemySnail[0].Bounds()
-			return bounds.Dx(), bounds.Dy()
-		}
-	case "fish":
-		if ss.EnemyFish[0] != nil {
-			bounds := ss.EnemyFish[0].Bounds()
-			return bounds.Dx(), bounds.Dy()
-		}
-	}
-	return 70, 70
-}
-
-// CreateColorImage - создание цветного изображения для частиц
-func CreateColorImage(width, height int, c color.RGBA) *ebiten.Image {
-	img := image.NewRGBA(image.Rect(0, 0, width, height))
-	for y := 0; y < height; y++ {
-		for x := 0; x < width; x++ {
-			img.Set(x, y, c)
-		}
-	}
-	return ebiten.NewImageFromImage(img)
 }

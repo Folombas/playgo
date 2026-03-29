@@ -1,9 +1,0 @@
-{
-	"new_cassidy_dialogue": "true",
-	
-	"molten_freddy": [["What the heck are-a you? Fall into lava or-a something?", "Mario"]],
-	"circus_baby": [["_skip"], ["Huh? I-a never said-", "Mario"]],
-	"animdude": [["Hello!", "Mario"], ["... Mario?", "Animdude"], ["Yep, it's-a-me!", "Mario"]],
-	"popgoes": [["If I did, would-a that make you myPOPGOES?", "Mario"]],
-	"rodney": [["... Ah... Not ringing any-a bells. Maybe I just don't remember you from a party?", "Mario"]]
-}
