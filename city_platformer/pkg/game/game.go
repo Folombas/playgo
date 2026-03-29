@@ -630,29 +630,27 @@ func (g *Game) Draw(screen *ebiten.Image) {
 
 // drawSky - отрисовка неба
 func (g *Game) drawSky(screen *ebiten.Image) {
+	// Небо в лесном стиле - светло-голубое
 	for y := 0; y < screenHeight; y++ {
 		ratio := float64(y) / float64(screenHeight)
-		r := uint8(75 - ratio*20)
-		gr := uint8(100 - ratio*30)
-		b := uint8(150 - ratio*50)
+		r := uint8(180 - ratio*30)
+		gr := uint8(220 - ratio*20)
+		b := uint8(255 - ratio*10)
 		vector.DrawFilledRect(screen, 0, float32(y), float32(screenWidth), 1, color.RGBA{r, gr, b, 255}, true)
 	}
 }
 
-// drawParallaxBackground - параллакс фон
+// drawParallaxBackground - параллакс фон из Forest Pack
 func (g *Game) drawParallaxBackground(screen *ebiten.Image) {
-	// Дальние здания (медленно)
-	for i := 0; i < 15; i++ {
-		height := 150 + g.rng.Float64()*200
-		x := float64(i*120) - g.cameraX*0.2
-		vector.DrawFilledRect(screen, float32(x), float32(screenHeight-int(height)), 80, float32(height), color.RGBA{60, 60, 80, 200}, true)
+	// Используем рендерер для отрисовки слоёв
+	if g.renderer != nil {
+		g.renderer.DrawBackground(screen, g.cameraX, g.cameraY)
 	}
 	
-	// Средние здания
-	for i := 0; i < 20; i++ {
-		height := 80 + g.rng.Float64()*100
-		x := float64(i*80) - g.cameraX*0.5
-		vector.DrawFilledRect(screen, float32(x), float32(screenHeight-int(height)), 60, float32(height), color.RGBA{80, 80, 100, 220}, true)
+	// Деревья на заднем плане (параллакс)
+	for i := 0; i < 10; i++ {
+		x := float64(i*200) - g.cameraX*0.4
+		g.renderer.DrawDecoration(screen, "tree", x, float64(screenHeight)-180, g.cameraX, g.cameraY)
 	}
 }
 
