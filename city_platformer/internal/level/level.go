@@ -1,269 +1,415 @@
-// Package level - генерация и управление уровнями
-// Go365 Day 91 - City Platformer
+// Package level - система уровней и тайловых карт
+// Go365 Day 90 - City Survivor
 package level
 
 import (
 	"math/rand"
+
+	"github.com/hajimehoshi/ebiten/v2"
+	"city_platformer/internal/sprite"
 )
 
-// Platform - платформа
+// TileType - тип тайла
+type TileType string
+
+const (
+	TileEmpty      TileType = "empty"
+	TileGround     TileType = "ground"
+	TileGrass      TileType = "grass"
+	TileBrick      TileType = "brick"
+	TileBox        TileType = "box"
+	TileBoxCoin    TileType = "boxCoin"
+	TileBoxItem    TileType = "boxItem"
+	TileBoxEmpty   TileType = "boxEmpty"
+	TileFence      TileType = "fence"
+	TileLadder     TileType = "ladder"
+	TileDoor       TileType = "door"
+	TileBridge     TileType = "bridge"
+	TilePlatform   TileType = "platform"
+	TileSpike      TileType = "spike"
+)
+
+// Tile - отдельный тайл
+type Tile struct {
+	X, Y     int
+	Type     TileType
+	Solid    bool
+	Dangerous bool
+}
+
+// Platform - платформа для коллизий
 type Platform struct {
 	X, Y, Width, Height float64
-	Type                string // ground, building, rubble, metal
+	Type                TileType
+	Solid               bool
 }
 
-// Level - данные уровня
-type Level struct {
-	Platforms []*Platform
-	Items     []*LevelItem
-	Enemies   []*LevelEnemy
-	Width     float64
-	Height    float64
-	Name      string
-	ExitX     float64
+// LevelEnemy - данные врага на уровне
+type LevelEnemy struct {
+	X, Y   float64
+	Type   string
+	Active bool
 }
 
-// LevelItem - предмет на уровне
+// LevelItem - данные предмета на уровне
 type LevelItem struct {
 	X, Y      float64
-	Width     float64
-	Height    float64
-	Type      string // medkit, ammo, food, parts
+	Type      string
 	Value     int
 	Collected bool
 }
 
-// LevelEnemy - враг на уровне
-type LevelEnemy struct {
-	X, Y   float64
-	Type   string // mutant, robot, zombie
-	Active bool
+// LevelData - данные уровня
+type LevelData struct {
+	Tiles       [][]*Tile
+	Platforms   []*Platform
+	Enemies     []*LevelEnemy
+	Items       []*LevelItem
+	Width       int
+	Height      int
+	TileSize    int
+	Name        string
+	ExitX       float64
+	ExitY       float64
+	Background  *ebiten.Image
 }
 
-// GenerateLevel - генерация уровня
-func GenerateLevel(levelNum int, rng *rand.Rand) *Level {
-	l := &Level{
+// NewLevelData создаёт новые данные уровня
+func NewLevelData(width, height, tileSize int) *LevelData {
+	return &LevelData{
+		Tiles:     make([][]*Tile, height),
 		Platforms: make([]*Platform, 0),
-		Items:     make([]*LevelItem, 0),
 		Enemies:   make([]*LevelEnemy, 0),
-		Width:     3000 + float64(levelNum*500),
-		Height:    720,
-		Name:      getLevelName(levelNum),
+		Items:     make([]*LevelItem, 0),
+		Width:     width,
+		Height:    height,
+		TileSize:  tileSize,
+	}
+}
+
+// LevelGenerator - генератор уровней
+type LevelGenerator struct {
+	rng        *rand.Rand
+	tileSize   int
+	spriteSheet *sprite.SpriteSheet
+}
+
+// NewLevelGenerator создаёт генератор уровней
+func NewLevelGenerator(rng *rand.Rand, tileSize int, ss *sprite.SpriteSheet) *LevelGenerator {
+	return &LevelGenerator{
+		rng:         rng,
+		tileSize:    tileSize,
+		spriteSheet: ss,
+	}
+}
+
+// GenerateLevel генерирует уровень
+func (g *LevelGenerator) GenerateLevel(levelNum int) *LevelData {
+	// Размер уровня в тайлах
+	levelWidth := 50 + levelNum*10
+	levelHeight := 15
+
+	data := NewLevelData(levelWidth, levelHeight, g.tileSize)
+	data.Name = getLevelName(levelNum)
+
+	// Генерация тайлов
+	g.generateTerrain(data, levelNum)
+	g.generatePlatforms(data, levelNum)
+	g.generateEnemies(data, levelNum)
+	g.generateItems(data, levelNum)
+
+	// Установка выхода
+	data.ExitX = float64(levelWidth-5) * float64(g.tileSize)
+	data.ExitY = float64(levelHeight-3) * float64(g.tileSize)
+
+	// Фон
+	data.Background = g.spriteSheet.GetBackground()
+
+	return data
+}
+
+// generateTerrain генерирует ландшафт
+func (g *LevelGenerator) generateTerrain(data *LevelData, levelNum int) {
+	ts := float64(g.tileSize)
+
+	// Создаём пол (нижние ряды)
+	groundY := data.Height - 2
+	for x := 0; x < data.Width; x++ {
+		// Пропускаем ямы
+		if g.isPit(x, data.Width, levelNum) {
+			continue
+		}
+
+		// Земля
+		data.Platforms = append(data.Platforms, &Platform{
+			X:      float64(x) * ts,
+			Y:      float64(groundY) * ts,
+			Width:  ts,
+			Height: ts * 2,
+			Type:   TileGround,
+			Solid:  true,
+		})
 	}
 
-	// Генерация пола
-	l.generateGround(rng)
-
-	// Генерация платформ
-	l.generatePlatforms(rng, levelNum)
-
-	// Генерация предметов
-	l.generateItems(rng, levelNum)
-
-	// Генерация врагов
-	l.generateEnemies(rng, levelNum)
-
-	// Точка выхода
-	l.ExitX = l.Width - 200
-
-	return l
+	// Стены по краям
+	data.Platforms = append(data.Platforms,
+		&Platform{X: -10, Y: 0, Width: 10, Height: float64(data.Height) * ts, Type: TileBrick, Solid: true},
+		&Platform{X: float64(data.Width) * ts, Y: 0, Width: 10, Height: float64(data.Height) * ts, Type: TileBrick, Solid: true},
+	)
 }
 
-// generateGround - генерация земли
-func (l *Level) generateGround(rng *rand.Rand) {
-	// Основная земля
-	l.Platforms = append(l.Platforms, &Platform{
-		X: 0, Y: 670, Width: l.Width, Height: 50, Type: "ground",
-	})
+// isPit проверяет, должна ли здесь быть яма
+func (g *LevelGenerator) isPit(x, levelWidth, levelNum int) bool {
+	// Количество ям увеличивается с уровнем
+	pitCount := 2 + levelNum/2
+	if pitCount > 8 {
+		pitCount = 8
+	}
 
-	// Ямы (разрывы в земле)
-	pitCount := 2 + rng.Intn(5)
+	// Генерируем позиции ям детерминированно
 	for i := 0; i < pitCount; i++ {
-		pitX := 500 + rng.Intn(int(l.Width)-1000)
-		pitWidth := 80 + rng.Intn(100)
-
-		// Добавляем платформы до и после ямы
-		if pitX > 100 {
-			l.Platforms = append(l.Platforms, &Platform{
-				X: float64(pitX - pitWidth), Y: 670, Width: float64(pitWidth), Height: 50, Type: "ground",
-			})
+		pitX := (levelWidth/3)*(i+1) + g.rng.Intn(5)
+		if x >= pitX && x < pitX+2 {
+			return true
 		}
 	}
+	return false
 }
 
-// generatePlatforms - генерация платформ
-func (l *Level) generatePlatforms(rng *rand.Rand, levelNum int) {
-	// Здания (высокие платформы)
-	buildingCount := 5 + levelNum*2
-	for i := 0; i < buildingCount; i++ {
-		x := float64(200 + i*250 + rng.Intn(100))
-		y := float64(500 - rng.Intn(150))
-		width := float64(100 + rng.Intn(100))
-		height := float64(50 + rng.Intn(50))
+// generatePlatforms генерирует платформы
+func (g *LevelGenerator) generatePlatforms(data *LevelData, levelNum int) {
+	ts := float64(g.tileSize)
 
-		l.Platforms = append(l.Platforms, &Platform{
-			X: x, Y: y, Width: width, Height: height, Type: "building",
+	// Количество платформ растёт с уровнем
+	platformCount := 5 + levelNum*2
+
+	for i := 0; i < platformCount; i++ {
+		x := g.rng.Intn(data.Width-10) + 5
+		y := g.rng.Intn(data.Height-6) + 3
+		width := 3 + g.rng.Intn(5)
+
+		platformType := TileGrass
+		if g.rng.Float32() < 0.3 {
+			platformType = TileBrick
+		} else if g.rng.Float32() < 0.2 {
+			platformType = TileBox
+		}
+
+		data.Platforms = append(data.Platforms, &Platform{
+			X:      float64(x) * ts,
+			Y:      float64(y) * ts,
+			Width:  float64(width) * ts,
+			Height: ts,
+			Type:   platformType,
+			Solid:  true,
 		})
 	}
 
-	// Обломки (низкие платформы)
-	rubbleCount := 8 + levelNum*3
-	for i := 0; i < rubbleCount; i++ {
-		x := float64(300 + i*200 + rng.Intn(80))
-		y := float64(600 - rng.Intn(100))
-		width := float64(60 + rng.Intn(60))
+	// Добавляем лестницы
+	ladderCount := 2 + levelNum/2
+	for i := 0; i < ladderCount; i++ {
+		x := g.rng.Intn(data.Width-10) + 5
+		height := 3 + g.rng.Intn(5)
+		y := data.Height - 2 - height
 
-		l.Platforms = append(l.Platforms, &Platform{
-			X: x, Y: y, Width: width, Height: 32, Type: "rubble",
-		})
-	}
-
-	// Металлические конструкции
-	metalCount := 3 + levelNum
-	for i := 0; i < metalCount; i++ {
-		x := float64(400 + i*400)
-		y := float64(350 - rng.Intn(100))
-		width := float64(150 + rng.Intn(50))
-
-		l.Platforms = append(l.Platforms, &Platform{
-			X: x, Y: y, Width: width, Height: 20, Type: "metal",
-		})
-	}
-}
-
-// generateItems - генерация предметов
-func (l *Level) generateItems(rng *rand.Rand, levelNum int) {
-	// Аптечки
-	medkitCount := 2 + levelNum/2
-	for i := 0; i < medkitCount; i++ {
-		x := float64(300 + i*400 + rng.Intn(100))
-		y := float64(600 - rng.Intn(200))
-
-		l.Items = append(l.Items, &LevelItem{
-			X: x, Y: y, Type: "medkit", Value: 25,
-		})
-	}
-
-	// Патроны
-	ammoCount := 4 + levelNum
-	for i := 0; i < ammoCount; i++ {
-		x := float64(250 + i*300 + rng.Intn(80))
-		y := float64(550 - rng.Intn(150))
-
-		l.Items = append(l.Items, &LevelItem{
-			X: x, Y: y, Type: "ammo", Value: 20,
-		})
-	}
-
-	// Еда
-	foodCount := 3 + levelNum
-	for i := 0; i < foodCount; i++ {
-		x := float64(350 + i*350 + rng.Intn(60))
-		y := float64(500 - rng.Intn(120))
-
-		l.Items = append(l.Items, &LevelItem{
-			X: x, Y: y, Type: "food", Value: 10,
-		})
-	}
-
-	// Детали (очки)
-	partsCount := 5 + levelNum*2
-	for i := 0; i < partsCount; i++ {
-		x := float64(200 + i*250 + rng.Intn(50))
-		y := float64(450 - rng.Intn(100))
-
-		l.Items = append(l.Items, &LevelItem{
-			X: x, Y: y, Type: "parts", Value: 50,
+		data.Platforms = append(data.Platforms, &Platform{
+			X:      float64(x) * ts,
+			Y:      float64(y) * ts,
+			Width:  ts,
+			Height: float64(height) * ts,
+			Type:   TileLadder,
+			Solid:  false,
 		})
 	}
 }
 
-// generateEnemies - генерация врагов
-func (l *Level) generateEnemies(rng *rand.Rand, levelNum int) {
-	// Мутанты
-	mutantCount := 3 + levelNum
-	for i := 0; i < mutantCount; i++ {
-		x := float64(400 + i*350 + rng.Intn(100))
-		y := float64(630) // На земле
+// generateEnemies генерирует врагов
+func (g *LevelGenerator) generateEnemies(data *LevelData, levelNum int) {
+	ts := g.tileSize
 
-		l.Enemies = append(l.Enemies, &LevelEnemy{
-			X: x, Y: y, Type: "mutant", Active: true,
-		})
+	// Типы врагов доступные для уровня
+	enemyTypes := []string{"slime"}
+	if levelNum >= 2 {
+		enemyTypes = append(enemyTypes, "snail")
+	}
+	if levelNum >= 3 {
+		enemyTypes = append(enemyTypes, "fish", "fly")
+	}
+	if levelNum >= 4 {
+		enemyTypes = append(enemyTypes, "blocker")
 	}
 
-	// Роботы (на платформах)
-	robotCount := 2 + levelNum/2
-	for i := 0; i < robotCount; i++ {
-		x := float64(500 + i*450 + rng.Intn(80))
-		y := float64(550 - rng.Intn(150))
+	enemyCount := 3 + levelNum*2
+	for i := 0; i < enemyCount; i++ {
+		x := g.rng.Intn(data.Width-10) + 5
+		y := data.Height - 3 // На земле
 
-		l.Enemies = append(l.Enemies, &LevelEnemy{
-			X: x, Y: y, Type: "robot", Active: true,
-		})
-	}
+		// Иногда размещаем на платформах
+		if g.rng.Float32() < 0.3 {
+			for _, p := range data.Platforms {
+				if p.Solid && p.Type != TileLadder {
+					x = int(p.X/float64(ts)) + g.rng.Intn(int(p.Width/float64(ts)))
+					y = int(p.Y/float64(ts)) - 1
+					break
+				}
+			}
+		}
 
-	// Зомби
-	zombieCount := 4 + levelNum*2
-	for i := 0; i < zombieCount; i++ {
-		x := float64(350 + i*300 + rng.Intn(60))
-		y := float64(630)
+		enemyType := enemyTypes[g.rng.Intn(len(enemyTypes))]
 
-		l.Enemies = append(l.Enemies, &LevelEnemy{
-			X: x, Y: y, Type: "zombie", Active: true,
+		data.Enemies = append(data.Enemies, &LevelEnemy{
+			X:      float64(x) * float64(ts),
+			Y:      float64(y) * float64(ts),
+			Type:   enemyType,
+			Active: true,
 		})
 	}
 }
 
-// getLevelName - название уровня
+// generateItems генерирует предметы
+func (g *LevelGenerator) generateItems(data *LevelData, levelNum int) {
+	ts := g.tileSize
+
+	// Типы предметов
+	itemTypes := []struct {
+		Type  string
+		Value int
+		Weight int
+	}{
+		{"coinGold", 10, 50},
+		{"coinSilver", 5, 40},
+		{"coinBronze", 3, 30},
+		{"gemRed", 25, 20},
+		{"gemBlue", 30, 15},
+		{"gemGreen", 35, 10},
+		{"star", 50, 5},
+	}
+
+	itemCount := 8 + levelNum*3
+	for i := 0; i < itemCount; i++ {
+		x := g.rng.Intn(data.Width-10) + 5
+		y := g.rng.Intn(data.Height-6) + 3
+
+		// Выбираем тип предмета с учётом веса
+		itemType := g.selectItemType(itemTypes)
+
+		data.Items = append(data.Items, &LevelItem{
+			X:         float64(x) * float64(ts),
+			Y:         float64(y) * float64(ts),
+			Type:      itemType.Type,
+			Value:     itemType.Value,
+			Collected: false,
+		})
+	}
+}
+
+// selectItemType выбирает тип предмета с учётом веса
+func (g *LevelGenerator) selectItemType(itemTypes []struct {
+	Type   string
+	Value  int
+	Weight int
+}) struct {
+	Type   string
+	Value  int
+	Weight int
+} {
+	totalWeight := 0
+	for _, it := range itemTypes {
+		totalWeight += it.Weight
+	}
+
+	roll := g.rng.Intn(totalWeight)
+	current := 0
+	for _, it := range itemTypes {
+		current += it.Weight
+		if roll < current {
+			return it
+		}
+	}
+	return itemTypes[0]
+}
+
+// getLevelName возвращает название уровня
 func getLevelName(levelNum int) string {
 	names := []string{
-		"Разрушенная улица",
-		"Заброшенный завод",
-		"Тоннель метро",
-		"Крыша небоскрёба",
-		"Мёртвый город",
-		"Промзона",
-		"Трущобы",
-		"Центр города",
+		"Окраины города",
+		"Заброшенный район",
+		"Промышленная зона",
+		"Центральные улицы",
+		"Метрополитен",
+		"Подземный бункер",
+		"Крыши небоскрёбов",
 		"Военная база",
+		"Зона отчуждения",
 		"Точка эвакуации",
 	}
 
 	if levelNum <= len(names) {
 		return names[levelNum-1]
 	}
-	return "Зона " + string(rune('0'+levelNum%10))
+	return "Неизвестная зона"
 }
 
-// CheckPlatformCollision - проверка коллизии с платформами
-func (l *Level) CheckPlatformCollision(x, y, width, height float64) (*Platform, bool) {
-	for _, p := range l.Platforms {
-		if checkCollision(x, y, width, height, p.X, p.Y, p.Width, p.Height) {
+// CheckPlatformCollision проверяет коллизию с платформами
+func (data *LevelData) CheckPlatformCollision(x, y, width, height float64) (*Platform, bool) {
+	for _, p := range data.Platforms {
+		if !p.Solid {
+			continue
+		}
+		if x < p.X+p.Width && x+width > p.X &&
+			y < p.Y+p.Height && y+height > p.Y {
 			return p, true
 		}
 	}
 	return nil, false
 }
 
-// CheckItemCollection - проверка сбора предметов
-func (l *Level) CheckItemCollection(x, y, width, height float64) *LevelItem {
-	for _, item := range l.Items {
-		if !item.Collected {
-			if checkCollision(x, y, width, height, item.X, item.Y, item.Width, item.Height) {
-				item.Collected = true
-				return item
-			}
+// CheckItemCollection проверяет сбор предметов
+func (data *LevelData) CheckItemCollection(x, y, width, height float64) *LevelItem {
+	for _, item := range data.Items {
+		if item.Collected {
+			continue
+		}
+		if x < item.X+32 && x+width > item.X &&
+			y < item.Y+32 && y+height > item.Y {
+			item.Collected = true
+			return item
 		}
 	}
 	return nil
 }
 
-// CheckExitReach - проверка достижения выхода
-func (l *Level) CheckExitReach(x, y, width, height float64) bool {
-	return x+width > l.ExitX
+// CheckExitReach проверяет достижение выхода
+func (data *LevelData) CheckExitReach(x, y, width, height float64) bool {
+	return x+width > data.ExitX && y+height > data.ExitY
 }
 
-// checkCollision - проверка коллизии AABB
-func checkCollision(x1, y1, w1, h1, x2, y2, w2, h2 float64) bool {
-	return x1 < x2+w2 && x1+w1 > x2 && y1 < y2+h2 && y1+h1 > y2
+// GetTileSpriteName возвращает имя спрайта для тайла
+func GetTileSpriteName(tileType TileType) string {
+	switch tileType {
+	case TileGround:
+		return "dirt"
+	case TileGrass:
+		return "grass"
+	case TileBrick:
+		return "brickWall"
+	case TileBox:
+		return "box"
+	case TileBoxCoin:
+		return "boxCoin"
+	case TileBoxItem:
+		return "boxItem"
+	case TileBoxEmpty:
+		return "boxEmpty"
+	case TileFence:
+		return "fence"
+	case TileLadder:
+		return "ladder_mid"
+	case TileDoor:
+		return "door_closedTop"
+	case TileBridge:
+		return "bridge"
+	default:
+		return "dirt"
+	}
 }

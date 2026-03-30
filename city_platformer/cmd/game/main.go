@@ -1,5 +1,5 @@
-// City Platformer - 2D платформер в постапокалиптическом городе
-// Go365 Challenge - День 91 (30 марта 2026)
+// City Survivor - постапокалиптический платформер на Go + Ebitengine
+// Go365 Challenge - День 90 (30 марта 2026)
 package main
 
 import (
@@ -16,7 +16,8 @@ const (
 
 func init() {
 	ebiten.SetWindowSize(screenWidth, screenHeight)
-	ebiten.SetWindowTitle("🏙️ City Platformer - Last Survivor")
+	ebiten.SetWindowTitle("🏙️ City Survivor - Go365 Day 90")
+	ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
 }
 
 func main() {

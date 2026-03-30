@@ -1,12 +1,12 @@
-// Package game - основная игровая логика City Platformer
-// Go365 Day 91 - Постапокалиптический город
+// Package game - основная игровая логика City Survivor
+// Go365 Day 90 - Постапокалиптический платформер
 package game
 
 import (
 	"fmt"
 	"image/color"
-	"math"
 	"math/rand"
+	"os"
 	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -20,6 +20,7 @@ import (
 const (
 	screenWidth  = 1280
 	screenHeight = 720
+	tileSize     = 64
 )
 
 // GameState - состояние игры
@@ -38,7 +39,7 @@ const (
 type Game struct {
 	state       GameState
 	player      *entity.Player
-	level       *level.Level
+	levelData   *level.LevelData
 	enemies     []*entity.Enemy
 	projectiles []*entity.Projectile
 	particles   []render.Particle
@@ -49,30 +50,41 @@ type Game struct {
 	spriteSheet *sprite.SpriteSheet
 	renderer    *render.Renderer
 	rng         *rand.Rand
+	levelGen    *level.LevelGenerator
 }
 
-// NewGame - создание новой игры
+// NewGame создаёт новую игру
 func NewGame() *Game {
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+
 	g := &Game{
 		state: StateMenu,
 		rng:   rng,
 	}
-	g.spriteSheet = sprite.LoadSpriteSheet()
+
+	// Загрузка спрайтов
+	var err error
+	g.spriteSheet, err = sprite.LoadSpriteSheet()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: sprite loading error: %v\n", err)
+	}
+
 	g.renderer = render.NewRenderer(g.spriteSheet)
+	g.levelGen = level.NewLevelGenerator(rng, tileSize, g.spriteSheet)
+
 	return g
 }
 
-// Reset - сброс игры
+// Reset сбрасывает игру
 func (g *Game) Reset() {
 	g.levelNum = 1
 	g.score = 0
 	g.startLevel()
 }
 
-// startLevel - запуск уровня
+// startLevel запускает уровень
 func (g *Game) startLevel() {
-	g.level = level.GenerateLevel(g.levelNum, g.rng)
+	g.levelData = g.levelGen.GenerateLevel(g.levelNum)
 	g.player = entity.NewPlayer(100, 500, g.spriteSheet)
 	g.enemies = make([]*entity.Enemy, 0)
 	g.projectiles = make([]*entity.Projectile, 0)
@@ -81,7 +93,7 @@ func (g *Game) startLevel() {
 	g.cameraY = 0
 
 	// Создание врагов из данных уровня
-	for _, le := range g.level.Enemies {
+	for _, le := range g.levelData.Enemies {
 		if le.Active {
 			enemy := entity.NewEnemy(le.X, le.Y, le.Type, g.spriteSheet)
 			g.enemies = append(g.enemies, enemy)
@@ -89,7 +101,7 @@ func (g *Game) startLevel() {
 	}
 }
 
-// Update - обновление игрового состояния
+// Update обновляет игровое состояние
 func (g *Game) Update() error {
 	// Обработка ESC
 	if ebiten.IsKeyPressed(ebiten.KeyEscape) {
@@ -118,8 +130,12 @@ func (g *Game) Update() error {
 	// Level Complete - следующий уровень
 	if g.state == StateLevelComplete && ebiten.IsKeyPressed(ebiten.KeySpace) {
 		g.levelNum++
-		g.startLevel()
-		g.state = StatePlaying
+		if g.levelNum > 10 {
+			g.state = StateVictory
+		} else {
+			g.startLevel()
+			g.state = StatePlaying
+		}
 	}
 
 	// Victory - рестарт
@@ -136,16 +152,18 @@ func (g *Game) Update() error {
 	return nil
 }
 
-// updateGame - обновление игровой логики
+// updateGame обновляет игровую логику
 func (g *Game) updateGame() {
+	dt := 1.0 / 60.0 // Фиксированный timestep
+
 	// Управление игроком
 	g.handlePlayerInput()
 
 	// Обновление игрока
-	g.player.Update()
+	g.player.Update(dt)
 
 	// Физика игрока
-	g.applyPhysics()
+	g.applyPhysics(dt)
 
 	// Обновление камеры
 	g.updateCamera()
@@ -154,30 +172,26 @@ func (g *Game) updateGame() {
 	g.collectItems()
 
 	// Обновление пуль
-	g.updateProjectiles()
+	g.updateProjectiles(dt)
 
 	// Обновление врагов
-	g.updateEnemies()
+	g.updateEnemies(dt)
 
 	// Обновление частиц
-	g.updateParticles()
+	g.updateParticles(dt)
 
 	// Проверка победы (все враги убиты + достигнут выход)
-	if len(g.enemies) == 0 && g.level.CheckExitReach(g.player.X, g.player.Y, g.player.Width, g.player.Height) {
-		if g.levelNum >= 10 {
-			g.state = StateVictory
-		} else {
-			g.state = StateLevelComplete
-		}
+	if len(g.enemies) == 0 && g.levelData.CheckExitReach(g.player.Transform.X, g.player.Transform.Y, g.player.Transform.Width, g.player.Transform.Height) {
+		g.state = StateLevelComplete
 	}
 
 	// Проверка смерти
-	if g.player.Health <= 0 {
+	if g.player.Health.Dead {
 		g.state = StateGameOver
 	}
 }
 
-// handlePlayerInput - обработка ввода игрока
+// handlePlayerInput обрабатывает ввод игрока
 func (g *Game) handlePlayerInput() {
 	// Движение
 	if ebiten.IsKeyPressed(ebiten.KeyA) || ebiten.IsKeyPressed(ebiten.KeyLeft) {
@@ -188,9 +202,9 @@ func (g *Game) handlePlayerInput() {
 	}
 
 	// Прыжок
-	if (ebiten.IsKeyPressed(ebiten.KeyW) || ebiten.IsKeyPressed(ebiten.KeyUp)) && g.player.CanJump() {
+	if (ebiten.IsKeyPressed(ebiten.KeyW) || ebiten.IsKeyPressed(ebiten.KeyUp)) && g.player.Physics.OnGround {
 		g.player.Jump()
-		g.spawnParticles(g.player.X+16, g.player.Y+g.player.Height, 0, -2, 8, color.RGBA{150, 150, 150, 255})
+		g.spawnParticles(g.player.Transform.X+20, g.player.Transform.Y+g.player.Transform.Height, 0, -50, 8, color.RGBA{150, 150, 150, 255})
 	}
 
 	// Приседание
@@ -211,69 +225,94 @@ func (g *Game) handlePlayerInput() {
 	}
 }
 
-// shoot - выстрел игрока
+// shoot производит выстрел
 func (g *Game) shoot() {
 	g.player.Shoot()
 
-	dirX := float64(g.player.Facing)
+	dirX := float64(g.player.Transform.Facing)
 	dirY := 0.0
 
 	projectile := entity.NewProjectile(
-		g.player.X+g.player.Width,
-		g.player.Y+g.player.Height/2,
-		dirX*12,
+		g.player.Transform.X+g.player.Transform.Width/2,
+		g.player.Transform.Y+g.player.Transform.Height/3,
+		dirX*500,
 		dirY,
 		false,
-		10,
+		15,
 		g.spriteSheet,
 	)
 
 	g.projectiles = append(g.projectiles, projectile)
 }
 
-// applyPhysics - применение физики
-func (g *Game) applyPhysics() {
-	g.player.VY += 0.6 // Гравитация
+// applyPhysics применяет физику
+func (g *Game) applyPhysics(dt float64) {
+	// Сохраняем старую позицию для отката
+	oldX := g.player.Transform.X
+	oldY := g.player.Transform.Y
 
-	if !g.player.IsMoving {
-		g.player.VX *= 0.8
+	// Применяем гравитацию
+	g.player.Physics.VelocityY += g.player.Physics.Gravity * dt
+
+	// Трение
+	if !g.player.Physics.IsMoving {
+		g.player.Physics.VelocityX *= g.player.Physics.Friction
 	}
 
-	g.player.X += g.player.VX
-	g.player.Y += g.player.VY
+	// Обновляем позицию
+	g.player.Transform.X += g.player.Physics.VelocityX * dt
+	g.player.Transform.Y += g.player.Physics.VelocityY * dt
 
 	// Коллизии с платформами
-	g.player.OnGround = false
-	for _, p := range g.level.Platforms {
-		if g.checkCollision(g.player.X+4, g.player.Y+4, g.player.Width-8, g.player.Height-8, p.X, p.Y, p.Width, p.Height) {
-			// Простая коллизия сверху
-			if g.player.VY > 0 && g.player.Y+g.player.Height < p.Y+30 {
-				g.player.Y = p.Y - g.player.Height
-				g.player.VY = 0
-				g.player.OnGround = true
+	g.player.Physics.OnGround = false
+	for _, p := range g.levelData.Platforms {
+		if !p.Solid {
+			continue
+		}
+		if g.checkCollision(g.player.Transform, p) {
+			// Простая коллизия сверху (приземление)
+			if g.player.Physics.VelocityY > 0 && oldY+g.player.Transform.Height <= p.Y+10 {
+				g.player.Transform.Y = p.Y - g.player.Transform.Height
+				g.player.Physics.VelocityY = 0
+				g.player.Physics.OnGround = true
+				g.player.State = entity.PlayerIdle
+			} else if g.player.Physics.VelocityY < 0 && oldY >= p.Y+p.Height-10 {
+				// Удар головой
+				g.player.Transform.Y = p.Y + p.Height
+				g.player.Physics.VelocityY = 0
+			} else if g.player.Physics.VelocityX > 0 && oldX+g.player.Transform.Width <= p.X+10 {
+				// Столкновение слева
+				g.player.Transform.X = p.X - g.player.Transform.Width
+				g.player.Physics.VelocityX = 0
+			} else if g.player.Physics.VelocityX < 0 && oldX >= p.X+p.Width-10 {
+				// Столкновение справа
+				g.player.Transform.X = p.X + p.Width
+				g.player.Physics.VelocityX = 0
 			}
 		}
 	}
 
 	// Пол (если упал с карты)
-	if g.player.Y > float64(screenHeight)+100 {
-		g.player.TakeDamage(100)
+	if g.player.Transform.Y > float64(screenHeight)+100 {
+		g.player.Health.TakeDamage(100)
 	}
 
 	// Границы уровня
-	if g.player.X < 0 {
-		g.player.X = 0
+	if g.player.Transform.X < 0 {
+		g.player.Transform.X = 0
 	}
-	if g.player.X > g.level.Width-g.player.Width {
-		g.player.X = g.level.Width - g.player.Width
+	maxX := float64(g.levelData.Width*g.levelData.TileSize) - g.player.Transform.Width
+	if g.player.Transform.X > maxX {
+		g.player.Transform.X = maxX
 	}
 }
 
-// updateCamera - обновление камеры
+// updateCamera обновляет камеру
 func (g *Game) updateCamera() {
-	targetX := g.player.X - screenWidth/2
-	targetY := g.player.Y - screenHeight/2
+	targetX := g.player.Transform.X - screenWidth/2
+	targetY := g.player.Transform.Y - screenHeight/2
 
+	// Плавное слежение
 	g.cameraX += (targetX - g.cameraX) * 0.1
 	g.cameraY += (targetY - g.cameraY) * 0.1
 
@@ -281,65 +320,71 @@ func (g *Game) updateCamera() {
 	if g.cameraX < 0 {
 		g.cameraX = 0
 	}
-	if g.cameraX > g.level.Width-screenWidth {
-		g.cameraX = g.level.Width - screenWidth
+	maxCameraX := float64(g.levelData.Width*g.levelData.TileSize) - screenWidth
+	if g.cameraX > maxCameraX {
+		g.cameraX = maxCameraX
 	}
 	if g.cameraY < -100 {
 		g.cameraY = -100
 	}
-}
-
-// collectItems - сбор предметов
-func (g *Game) collectItems() {
-	for _, item := range g.level.Items {
-		if !item.Collected {
-			if g.checkCollision(
-				g.player.X, g.player.Y, g.player.Width, g.player.Height,
-				item.X, item.Y, item.Width, item.Height,
-			) {
-				item.Collected = true
-				g.collectItem(item)
-			}
-		}
+	maxCameraY := float64(g.levelData.Height*g.levelData.TileSize) - screenHeight
+	if g.cameraY > maxCameraY {
+		g.cameraY = maxCameraY
 	}
 }
 
-// collectItem - обработка сбора предмета
+// collectItems обрабатывает сбор предметов
+func (g *Game) collectItems() {
+	item := g.levelData.CheckItemCollection(
+		g.player.Transform.X,
+		g.player.Transform.Y,
+		g.player.Transform.Width,
+		g.player.Transform.Height,
+	)
+
+	if item != nil {
+		g.collectItem(item)
+	}
+}
+
+// collectItem обрабатывает сбор одного предмета
 func (g *Game) collectItem(item *level.LevelItem) {
 	switch item.Type {
-	case "medkit":
-		g.player.Heal(item.Value)
-		g.spawnParticles(g.player.X+16, g.player.Y+24, 0, -2, 10, color.RGBA{255, 100, 100, 255})
-	case "ammo":
-		g.player.AddAmmo(item.Value)
-		g.spawnParticles(g.player.X+16, g.player.Y+24, 0, -2, 10, color.RGBA{255, 200, 50, 255})
-	case "food":
-		g.player.Heal(item.Value)
-		g.spawnParticles(g.player.X+16, g.player.Y+24, 0, -2, 10, color.RGBA{200, 150, 50, 255})
-	case "parts":
+	case "coinGold", "coinSilver", "coinBronze":
 		g.score += item.Value
-		g.spawnParticles(g.player.X+16, g.player.Y+24, 0, -2, 10, color.RGBA{150, 150, 200, 255})
+		g.spawnParticles(item.X+16, item.Y+16, 0, -100, 10, color.RGBA{255, 215, 0, 255})
+	case "gemRed", "gemBlue", "gemGreen", "gemYellow":
+		g.score += item.Value
+		g.spawnParticles(item.X+16, item.Y+16, 0, -100, 15, color.RGBA{100, 200, 255, 255})
+	case "star":
+		g.score += item.Value
+		g.spawnParticles(item.X+16, item.Y+16, 0, -100, 20, color.RGBA{255, 255, 255, 255})
+	case "food-OCAL", "food-Glitch", "food-DCSS", "mushroomRed", "mushroomBrown":
+		g.player.Health.Heal(item.Value)
+		g.spawnParticles(item.X+16, item.Y+16, 0, -100, 10, color.RGBA{255, 100, 100, 255})
+	default:
+		g.score += item.Value
 	}
 }
 
-// updateProjectiles - обновление снарядов
-func (g *Game) updateProjectiles() {
+// updateProjectiles обновляет снаряды
+func (g *Game) updateProjectiles(dt float64) {
 	active := make([]*entity.Projectile, 0)
 
 	for _, p := range g.projectiles {
-		p.Update()
+		p.Update(dt)
 
 		if p.Active {
 			// Коллизия с врагами (пули игрока)
 			if !p.IsEnemy {
 				for i, enemy := range g.enemies {
-					if g.checkCollision(p.X, p.Y, p.Width, p.Height, enemy.X, enemy.Y, enemy.Width, enemy.Height) {
-						enemy.TakeDamage(p.Damage)
+					if entity.CheckCollision(p.Transform, enemy.Transform) {
+						enemy.Health.TakeDamage(p.Damage)
 						p.Active = false
-						g.spawnParticles(p.X, p.Y, p.VX, p.VY, 5, color.RGBA{255, 100, 50, 255})
+						g.spawnParticles(p.Transform.X, p.Transform.Y, p.VelocityX*0.2, p.VelocityY*0.2, 5, color.RGBA{255, 100, 50, 255})
 
-						if !enemy.IsAlive() {
-							g.killEnemy(i)
+						if enemy.Health.Dead {
+							g.killEnemy(i, enemy)
 						}
 						break
 					}
@@ -348,10 +393,21 @@ func (g *Game) updateProjectiles() {
 
 			// Коллизия с игроком (пули врагов)
 			if p.IsEnemy && p.Active {
-				if g.checkCollision(p.X, p.Y, p.Width, p.Height, g.player.X, g.player.Y, g.player.Width, g.player.Height) {
-					g.player.TakeDamage(p.Damage)
+				if entity.CheckCollision(p.Transform, g.player.Transform) {
+					g.player.Health.TakeDamage(p.Damage)
 					p.Active = false
-					g.spawnParticles(p.X, p.Y, 0, -2, 10, color.RGBA{255, 50, 50, 255})
+					g.spawnParticles(p.Transform.X, p.Transform.Y, 0, -100, 10, color.RGBA{255, 50, 50, 255})
+				}
+			}
+
+			// Коллизия с платформами
+			if p.Active {
+				for _, platform := range g.levelData.Platforms {
+					if platform.Solid && g.checkCollision(p.Transform, platform) {
+						p.Active = false
+						g.spawnParticles(p.Transform.X, p.Transform.Y, 0, -50, 3, color.RGBA{200, 200, 200, 255})
+						break
+					}
 				}
 			}
 
@@ -364,29 +420,22 @@ func (g *Game) updateProjectiles() {
 	g.projectiles = active
 }
 
-// updateEnemies - обновление врагов
-func (g *Game) updateEnemies() {
+// updateEnemies обновляет врагов
+func (g *Game) updateEnemies(dt float64) {
 	active := make([]*entity.Enemy, 0)
 
 	for _, enemy := range g.enemies {
-		enemy.Update(g.player.X, g.player.Y)
-
-		// ИИ врагов
-		g.updateEnemyAI(enemy)
+		enemy.Update(dt, g.player.Transform.X, g.player.Transform.Y)
+		enemy.AI(dt, g.player.Transform.X, g.player.Transform.Y)
 
 		// Коллизия с игроком
-		if g.checkCollision(
-			g.player.X+8, g.player.Y+8,
-			g.player.Width-16, g.player.Height-16,
-			enemy.X+8, enemy.Y+8,
-			enemy.Width-16, enemy.Height-16,
-		) {
-			if g.player.Invincible <= 0 {
-				g.player.TakeDamage(enemy.Damage)
+		if entity.CheckCollision(g.player.Transform, enemy.Transform) {
+			if g.player.Health.Invincible <= 0 {
+				g.player.Health.TakeDamage(enemy.Damage)
 			}
 		}
 
-		if enemy.IsAlive() {
+		if enemy.Health.IsAlive() {
 			active = append(active, enemy)
 		}
 	}
@@ -394,71 +443,22 @@ func (g *Game) updateEnemies() {
 	g.enemies = active
 }
 
-// updateEnemyAI - ИИ врагов
-func (g *Game) updateEnemyAI(enemy *entity.Enemy) {
-	distToPlayer := math.Abs(g.player.X - enemy.X)
-
-	switch enemy.Type {
-	case "mutant":
-		// Мутант медленно идёт к игроку
-		if distToPlayer < 400 {
-			if g.player.X > enemy.X {
-				enemy.X += 1.5
-				enemy.Facing = 1
-			} else {
-				enemy.X -= 1.5
-				enemy.Facing = -1
-			}
-		}
-
-	case "robot":
-		// Робот стреляет если игрок в зоне видимости
-		if distToPlayer < 300 && enemy.CanShoot() {
-			enemy.Shoot()
-			dirX := float64(enemy.Facing)
-			projectile := entity.NewProjectile(
-				enemy.X+enemy.Width,
-				enemy.Y+enemy.Height/2,
-				dirX*8,
-				0,
-				true,
-				15,
-				g.spriteSheet,
-			)
-			g.projectiles = append(g.projectiles, projectile)
-		}
-
-	case "zombie":
-		// Зомби медленно преследует
-		if distToPlayer < 300 {
-			if g.player.X > enemy.X {
-				enemy.X += 0.8
-				enemy.Facing = 1
-			} else {
-				enemy.X -= 0.8
-				enemy.Facing = -1
-			}
-		}
-	}
-}
-
-// killEnemy - убийство врага
-func (g *Game) killEnemy(index int) {
-	enemy := g.enemies[index]
+// killEnemy убивает врага
+func (g *Game) killEnemy(index int, enemy *entity.Enemy) {
 	g.score += 25
-	g.spawnParticles(enemy.X+20, enemy.Y+20, 0, -3, 15, color.RGBA{100, 150, 50, 255})
+	g.spawnParticles(enemy.Transform.X+20, enemy.Transform.Y+20, 0, -100, 15, color.RGBA{100, 150, 50, 255})
 	g.enemies = append(g.enemies[:index], g.enemies[index+1:]...)
 }
 
-// updateParticles - обновление частиц
-func (g *Game) updateParticles() {
+// updateParticles обновляет частицы
+func (g *Game) updateParticles(dt float64) {
 	active := make([]render.Particle, 0)
 
 	for _, p := range g.particles {
-		p.X += p.VX
-		p.Y += p.VY
-		p.VY += 0.1
-		p.Life -= 0.02
+		p.X += p.VX * dt
+		p.Y += p.VY * dt
+		p.VY += 200 * dt // Гравитация
+		p.Life -= dt * 0.5
 		p.VX *= 0.98
 
 		if p.Life > 0 {
@@ -469,41 +469,47 @@ func (g *Game) updateParticles() {
 	g.particles = active
 }
 
-// spawnParticles - создание частиц
+// spawnParticles создаёт частицы
 func (g *Game) spawnParticles(x, y, vx, vy float64, count int, c color.Color) {
 	for i := 0; i < count; i++ {
 		g.particles = append(g.particles, render.Particle{
 			X: x, Y: y,
-			VX: vx + (g.rng.Float64()-0.5)*4,
-			VY: vy + (g.rng.Float64()-0.5)*4,
+			VX: vx + (g.rng.Float64()-0.5)*100,
+			VY: vy + (g.rng.Float64()-0.5)*100,
 			Life:    1.0,
 			MaxLife: 1.0,
 			Color:   c,
-			Size:    3 + g.rng.Float64()*3,
+			Size:    3 + g.rng.Float64()*4,
 		})
 	}
 }
 
-// checkCollision - проверка коллизии AABB
-func (g *Game) checkCollision(x1, y1, w1, h1, x2, y2, w2, h2 float64) bool {
-	return x1 < x2+w2 && x1+w1 > x2 && y1 < y2+h2 && y1+h1 > y2
+// checkCollision проверяет коллизию между сущностью и платформой
+func (g *Game) checkCollision(transform *entity.Transform, platform *level.Platform) bool {
+	return transform.X < platform.X+platform.Width &&
+		transform.X+transform.Width > platform.X &&
+		transform.Y < platform.Y+platform.Height &&
+		transform.Y+transform.Height > platform.Y
 }
 
-// Draw - отрисовка игры
+// Draw отрисовывает игру
 func (g *Game) Draw(screen *ebiten.Image) {
 	// Фон
 	g.renderer.DrawBackground(screen, g.cameraX, g.cameraY)
 
 	// Отрисовка игровых объектов только если уровень загружен
-	if g.level != nil {
+	if g.levelData != nil {
 		// Платформы
-		for _, p := range g.level.Platforms {
+		for _, p := range g.levelData.Platforms {
 			g.renderer.DrawPlatform(screen, p, g.cameraX, g.cameraY)
 		}
 
 		// Предметы
-		for _, item := range g.level.Items {
-			g.renderer.DrawItem(screen, item, g.cameraX, g.cameraY)
+		for _, item := range g.levelData.Items {
+			if !item.Collected {
+				entityItem := entity.NewItem(item.X, item.Y, item.Type, item.Value, g.spriteSheet)
+				g.renderer.DrawItem(screen, entityItem, g.cameraX, g.cameraY)
+			}
 		}
 
 		// Враги
@@ -522,7 +528,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		}
 
 		// Выход
-		g.renderer.DrawExit(screen, g.level.ExitX, 590, g.cameraX, g.cameraY)
+		g.renderer.DrawExit(screen, g.levelData.ExitX, g.levelData.ExitY, g.cameraX, g.cameraY)
 	}
 
 	// Частицы
@@ -531,154 +537,39 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	// UI
 	switch g.state {
 	case StateMenu:
-		g.drawMenu(screen)
+		g.renderer.DrawMenu(screen)
 	case StatePlaying:
 		g.drawHUD(screen)
 	case StatePaused:
 		g.drawHUD(screen)
-		g.drawPause(screen)
+		g.renderer.DrawPause(screen)
 	case StateGameOver:
-		g.drawGameOver(screen)
+		g.renderer.DrawGameOver(screen, g.score, g.levelNum)
 	case StateVictory:
-		g.drawVictory(screen)
+		g.renderer.DrawVictory(screen, g.score)
 	case StateLevelComplete:
-		g.drawLevelComplete(screen)
+		g.renderer.DrawLevelComplete(screen, g.levelNum, g.score)
 	}
 }
 
-// drawMenu - отрисовка меню
-func (g *Game) drawMenu(screen *ebiten.Image) {
-	title := `
-╔═══════════════════════════════════════════════╗
-║     🏙️ CITY PLATFORMER 🎖️                    ║
-║        LAST SURVIVOR                          ║
-╠═══════════════════════════════════════════════╣
-║                                               ║
-║           [SPACE] - Начать игру               ║
-║           [ESC] - Выход                       ║
-║                                               ║
-║  🎮 Управление:                               ║
-║     A/D или ←/→ - Бег                         ║
-║     W/↑ - Прыжок                              ║
-║     S/↓ - Присесть                            ║
-║     J - Выстрел                               ║
-║     K - Перезарядка                           ║
-║                                               ║
-║  🎯 Цель: Доберись до точки эвакуации!        ║
-║  💀 Остерегайся мутантов, роботов и зомби!    ║
-║  📦 Собирай припасы: аптечки, патроны, еду    ║
-║                                               ║
-╚═══════════════════════════════════════════════╝
-`
-	ebitenutil.DebugPrint(screen, title)
-}
-
-// drawHUD - отрисовка интерфейса
+// drawHUD отрисовывает интерфейс
 func (g *Game) drawHUD(screen *ebiten.Image) {
 	g.renderer.DrawHUD(
 		screen,
-		g.player.Health,
-		g.player.MaxHealth,
+		g.player.Health.Current,
+		g.player.Health.Max,
 		g.player.Ammo,
 		g.player.MaxAmmo,
 		g.score,
 		g.levelNum,
-		g.level.Name,
+		g.levelData.Name,
 	)
 
 	// Подсказки
 	ebitenutil.DebugPrintAt(screen, "[ESC] - Пауза  [J] - Огонь  [K] - Перезарядка", 10, screenHeight-30)
-
-	// Полоска здоровья босса (если есть)
-	// TODO: добавить боссов
 }
 
-// drawPause - отрисовка паузы
-func (g *Game) drawPause(screen *ebiten.Image) {
-	overlay := ebiten.NewImage(screenWidth, screenHeight)
-	overlay.Fill(color.RGBA{0, 0, 0, 180})
-	op := &ebiten.DrawImageOptions{}
-	screen.DrawImage(overlay, op)
-
-	pauseText := `
-╔═══════════════════════════════════════╗
-║              ⏸️ ПАУЗА                  ║
-╠═══════════════════════════════════════╣
-║     [ESC] - Продолжить                ║
-║     [SPACE] - Выйти в меню            ║
-╚═══════════════════════════════════════╝
-`
-	ebitenutil.DebugPrintAt(screen, pauseText, screenWidth/2-180, screenHeight/2-100)
-}
-
-// drawGameOver - отрисовка Game Over
-func (g *Game) drawGameOver(screen *ebiten.Image) {
-	overlay := ebiten.NewImage(screenWidth, screenHeight)
-	overlay.Fill(color.RGBA{80, 0, 0, 200})
-	op := &ebiten.DrawImageOptions{}
-	screen.DrawImage(overlay, op)
-
-	gameOverText := fmt.Sprintf(`
-╔═══════════════════════════════════════╗
-║       💀 ВЫ ПОГИБЛИ 💀                ║
-╠═══════════════════════════════════════╣
-║     Финальный счёт: %6d                ║
-║     Уровень: %2d                        ║
-║                                       ║
-║     [SPACE] - Новая попытка           ║
-║     [ESC] - Выход                     ║
-╚═══════════════════════════════════════╝
-`, g.score, g.levelNum)
-
-	ebitenutil.DebugPrintAt(screen, gameOverText, screenWidth/2-180, screenHeight/2-120)
-}
-
-// drawVictory - отрисовка победы
-func (g *Game) drawVictory(screen *ebiten.Image) {
-	overlay := ebiten.NewImage(screenWidth, screenHeight)
-	overlay.Fill(color.RGBA{0, 80, 0, 150})
-	op := &ebiten.DrawImageOptions{}
-	screen.DrawImage(overlay, op)
-
-	victoryText := fmt.Sprintf(`
-╔═══════════════════════════════════════╗
-║     🚁 ЭВАКУАЦИЯ УСПЕШНА! 🚁          ║
-╠═══════════════════════════════════════╣
-║     Вы прошли все уровни!             ║
-║     Финальный счёт: %6d                ║
-║                                       ║
-║     🎉 ПОЗДРАВЛЯЕМ! 🎉                ║
-║                                       ║
-║     [SPACE] - Играть снова            ║
-║     [ESC] - Выход                     ║
-╚═══════════════════════════════════════╝
-`, g.score)
-
-	ebitenutil.DebugPrintAt(screen, victoryText, screenWidth/2-180, screenHeight/2-140)
-}
-
-// drawLevelComplete - отрисовка завершения уровня
-func (g *Game) drawLevelComplete(screen *ebiten.Image) {
-	overlay := ebiten.NewImage(screenWidth, screenHeight)
-	overlay.Fill(color.RGBA{0, 80, 0, 150})
-	op := &ebiten.DrawImageOptions{}
-	screen.DrawImage(overlay, op)
-
-	levelCompleteText := fmt.Sprintf(`
-╔═══════════════════════════════════════╗
-║     ✅ УРОВЕНЬ %d ПРОЙДЕН! ✅          ║
-╠═══════════════════════════════════════╣
-║     Счёт: %6d                          ║
-║                                       ║
-║     [SPACE] - Следующий уровень       ║
-║     [ESC] - Пауза                     ║
-╚═══════════════════════════════════════╝
-`, g.levelNum, g.score)
-
-	ebitenutil.DebugPrintAt(screen, levelCompleteText, screenWidth/2-180, screenHeight/2-100)
-}
-
-// Layout - размер экрана
+// Layout возвращает размер экрана
 func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
 	return screenWidth, screenHeight
 }

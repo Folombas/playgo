@@ -1,5 +1,5 @@
-// Package sprite - загрузка и управление спрайтами
-// Go365 Day 91 - City Platformer
+// Package sprite - загрузка и управление спрайтами из PNG файлов
+// Go365 Day 90 - City Survivor
 package sprite
 
 import (
@@ -13,538 +13,424 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 )
 
-// SpriteType - типы спрайтов
-type SpriteType string
+// SpriteRect - прямоугольник спрайта на атласе
+type SpriteRect struct {
+	Name   string
+	X, Y   int
+	Width  int
+	Height int
+}
 
-const (
-	SpritePlayer      SpriteType = "player"
-	SpriteEnemyMutant SpriteType = "mutant"
-	SpriteEnemyRobot  SpriteType = "robot"
-	SpriteEnemyZombie SpriteType = "zombie"
-	SpriteItemMedkit  SpriteType = "medkit"
-	SpriteItemAmmo    SpriteType = "ammo"
-	SpriteItemFood    SpriteType = "food"
-	SpriteItemParts   SpriteType = "parts"
-	SpriteTileGround  SpriteType = "ground"
-	SpriteTileBuilding SpriteType = "building"
-	SpriteTileRubble  SpriteType = "rubble"
-	SpriteBullet      SpriteType = "bullet"
-)
+// Animation - последовательность кадров анимации
+type Animation struct {
+	Name      string
+	Frames    []*ebiten.Image
+	Duration  float64
+	Loop      bool
+	FrameTime float64
+}
 
-// SpriteSheet - атлас спрайтов
+// NewAnimation создаёт новую анимацию
+func NewAnimation(name string, frames []*ebiten.Image, fps float64, loop bool) *Animation {
+	return &Animation{
+		Name:      name,
+		Frames:    frames,
+		Duration:  float64(len(frames)) / fps,
+		Loop:      loop,
+		FrameTime: 1.0 / fps,
+	}
+}
+
+// SpriteSheet - атлас спрайтов с анимациями
 type SpriteSheet struct {
-	Player      map[string][]*ebiten.Image
-	Enemies     map[string][]*ebiten.Image
-	Items       map[string][]*ebiten.Image
-	Tiles       map[string]*ebiten.Image
-	Bullets     []*ebiten.Image
-	Backgrounds []*ebiten.Image
+	PlayerSprites  map[string]*ebiten.Image
+	PlayerAnims    map[string]*Animation
+	EnemySprites   map[string]*ebiten.Image
+	EnemyAnims     map[string]*Animation
+	ItemSprites    map[string]*ebiten.Image
+	TileSprites    map[string]*ebiten.Image
+	BGSprite       *ebiten.Image
 }
 
-// LoadSpriteSheet - загрузка спрайт-листа
-func LoadSpriteSheet() *SpriteSheet {
+// LoadSpriteSheet загружает все спрайты из файлов
+func LoadSpriteSheet() (*SpriteSheet, error) {
 	ss := &SpriteSheet{
-		Player:  make(map[string][]*ebiten.Image),
-		Enemies: make(map[string][]*ebiten.Image),
-		Items:   make(map[string][]*ebiten.Image),
-		Tiles:   make(map[string]*ebiten.Image),
+		PlayerSprites: make(map[string]*ebiten.Image),
+		PlayerAnims:   make(map[string]*Animation),
+		EnemySprites:  make(map[string]*ebiten.Image),
+		EnemyAnims:    make(map[string]*Animation),
+		ItemSprites:   make(map[string]*ebiten.Image),
+		TileSprites:   make(map[string]*ebiten.Image),
 	}
 
-	// Инициализация спрайтов
-	ss.initPlayer()
-	ss.initEnemies()
-	ss.initItems()
-	ss.initTiles()
-	ss.initBullets()
+	// Загрузка спрайтов игрока (используем набор p1)
+	if err := ss.loadPlayerSprites(); err != nil {
+		return nil, fmt.Errorf("player sprites: %w", err)
+	}
 
-	return ss
+	// Загрузка врагов
+	if err := ss.loadEnemySprites(); err != nil {
+		return nil, fmt.Errorf("enemy sprites: %w", err)
+	}
+
+	// Загрузка предметов
+	if err := ss.loadItemSprites(); err != nil {
+		return nil, fmt.Errorf("item sprites: %w", err)
+	}
+
+	// Загрузка тайлов
+	if err := ss.loadTileSprites(); err != nil {
+		return nil, fmt.Errorf("tile sprites: %w", err)
+	}
+
+	// Загрузка фона
+	if err := ss.loadBackground(); err != nil {
+		// Фон не критичен
+		fmt.Fprintf(os.Stderr, "Warning: background not loaded: %v\n", err)
+	}
+
+	return ss, nil
 }
 
-// initPlayer - инициализация спрайтов игрока
-func (ss *SpriteSheet) initPlayer() {
-	// Создаём спрайты программно (заглушки)
-	// Формат: [состояние][кадр]
-	
-	// Стойка
-	ss.Player["stand"] = []*ebiten.Image{
-		ss.createPlayerImage("stand", 0),
+// loadPlayerSprites загружает спрайты игрока
+func (ss *SpriteSheet) loadPlayerSprites() error {
+	basePath := "assets/Player"
+
+	// Загрузка отдельных спрайтов
+	spriteFiles := []string{
+		"p1_stand.png",
+		"p1_front.png",
+		"p1_jump.png",
+		"p1_duck.png",
+		"p1_hurt.png",
 	}
-	
-	// Бег (4 кадра)
-	ss.Player["run"] = make([]*ebiten.Image, 4)
-	for i := 0; i < 4; i++ {
-		ss.Player["run"][i] = ss.createPlayerImage("run", i)
+
+	for _, file := range spriteFiles {
+		path := filepath.Join(basePath, file)
+		img, err := loadImage(path)
+		if err != nil {
+			return fmt.Errorf("load %s: %w", file, err)
+		}
+		// Убираем префикс p1_ для ключа
+		key := file[3 : len(file)-4] // "stand", "front", "jump", etc.
+		ss.PlayerSprites[key] = img
 	}
-	
-	// Прыжок
-	ss.Player["jump"] = []*ebiten.Image{
-		ss.createPlayerImage("jump", 0),
+
+	// Загрузка анимации ходьбы
+	walkFrames := make([]*ebiten.Image, 0, 11)
+
+	for i := 1; i <= 11; i++ {
+		filename := fmt.Sprintf("p1_walk%02d.png", i)
+		if i == 1 {
+			filename = "p1_walk01.png"
+		}
+		path := filepath.Join(basePath, "p1_walk", "PNG", "default", filename)
+		
+		// Пробуем несколько возможных путей
+		img, err := loadImage(path)
+		if err != nil {
+			// Пробуем без подпапки default
+			path = filepath.Join(basePath, "p1_walk", "PNG", filename)
+			img, err = loadImage(path)
+		}
+		if err != nil {
+			// Пробуем просто p1_walk
+			path = filepath.Join(basePath, "p1_walk", filename)
+			img, err = loadImage(path)
+		}
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: walk frame %d not found: %v\n", i, err)
+			continue
+		}
+		walkFrames = append(walkFrames, img)
 	}
-	
-	// Присед
-	ss.Player["crouch"] = []*ebiten.Image{
-		ss.createPlayerImage("crouch", 0),
+
+	if len(walkFrames) > 0 {
+		ss.PlayerAnims["walk"] = NewAnimation("walk", walkFrames, 10, true)
 	}
-	
-	// Стрельба
-	ss.Player["shoot"] = []*ebiten.Image{
-		ss.createPlayerImage("shoot", 0),
-	}
+
+	return nil
 }
 
-// createPlayerImage - создание спрайта игрока
-func (ss *SpriteSheet) createPlayerImage(state string, frame int) *ebiten.Image {
-	width, height := 32, 48
-	
-	img := image.NewRGBA(image.Rect(0, 0, width, height))
-	
-	// Цвета для разных частей тела
-	skinColor := color.RGBA{255, 220, 180, 255}
-	shirtColor := color.RGBA{60, 80, 100, 255}
-	pantsColor := color.RGBA{40, 40, 40, 255}
-	bootColor := color.RGBA{30, 30, 30, 255}
-	
-	// Анимация бега
-	offsetY := 0
-	if state == "run" {
-		offsetY = (frame % 2) * 2
+// loadEnemySprites загружает спрайты врагов
+func (ss *SpriteSheet) loadEnemySprites() error {
+	basePath := "assets/Enemies"
+
+	// Загрузка основных врагов
+	enemies := []string{
+		"fishDead.png",
+		"fishSwim1.png",
+		"fishSwim2.png",
+		"flyDead.png",
+		"flyFly1.png",
+		"flyFly2.png",
+		"slimeDead.png",
+		"slimeWalk1.png",
+		"slimeWalk2.png",
+		"snailWalk1.png",
+		"snailWalk2.png",
+		"blockerMad.png",
+		"blockerSad.png",
+		"pokerMad.png",
+		"pokerSad.png",
 	}
-	
-	// Ноги
-	for y := 32; y < height; y++ {
-		for x := 8; x < 24; x++ {
-			img.Set(x, y+offsetY, pantsColor)
+
+	for _, file := range enemies {
+		path := filepath.Join(basePath, file)
+		img, err := loadImage(path)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: enemy %s not loaded: %v\n", file, err)
+			continue
+		}
+		key := file[:len(file)-4]
+		ss.EnemySprites[key] = img
+	}
+
+	// Анимация плавания рыбы
+	fishFrames := []*ebiten.Image{
+		ss.EnemySprites["fishSwim1"],
+		ss.EnemySprites["fishSwim2"],
+	}
+	if fishFrames[0] != nil && fishFrames[1] != nil {
+		ss.EnemyAnims["fishSwim"] = NewAnimation("fishSwim", fishFrames, 8, true)
+	}
+
+	// Анимация полёта мухи
+	flyFrames := []*ebiten.Image{
+		ss.EnemySprites["flyFly1"],
+		ss.EnemySprites["flyFly2"],
+	}
+	if flyFrames[0] != nil && flyFrames[1] != nil {
+		ss.EnemyAnims["flyFly"] = NewAnimation("flyFly", flyFrames, 12, true)
+	}
+
+	// Анимация ходьбы слайма
+	slimeFrames := []*ebiten.Image{
+		ss.EnemySprites["slimeWalk1"],
+		ss.EnemySprites["slimeWalk2"],
+	}
+	if slimeFrames[0] != nil && slimeFrames[1] != nil {
+		ss.EnemyAnims["slimeWalk"] = NewAnimation("slimeWalk", slimeFrames, 6, true)
+	}
+
+	// Анимация ходьбы улитки
+	snailFrames := []*ebiten.Image{
+		ss.EnemySprites["snailWalk1"],
+		ss.EnemySprites["snailWalk2"],
+	}
+	if snailFrames[0] != nil && snailFrames[1] != nil {
+		ss.EnemyAnims["snailWalk"] = NewAnimation("snailWalk", snailFrames, 5, true)
+	}
+
+	return nil
+}
+
+// loadItemSprites загружает спрайты предметов
+func (ss *SpriteSheet) loadItemSprites() error {
+	basePath := "assets/Items"
+
+	items := []string{
+		"coinBronze.png",
+		"coinSilver.png",
+		"coinGold.png",
+		"gemBlue.png",
+		"gemGreen.png",
+		"gemRed.png",
+		"gemYellow.png",
+		"keyBlue.png",
+		"keyGreen.png",
+		"keyRed.png",
+		"keyYellow.png",
+		"star.png",
+		"bomb.png",
+		"mushroomRed.png",
+		"mushroomBrown.png",
+	}
+
+	for _, file := range items {
+		path := filepath.Join(basePath, file)
+		img, err := loadImage(path)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: item %s not loaded: %v\n", file, err)
+			continue
+		}
+		key := file[:len(file)-4]
+		ss.ItemSprites[key] = img
+	}
+
+	// Предметы из папки Food
+	foodPath := "assets/Food"
+	foodItems := []string{
+		"food-OCAL.png",
+		"food-Glitch.png",
+		"food-DCSS.png",
+	}
+	for _, file := range foodItems {
+		path := filepath.Join(foodPath, file)
+		img, err := loadImage(path)
+		if err != nil {
+			continue
+		}
+		key := file[:len(file)-4]
+		ss.ItemSprites[key] = img
+	}
+
+	return nil
+}
+
+// loadTileSprites загружает тайлы
+func (ss *SpriteSheet) loadTileSprites() error {
+	basePath := "assets/Tiles"
+
+	// Основные тайлы земли и травы
+	tiles := []string{
+		"grass.png",
+		"grassLeft.png",
+		"grassRight.png",
+		"grassMid.png",
+		"grassCenter.png",
+		"grassHalf.png",
+		"grassHalfLeft.png",
+		"grassHalfMid.png",
+		"grassHalfRight.png",
+		"dirt.png",
+		"dirtLeft.png",
+		"dirtRight.png",
+		"dirtMid.png",
+		"dirtCenter.png",
+		"brickWall.png",
+		"box.png",
+		"boxAlt.png",
+		"boxCoin.png",
+		"boxItem.png",
+		"boxEmpty.png",
+		"fence.png",
+		"ladder_mid.png",
+		"ladder_top.png",
+		"door_closedTop.png",
+		"door_closedMid.png",
+		"lock_blue.png",
+		"bridge.png",
+		"bridgeLogs.png",
+	}
+
+	for _, file := range tiles {
+		path := filepath.Join(basePath, file)
+		img, err := loadImage(path)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: tile %s not loaded: %v\n", file, err)
+			continue
+		}
+		key := file[:len(file)-4]
+		ss.TileSprites[key] = img
+	}
+
+	return nil
+}
+
+// loadBackground загружает фон
+func (ss *SpriteSheet) loadBackground() error {
+	// Пробуем несколько вариантов фона
+	bgFiles := []string{
+		"assets/bg_forest.png",
+		"assets/bg_forest_layers/bg_forecast.png",
+	}
+
+	for _, path := range bgFiles {
+		img, err := loadImage(path)
+		if err == nil {
+			ss.BGSprite = img
+			return nil
 		}
 	}
-	
-	// Ботинки
-	for y := 44; y < height; y++ {
-		for x := 8; x < 16; x++ {
-			img.Set(x, y+offsetY, bootColor)
-		}
-		for x := 16; x < 24; x++ {
-			img.Set(x, y+offsetY, bootColor)
+
+	// Если не нашли, создаём заглушку
+	ss.BGSprite = createPlaceholderBG()
+	return nil
+}
+
+// loadImage загружает изображение из файла
+func loadImage(path string) (*ebiten.Image, error) {
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		return nil, fmt.Errorf("file not found: %s", path)
+	}
+
+	img, _, err := ebitenutil.NewImageFromFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("decode %s: %w", path, err)
+	}
+
+	return img, nil
+}
+
+// createPlaceholderBG создаёт простой фон-заглушку
+func createPlaceholderBG() *ebiten.Image {
+	img := image.NewRGBA(image.Rect(0, 0, 1280, 720))
+
+	// Градиент неба
+	for y := 0; y < 720; y++ {
+		ratio := float64(y) / 720.0
+		r := uint8(60 + ratio*40)
+		g := uint8(60 + ratio*30)
+		b := uint8(80 + ratio*50)
+		for x := 0; x < 1280; x++ {
+			img.Set(x, y, color.RGBA{r, g, b, 255})
 		}
 	}
-	
-	// Тело
-	for y := 16 + offsetY; y < 32+offsetY; y++ {
-		for x := 6; x < 26; x++ {
-			img.Set(x, y, shirtColor)
-		}
-	}
-	
-	// Голова
-	for y := offsetY; y < 16+offsetY; y++ {
-		for x := 8; x < 24; x++ {
-			img.Set(x, y, skinColor)
-		}
-	}
-	
-	// Руки с оружием
-	if state == "shoot" {
-		for y := 18 + offsetY; y < 24+offsetY; y++ {
-			for x := 20; x < 32; x++ {
-				img.Set(x, y, shirtColor)
-			}
-		}
-	} else {
-		for y := 18 + offsetY; y < 28+offsetY; y++ {
-			for x := 6; x < 10; x++ {
-				img.Set(x, y, skinColor)
-			}
-			for x := 22; x < 26; x++ {
-				img.Set(x, y, skinColor)
-			}
-		}
-	}
-	
+
 	return ebiten.NewImageFromImage(img)
 }
 
-// initEnemies - инициализация спрайтов врагов
-func (ss *SpriteSheet) initEnemies() {
-	// Мутант
-	ss.Enemies["mutant"] = make([]*ebiten.Image, 2)
-	for i := 0; i < 2; i++ {
-		ss.Enemies["mutant"][i] = ss.createMutantImage(i)
+// GetPlayerSprite возвращает спрайт игрока по имени
+func (ss *SpriteSheet) GetPlayerSprite(name string) *ebiten.Image {
+	if sprite, ok := ss.PlayerSprites[name]; ok {
+		return sprite
 	}
-	
-	// Робот
-	ss.Enemies["robot"] = make([]*ebiten.Image, 2)
-	for i := 0; i < 2; i++ {
-		ss.Enemies["robot"][i] = ss.createRobotImage(i)
-	}
-	
-	// Зомби
-	ss.Enemies["zombie"] = make([]*ebiten.Image, 2)
-	for i := 0; i < 2; i++ {
-		ss.Enemies["zombie"][i] = ss.createZombieImage(i)
-	}
+	// Заглушка
+	return ss.PlayerSprites["stand"]
 }
 
-// createMutantImage - создание спрайта мутанта
-func (ss *SpriteSheet) createMutantImage(frame int) *ebiten.Image {
-	width, height := 40, 40
-	img := image.NewRGBA(image.Rect(0, 0, width, height))
-	
-	bodyColor := color.RGBA{80, 120, 60, 255}
-	eyeColor := color.RGBA{255, 50, 50, 255}
-	
-	// Тело
-	for y := 10; y < height; y++ {
-		for x := 5; x < width-5; x++ {
-			img.Set(x, y, bodyColor)
-		}
-	}
-	
-	// Глаза
-	img.Set(12, 18, eyeColor)
-	img.Set(28, 18, eyeColor)
-	
-	return ebiten.NewImageFromImage(img)
+// GetPlayerAnim возвращает анимацию игрока
+func (ss *SpriteSheet) GetPlayerAnim(name string) *Animation {
+	return ss.PlayerAnims[name]
 }
 
-// createRobotImage - создание спрайта робота
-func (ss *SpriteSheet) createRobotImage(frame int) *ebiten.Image {
-	width, height := 36, 44
-	img := image.NewRGBA(image.Rect(0, 0, width, height))
-	
-	metalColor := color.RGBA{100, 100, 120, 255}
-	lightColor := color.RGBA{200, 200, 220, 255}
-	eyeColor := color.RGBA{255, 0, 0, 255}
-	
-	// Тело
-	for y := 15; y < height; y++ {
-		for x := 8; x < width-8; x++ {
-			img.Set(x, y, metalColor)
-		}
+// GetEnemySprite возвращает спрайт врага
+func (ss *SpriteSheet) GetEnemySprite(name string) *ebiten.Image {
+	if sprite, ok := ss.EnemySprites[name]; ok {
+		return sprite
 	}
-	
-	// Голова
-	for y := 5; y < 15; y++ {
-		for x := 10; x < width-10; x++ {
-			img.Set(x, y, metalColor)
-		}
+	// Первая доступная заглушка
+	for _, v := range ss.EnemySprites {
+		return v
 	}
-	
-	// Глаз
-	img.Set(18, 10, eyeColor)
-	
-	// Ноги
-	for y := 35; y < height; y++ {
-		for x := 10; x < 16; x++ {
-			img.Set(x, y, lightColor)
-		}
-		for x := 20; x < 26; x++ {
-			img.Set(x, y, lightColor)
-		}
-	}
-	
-	return ebiten.NewImageFromImage(img)
+	return nil
 }
 
-// createZombieImage - создание спрайта зомби
-func (ss *SpriteSheet) createZombieImage(frame int) *ebiten.Image {
-	width, height := 32, 44
-	img := image.NewRGBA(image.Rect(0, 0, width, height))
-	
-	skinColor := color.RGBA{100, 120, 80, 255}
-	clothColor := color.RGBA{80, 60, 60, 255}
-	
-	// Тело
-	for y := 18; y < height; y++ {
-		for x := 6; x < width-6; x++ {
-			img.Set(x, y, clothColor)
-		}
-	}
-	
-	// Голова и руки
-	for y := 8; y < 18; y++ {
-		for x := 8; x < width-8; x++ {
-			img.Set(x, y, skinColor)
-		}
-	}
-	
-	// Руки вперёд
-	for y := 14; y < 24; y++ {
-		for x := 0; x < 10; x++ {
-			img.Set(x, y, skinColor)
-		}
-		for x := width-10; x < width; x++ {
-			img.Set(x, y, skinColor)
-		}
-	}
-	
-	return ebiten.NewImageFromImage(img)
+// GetEnemyAnim возвращает анимацию врага
+func (ss *SpriteSheet) GetEnemyAnim(name string) *Animation {
+	return ss.EnemyAnims[name]
 }
 
-// initItems - инициализация спрайтов предметов
-func (ss *SpriteSheet) initItems() {
-	ss.Items["medkit"] = []*ebiten.Image{ss.createMedkitImage()}
-	ss.Items["ammo"] = []*ebiten.Image{ss.createAmmoImage()}
-	ss.Items["food"] = []*ebiten.Image{ss.createFoodImage()}
-	ss.Items["parts"] = []*ebiten.Image{ss.createPartsImage()}
+// GetItemSprite возвращает спрайт предмета
+func (ss *SpriteSheet) GetItemSprite(name string) *ebiten.Image {
+	if sprite, ok := ss.ItemSprites[name]; ok {
+		return sprite
+	}
+	// Заглушка - монета
+	return ss.ItemSprites["coinGold"]
 }
 
-// createMedkitImage - создание спрайта аптечки
-func (ss *SpriteSheet) createMedkitImage() *ebiten.Image {
-	width, height := 24, 20
-	img := image.NewRGBA(image.Rect(0, 0, width, height))
-	
-	boxColor := color.RGBA{200, 50, 50, 255}
-	crossColor := color.RGBA{255, 255, 255, 255}
-	
-	// Коробка
-	for y := 0; y < height; y++ {
-		for x := 0; x < width; x++ {
-			img.Set(x, y, boxColor)
-		}
+// GetTileSprite возвращает спрайт тайла
+func (ss *SpriteSheet) GetTileSprite(name string) *ebiten.Image {
+	if sprite, ok := ss.TileSprites[name]; ok {
+		return sprite
 	}
-	
-	// Крест
-	for y := 4; y < 16; y++ {
-		for x := 10; x < 14; x++ {
-			img.Set(x, y, crossColor)
-		}
-	}
-	for y := 8; y < 12; y++ {
-		for x := 4; x < 20; x++ {
-			img.Set(x, y, crossColor)
-		}
-	}
-	
-	return ebiten.NewImageFromImage(img)
+	// Заглушка - земля
+	return ss.TileSprites["dirt"]
 }
 
-// createAmmoImage - создание спрайта патронов
-func (ss *SpriteSheet) createAmmoImage() *ebiten.Image {
-	width, height := 20, 16
-	img := image.NewRGBA(image.Rect(0, 0, width, height))
-	
-	caseColor := color.RGBA{200, 180, 100, 255}
-	bulletColor := color.RGBA{100, 100, 100, 255}
-	
-	// Гильзы
-	for i := 0; i < 3; i++ {
-		for y := 4; y < height; y++ {
-			for x := i*6 + 2; x < i*6+6; x++ {
-				img.Set(x, y, caseColor)
-			}
-		}
-		for y := 0; y < 4; y++ {
-			for x := i*6 + 2; x < i*6+6; x++ {
-				img.Set(x, y, bulletColor)
-			}
-		}
-	}
-	
-	return ebiten.NewImageFromImage(img)
-}
-
-// createFoodImage - создание спрайта еды
-func (ss *SpriteSheet) createFoodImage() *ebiten.Image {
-	width, height := 20, 20
-	img := image.NewRGBA(image.Rect(0, 0, width, height))
-	
-	foodColor := color.RGBA{180, 100, 60, 255}
-	
-	// Консервная банка
-	for y := 4; y < height; y++ {
-		for x := 4; x < width-4; x++ {
-			img.Set(x, y, foodColor)
-		}
-	}
-	
-	return ebiten.NewImageFromImage(img)
-}
-
-// createPartsImage - создание спрайта деталей
-func (ss *SpriteSheet) createPartsImage() *ebiten.Image {
-	width, height := 24, 24
-	img := image.NewRGBA(image.Rect(0, 0, width, height))
-	
-	metalColor := color.RGBA{120, 120, 140, 255}
-	
-	// Шестерёнка
-	centerX, centerY := 12, 12
-	for y := 0; y < height; y++ {
-		for x := 0; x < width; x++ {
-			dx := x - centerX
-			dy := y - centerY
-			dist := dx*dx + dy*dy
-			if dist < 36 && dist > 16 {
-				img.Set(x, y, metalColor)
-			}
-		}
-	}
-	
-	return ebiten.NewImageFromImage(img)
-}
-
-// initTiles - инициализация тайлов
-func (ss *SpriteSheet) initTiles() {
-	ss.Tiles["ground"] = ss.createGroundTile()
-	ss.Tiles["building"] = ss.createBuildingTile()
-	ss.Tiles["rubble"] = ss.createRubbleTile()
-	ss.Tiles["metal"] = ss.createMetalTile()
-}
-
-// createGroundTile - создание тайла земли
-func (ss *SpriteSheet) createGroundTile() *ebiten.Image {
-	width, height := 64, 64
-	img := image.NewRGBA(image.Rect(0, 0, width, height))
-	
-	groundColor := color.RGBA{80, 70, 60, 255}
-	
-	for y := 0; y < height; y++ {
-		for x := 0; x < width; x++ {
-			img.Set(x, y, groundColor)
-		}
-	}
-	
-	// Добавим немного текстуры
-	img.Set(10, 10, color.RGBA{70, 60, 50, 255})
-	img.Set(30, 20, color.RGBA{90, 80, 70, 255})
-	img.Set(50, 40, color.RGBA{70, 60, 50, 255})
-	
-	return ebiten.NewImageFromImage(img)
-}
-
-// createBuildingTile - создание тайла здания
-func (ss *SpriteSheet) createBuildingTile() *ebiten.Image {
-	width, height := 64, 64
-	img := image.NewRGBA(image.Rect(0, 0, width, height))
-	
-	wallColor := color.RGBA{100, 100, 110, 255}
-	
-	for y := 0; y < height; y++ {
-		for x := 0; x < width; x++ {
-			img.Set(x, y, wallColor)
-		}
-	}
-	
-	// Окно
-	for y := 10; y < 30; y++ {
-		for x := 20; x < 44; x++ {
-			img.Set(x, y, color.RGBA{50, 50, 60, 255})
-		}
-	}
-	
-	return ebiten.NewImageFromImage(img)
-}
-
-// createRubbleTile - создание тайла обломков
-func (ss *SpriteSheet) createRubbleTile() *ebiten.Image {
-	width, height := 64, 32
-	img := image.NewRGBA(image.Rect(0, 0, width, height))
-	
-	rubbleColor := color.RGBA{90, 80, 70, 255}
-	
-	for y := 0; y < height; y++ {
-		for x := 0; x < width; x++ {
-			img.Set(x, y, rubbleColor)
-		}
-	}
-	
-	return ebiten.NewImageFromImage(img)
-}
-
-// createMetalTile - создание тайла металла
-func (ss *SpriteSheet) createMetalTile() *ebiten.Image {
-	width, height := 64, 64
-	img := image.NewRGBA(image.Rect(0, 0, width, height))
-	
-	metalColor := color.RGBA{120, 120, 130, 255}
-	
-	for y := 0; y < height; y++ {
-		for x := 0; x < width; x++ {
-			img.Set(x, y, metalColor)
-		}
-	}
-	
-	// Заклёпки
-	img.Set(5, 5, color.RGBA{100, 100, 110, 255})
-	img.Set(59, 5, color.RGBA{100, 100, 110, 255})
-	img.Set(5, 59, color.RGBA{100, 100, 110, 255})
-	img.Set(59, 59, color.RGBA{100, 100, 110, 255})
-	
-	return ebiten.NewImageFromImage(img)
-}
-
-// initBullets - инициализация пуль
-func (ss *SpriteSheet) initBullets() {
-	ss.Bullets = []*ebiten.Image{ss.createBulletImage()}
-}
-
-// createBulletImage - создание спрайта пули
-func (ss *SpriteSheet) createBulletImage() *ebiten.Image {
-	width, height := 12, 6
-	img := image.NewRGBA(image.Rect(0, 0, width, height))
-	
-	bulletColor := color.RGBA{255, 200, 50, 255}
-	
-	for y := 0; y < height; y++ {
-		for x := 0; x < width; x++ {
-			img.Set(x, y, bulletColor)
-		}
-	}
-	
-	return ebiten.NewImageFromImage(img)
-}
-
-// GetPlayerSprite - получение спрайта игрока
-func (ss *SpriteSheet) GetPlayerSprite(state string, frame int) *ebiten.Image {
-	if sprites, ok := ss.Player[state]; ok && len(sprites) > 0 {
-		if frame >= 0 && frame < len(sprites) {
-			return sprites[frame]
-		}
-		return sprites[0]
-	}
-	return ss.Player["stand"][0]
-}
-
-// GetEnemySprite - получение спрайта врага
-func (ss *SpriteSheet) GetEnemySprite(enemyType string, frame int) *ebiten.Image {
-	if sprites, ok := ss.Enemies[enemyType]; ok && len(sprites) > 0 {
-		return sprites[frame%len(sprites)]
-	}
-	return ss.Enemies["mutant"][0]
-}
-
-// GetItemSprite - получение спрайта предмета
-func (ss *SpriteSheet) GetItemSprite(itemType string) *ebiten.Image {
-	if sprites, ok := ss.Items[itemType]; ok && len(sprites) > 0 {
-		return sprites[0]
-	}
-	return ss.Items["parts"][0]
-}
-
-// GetTile - получение тайла
-func (ss *SpriteSheet) GetTile(tileType string) *ebiten.Image {
-	if tile, ok := ss.Tiles[tileType]; ok {
-		return tile
-	}
-	return ss.Tiles["ground"]
-}
-
-// GetBullet - получение пули
-func (ss *SpriteSheet) GetBullet() *ebiten.Image {
-	if len(ss.Bullets) > 0 {
-		return ss.Bullets[0]
-	}
-	return ss.createBulletImage()
-}
-
-// LoadImage - загрузка изображения из файла
-func LoadImage(path string) (*ebiten.Image, error) {
-	fullPath := filepath.Join("assets", "sprites", path)
-
-	if _, err := os.Stat(fullPath); os.IsNotExist(err) {
-		fmt.Fprintf(os.Stderr, "Warning: Sprite file not found: %s\n", fullPath)
-		return nil, err
-	}
-
-	img, _, err := ebitenutil.NewImageFromFile(fullPath)
-	return img, err
+// GetBackground возвращает фон
+func (ss *SpriteSheet) GetBackground() *ebiten.Image {
+	return ss.BGSprite
 }
