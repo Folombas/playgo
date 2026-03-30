@@ -86,9 +86,12 @@ func (g *Game) Reset() {
 func (g *Game) startLevel() {
 	g.levelData = g.levelGen.GenerateLevel(g.levelNum)
 
-	// Спавн игрока на уровне земли (groundY = data.Height - 2, tileSize = 64)
-	// Y позиции платформы минус высота игрока (32)
-	spawnY := float64(g.levelData.Height-2)*float64(g.levelData.TileSize) - 40
+	// Спавн игрока НА платформе (не в воздухе!)
+	// Пол на Y = (Height-2) * tileSize = 13 * 64 = 832
+	// Спавним на 1 пиксель выше чтобы коллизия сработала
+	groundLevel := float64(g.levelData.Height-2)*float64(g.levelData.TileSize)
+	playerHeight := float64(32) // Высота монстра-паука
+	spawnY := groundLevel - playerHeight - 1
 
 	g.player = entity.NewPlayer(100, spawnY, g.spriteSheet)
 	g.enemies = make([]*entity.Enemy, 0)
@@ -298,12 +301,17 @@ func (g *Game) applyPhysics(dt float64) {
 	// Коллизии с платформами
 	g.player.Physics.OnGround = false
 	onLadder = g.checkLadderCollision()
-	
+
 	for _, p := range g.levelData.Platforms {
 		if !p.Solid {
 			continue
 		}
 		
+		// Отладка коллизий
+		// fmt.Printf("DEBUG: Check collision player(%.0f,%.0f,%.0f,%.0f) vs platform(%.0f,%.0f,%.0f,%.0f)\n",
+		// 	g.player.Transform.X, g.player.Transform.Y, g.player.Transform.Width, g.player.Transform.Height,
+		// 	p.X, p.Y, p.Width, p.Height)
+
 		// Если на лестнице и движемся вверх - пропускаем коллизию сверху
 		if onLadder && g.player.Physics.VelocityY < 0 {
 			// Проверяем, это та же лестница или другая платформа
@@ -311,10 +319,11 @@ func (g *Game) applyPhysics(dt float64) {
 				continue // Не блокируем движение по лестнице
 			}
 		}
-		
+
 		if g.checkCollision(g.player.Transform, p) {
 			// Простая коллизия сверху (приземление)
-			if g.player.Physics.VelocityY > 0 && oldY+g.player.Transform.Height <= p.Y+10 {
+			// Проверяем что игрок падал вниз и был выше платформы
+			if g.player.Physics.VelocityY > 0 && oldY+g.player.Transform.Height <= p.Y+20 {
 				g.player.Transform.Y = p.Y - g.player.Transform.Height
 				g.player.Physics.VelocityY = 0
 				g.player.Physics.OnGround = true
@@ -341,6 +350,7 @@ func (g *Game) applyPhysics(dt float64) {
 	// Смерть если игрок упал ниже уровня земли на 200 пикселей
 	groundLevel := float64(g.levelData.Height-2)*float64(g.levelData.TileSize)
 	if g.player.Transform.Y > groundLevel+200 {
+		fmt.Printf("DEBUG: Player died! Y=%.0f, groundLevel=%.0f\n", g.player.Transform.Y, groundLevel)
 		g.player.Health.TakeDamage(100)
 	}
 
