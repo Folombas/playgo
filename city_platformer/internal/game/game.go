@@ -86,13 +86,11 @@ func (g *Game) Reset() {
 func (g *Game) startLevel() {
 	g.levelData = g.levelGen.GenerateLevel(g.levelNum)
 
-	// Спавн игрока НА платформе
+	// Спавн игрока ПРЯМО НА поверхности земли
 	// Пол на Y = (Height-2) * tileSize = 8 * 64 = 512
-	// Игрок высотой 48 пикселей, спавним чтобы ноги были на платформе
 	groundLevel := float64(g.levelData.Height-2)*float64(g.levelData.TileSize)
-	spawnY := groundLevel - 48 // Высота игрока
-
-	g.player = entity.NewPlayer(100, spawnY, g.spriteSheet)
+	
+	g.player = entity.NewPlayer(100, groundLevel, g.spriteSheet)
 	g.player.Physics.OnGround = true // Сразу на земле
 	g.player.Physics.VelocityY = 0   // Без начальной скорости
 	

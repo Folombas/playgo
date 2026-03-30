@@ -134,9 +134,10 @@ func (sr *SpriteRenderer) Draw(screen *ebiten.Image, transform *Transform, camer
 		opts.GeoM.Translate(float64(transform.Width), 0)
 	}
 
-	// Позиция
+	// Позиция - спрайт рисуется от ног (bottom anchor)
+	// Сдвигаем вверх на высоту хитбокса чтобы ноги были на Y позиции
 	screenX := transform.X - cameraX
-	screenY := transform.Y - cameraY
+	screenY := transform.Y - cameraY - transform.Height
 	opts.GeoM.Translate(screenX, screenY)
 
 	// Цвет
