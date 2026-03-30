@@ -141,11 +141,28 @@ func (ss *SpriteSheet) loadPlayerSprites() error {
 
 // cropImage вырезает область из изображения
 func cropImage(src *ebiten.Image, x, y, w, h int) *ebiten.Image {
-	subImage := ebiten.NewImage(w, h)
-	opts := &ebiten.DrawImageOptions{}
-	opts.GeoM.Translate(-float64(x), -float64(y))
-	subImage.DrawImage(src, opts)
-	return subImage
+	// Получаем bounds исходного изображения
+	bounds := src.Bounds()
+	
+	// Ограничиваем область вырезания пределами изображения
+	x2 := x + w
+	y2 := y + h
+	if x < 0 { x = 0 }
+	if y < 0 { y = 0 }
+	if x2 > bounds.Dx() { x2 = bounds.Dx() }
+	if y2 > bounds.Dy() { y2 = bounds.Dy() }
+	
+	// Вырезаем область
+	sub := src.SubImage(image.Rect(x, y, x2, y2))
+	
+	// Преобразуем в ebiten.Image
+	subEbiten, ok := sub.(*ebiten.Image)
+	if !ok {
+		// Если не получилось, создаём заглушку
+		return ebiten.NewImage(w, h)
+	}
+	
+	return subEbiten
 }
 
 // loadMonsterSprites загружает спрайты монстра-паука (запасной вариант)
