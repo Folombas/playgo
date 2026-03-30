@@ -107,7 +107,7 @@ func NewLevelGenerator(rng *rand.Rand, tileSize int, ss *sprite.SpriteSheet) *Le
 func (g *LevelGenerator) GenerateLevel(levelNum int) *LevelData {
 	// Размер уровня в тайлах
 	levelWidth := 50 + levelNum*10
-	levelHeight := 15
+	levelHeight := 10  // Уменьшил с 15 до 10 (пол будет на Y=512 вместо Y=832)
 
 	data := NewLevelData(levelWidth, levelHeight, g.tileSize)
 	data.Name = getLevelName(levelNum)

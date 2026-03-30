@@ -87,7 +87,7 @@ func (g *Game) startLevel() {
 	g.levelData = g.levelGen.GenerateLevel(g.levelNum)
 
 	// Спавн игрока НА платформе
-	// Пол на Y = (Height-2) * tileSize = 13 * 64 = 832
+	// Пол на Y = (Height-2) * tileSize = 8 * 64 = 512
 	// Игрок высотой 48 пикселей, спавним чтобы ноги были на платформе
 	groundLevel := float64(g.levelData.Height-2)*float64(g.levelData.TileSize)
 	spawnY := groundLevel - 48 // Высота игрока
