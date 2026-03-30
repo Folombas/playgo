@@ -300,8 +300,9 @@ const (
 
 // NewPlayer создаёт нового игрока
 func NewPlayer(x, y float64, ss *sprite.SpriteSheet) *Player {
+	// Размер хитбокса для коллизий
 	p := &Player{
-		Transform: NewTransform(x, y, 32, 24), // Маленький хитбокс для монстра
+		Transform: NewTransform(x, y, 64, 48), // Хитбокс монстра-паука
 		Physics:   NewPhysics(),
 		Health:    NewHealth(100),
 		Animator:  NewAnimator(),
@@ -313,6 +314,9 @@ func NewPlayer(x, y float64, ss *sprite.SpriteSheet) *Player {
 	}
 
 	p.Renderer = NewSpriteRenderer(ss)
+	// Масштабируем спрайт под хитбокс (спрайты ~128x96, уменьшаем в 2 раза)
+	p.Renderer.ScaleX = 0.5
+	p.Renderer.ScaleY = 0.5
 
 	// Загрузка анимаций
 	if walkAnim := ss.GetPlayerAnim("walk"); walkAnim != nil {
