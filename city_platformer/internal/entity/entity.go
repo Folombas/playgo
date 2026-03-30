@@ -301,7 +301,7 @@ const (
 // NewPlayer создаёт нового игрока
 func NewPlayer(x, y float64, ss *sprite.SpriteSheet) *Player {
 	p := &Player{
-		Transform: NewTransform(x, y, 64, 48), // Размер монстра-паука
+		Transform: NewTransform(x, y, 40, 32), // Размер монстра-паука (уменьшен)
 		Physics:   NewPhysics(),
 		Health:    NewHealth(100),
 		Animator:  NewAnimator(),

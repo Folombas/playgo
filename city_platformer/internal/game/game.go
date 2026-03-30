@@ -85,11 +85,11 @@ func (g *Game) Reset() {
 // startLevel запускает уровень
 func (g *Game) startLevel() {
 	g.levelData = g.levelGen.GenerateLevel(g.levelNum)
-	
+
 	// Спавн игрока на уровне земли (groundY = data.Height - 2, tileSize = 64)
-	// Y позиции платформы минус высота игрока
-	spawnY := float64(g.levelData.Height-2)*float64(g.levelData.TileSize) - 60
-	
+	// Y позиции платформы минус высота игрока (32)
+	spawnY := float64(g.levelData.Height-2)*float64(g.levelData.TileSize) - 40
+
 	g.player = entity.NewPlayer(100, spawnY, g.spriteSheet)
 	g.enemies = make([]*entity.Enemy, 0)
 	g.projectiles = make([]*entity.Projectile, 0)
