@@ -195,7 +195,7 @@ func NewPhysics() *Physics {
 	return &Physics{
 		Acceleration: 500,
 		Friction:     0.85,
-		Gravity:      1500,
+		Gravity:      800,  // Уменьшенная гравитация (было 1500)
 	}
 }
 
@@ -301,7 +301,7 @@ const (
 // NewPlayer создаёт нового игрока
 func NewPlayer(x, y float64, ss *sprite.SpriteSheet) *Player {
 	p := &Player{
-		Transform: NewTransform(x, y, 40, 32), // Размер монстра-паука (уменьшен)
+		Transform: NewTransform(x, y, 32, 24), // Маленький хитбокс для монстра
 		Physics:   NewPhysics(),
 		Health:    NewHealth(100),
 		Animator:  NewAnimator(),

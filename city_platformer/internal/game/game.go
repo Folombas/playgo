@@ -86,14 +86,16 @@ func (g *Game) Reset() {
 func (g *Game) startLevel() {
 	g.levelData = g.levelGen.GenerateLevel(g.levelNum)
 
-	// Спавн игрока НА платформе (не в воздухе!)
+	// Спавн игрока НА платформе
 	// Пол на Y = (Height-2) * tileSize = 13 * 64 = 832
-	// Спавним на 1 пиксель выше чтобы коллизия сработала
+	// Игрок высотой 24 пикселя, спавним чтобы ноги были на платформе
 	groundLevel := float64(g.levelData.Height-2)*float64(g.levelData.TileSize)
-	playerHeight := float64(32) // Высота монстра-паука
-	spawnY := groundLevel - playerHeight - 1
+	spawnY := groundLevel - 24 // Высота игрока
 
 	g.player = entity.NewPlayer(100, spawnY, g.spriteSheet)
+	g.player.Physics.OnGround = true // Сразу на земле
+	g.player.Physics.VelocityY = 0   // Без начальной скорости
+	
 	g.enemies = make([]*entity.Enemy, 0)
 	g.projectiles = make([]*entity.Projectile, 0)
 	g.particles = make([]render.Particle, 0)
@@ -347,10 +349,9 @@ func (g *Game) applyPhysics(dt float64) {
 	}
 
 	// Пол (если упал с карты)
-	// Смерть если игрок упал ниже уровня земли на 200 пикселей
+	// Смерть если игрок упал намного ниже уровня земли
 	groundLevel := float64(g.levelData.Height-2)*float64(g.levelData.TileSize)
-	if g.player.Transform.Y > groundLevel+200 {
-		fmt.Printf("DEBUG: Player died! Y=%.0f, groundLevel=%.0f\n", g.player.Transform.Y, groundLevel)
+	if g.player.Transform.Y > groundLevel+500 {
 		g.player.Health.TakeDamage(100)
 	}
 
