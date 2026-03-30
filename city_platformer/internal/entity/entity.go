@@ -299,39 +299,115 @@ const (
 	PlayerHurt
 )
 
-// NewPlayer создаёт нового игрока
-func NewPlayer(x, y float64, ss *sprite.SpriteSheet) *Player {
-	// Размер хитбокса для Элисы - воительницы
+// CharacterType - тип персонажа
+type CharacterType int
+
+const (
+	CharGhost CharacterType = iota // Призрак 👻
+	CharFrog                       // Лягушка 🐸
+)
+
+// CharacterConfig - конфигурация персонажа
+type CharacterConfig struct {
+	Type        CharacterType
+	Name        string
+	Width       float64
+	Height      float64
+	Speed       float64
+	JumpForce   float64
+	ScaleX      float64
+	ScaleY      float64
+	WalkAnim    string
+	JumpAnim    string
+	HurtAnim    string
+	DeathAnim   string
+	StandSprite string
+}
+
+// GetCharacterConfig возвращает конфигурацию для типа персонажа
+func GetCharacterConfig(charType CharacterType) *CharacterConfig {
+	switch charType {
+	case CharGhost:
+		return &CharacterConfig{
+			Type:        CharGhost,
+			Name:        "👻 Призрак",
+			Width:       40,
+			Height:      40,
+			Speed:       280,
+			JumpForce:   500,
+			ScaleX:      1.0,
+			ScaleY:      1.0,
+			WalkAnim:    "ghost_float",
+			JumpAnim:    "ghost_float",
+			HurtAnim:    "ghost_hurt",
+			DeathAnim:   "ghost_death",
+			StandSprite: "ghost_stand",
+		}
+	case CharFrog:
+		return &CharacterConfig{
+			Type:        CharFrog,
+			Name:        "🐸 Лягушка",
+			Width:       48,
+			Height:      40,
+			Speed:       350,
+			JumpForce:   650,
+			ScaleX:      1.0,
+			ScaleY:      1.0,
+			WalkAnim:    "", // Нет анимации ходьбы
+			JumpAnim:    "frog_jump",
+			HurtAnim:    "frog_hurt",
+			DeathAnim:   "frog_death",
+			StandSprite: "frog_stand",
+		}
+	default:
+		return GetCharacterConfig(CharGhost)
+	}
+}
+
+// NewPlayer создаёт нового игрока с выбранным персонажем
+func NewPlayer(x, y float64, charType CharacterType, ss *sprite.SpriteSheet) *Player {
+	config := GetCharacterConfig(charType)
+	
 	p := &Player{
-		Transform: NewTransform(x, y, 40, 50), // Хитбокс Элисы
+		Transform: NewTransform(x, y, config.Width, config.Height),
 		Physics:   NewPhysics(),
 		Health:    NewHealth(100),
 		Animator:  NewAnimator(),
 		State:     PlayerIdle,
 		Ammo:      30,
 		MaxAmmo:   50,
-		Speed:     300,
-		JumpForce: 550,
+		Speed:     config.Speed,
+		JumpForce: config.JumpForce,
 	}
 
 	p.Renderer = NewSpriteRenderer(ss)
-	// Спрайты Элисы не масштабируем - они нужного размера
-	p.Renderer.ScaleX = 1.0
-	p.Renderer.ScaleY = 1.0
+	p.Renderer.ScaleX = config.ScaleX
+	p.Renderer.ScaleY = config.ScaleY
 
 	// Загрузка анимаций
-	if walkAnim := ss.GetPlayerAnim("walk"); walkAnim != nil {
-		p.Animator.AddAnim("walk", walkAnim)
+	if config.WalkAnim != "" {
+		if walkAnim := ss.GetPlayerAnim(config.WalkAnim); walkAnim != nil {
+			p.Animator.AddAnim("walk", walkAnim)
+		}
 	}
-	if hurtAnim := ss.GetPlayerAnim("hurt"); hurtAnim != nil {
-		p.Animator.AddAnim("hurt", hurtAnim)
+	if config.JumpAnim != "" {
+		if jumpAnim := ss.GetPlayerAnim(config.JumpAnim); jumpAnim != nil {
+			p.Animator.AddAnim("jump", jumpAnim)
+		}
 	}
-	if attackAnim := ss.GetPlayerAnim("attack"); attackAnim != nil {
-		p.Animator.AddAnim("attack", attackAnim)
+	if config.HurtAnim != "" {
+		if hurtAnim := ss.GetPlayerAnim(config.HurtAnim); hurtAnim != nil {
+			p.Animator.AddAnim("hurt", hurtAnim)
+		}
+	}
+	if config.DeathAnim != "" {
+		if deathAnim := ss.GetPlayerAnim(config.DeathAnim); deathAnim != nil {
+			p.Animator.AddAnim("death", deathAnim)
+		}
 	}
 
 	// Установка начального спрайта
-	if standSprite := ss.GetPlayerSprite("stand"); standSprite != nil {
+	if standSprite := ss.GetPlayerSprite(config.StandSprite); standSprite != nil {
 		p.Renderer.SetSprite(standSprite)
 	}
 
@@ -377,7 +453,9 @@ func (p *Player) updateAnimation() {
 	}
 
 	if p.State == PlayerJumping {
-		if jumpSprite := p.Renderer.SpriteSheet.GetPlayerSprite("jump"); jumpSprite != nil {
+		if jumpAnim := p.Animator.GetCurrentAnim(); jumpAnim != nil {
+			p.Renderer.SetAnim(jumpAnim)
+		} else if jumpSprite := p.Renderer.SpriteSheet.GetPlayerSprite("jump"); jumpSprite != nil {
 			p.Renderer.SetSprite(jumpSprite)
 		}
 	} else if p.State == PlayerCrouching {
@@ -387,6 +465,8 @@ func (p *Player) updateAnimation() {
 	} else if p.State == PlayerRunning && p.Physics.OnGround {
 		if walkAnim := p.Animator.GetCurrentAnim(); walkAnim != nil {
 			p.Renderer.SetAnim(walkAnim)
+		} else if standSprite := p.Renderer.SpriteSheet.GetPlayerSprite("stand"); standSprite != nil {
+			p.Renderer.SetSprite(standSprite)
 		}
 	} else if p.State == PlayerIdle {
 		if standSprite := p.Renderer.SpriteSheet.GetPlayerSprite("stand"); standSprite != nil {

@@ -28,6 +28,7 @@ type GameState int
 
 const (
 	StateMenu GameState = iota
+	StateCharacterSelect  // Выбор персонажа
 	StatePlaying
 	StatePaused
 	StateGameOver
@@ -37,20 +38,22 @@ const (
 
 // Game - основная игровая структура
 type Game struct {
-	state       GameState
-	player      *entity.Player
-	levelData   *level.LevelData
-	enemies     []*entity.Enemy
-	projectiles []*entity.Projectile
-	particles   []render.Particle
-	cameraX     float64
-	cameraY     float64
-	score       int
-	levelNum    int
-	spriteSheet *sprite.SpriteSheet
-	renderer    *render.Renderer
-	rng         *rand.Rand
-	levelGen    *level.LevelGenerator
+	state           GameState
+	player          *entity.Player
+	charType        entity.CharacterType  // Выбранный персонаж
+	charSelectIndex int                   // Индекс в меню выбора (0=Ghost, 1=Frog)
+	levelData       *level.LevelData
+	enemies         []*entity.Enemy
+	projectiles     []*entity.Projectile
+	particles       []render.Particle
+	cameraX         float64
+	cameraY         float64
+	score           int
+	levelNum        int
+	spriteSheet     *sprite.SpriteSheet
+	renderer        *render.Renderer
+	rng             *rand.Rand
+	levelGen        *level.LevelGenerator
 }
 
 // NewGame создаёт новую игру
@@ -86,11 +89,11 @@ func (g *Game) Reset() {
 func (g *Game) startLevel() {
 	g.levelData = g.levelGen.GenerateLevel(g.levelNum)
 
-	// Спавн игрока ПРЯМО НА поверхности земли
+	// Спавн игрока с выбранным персонажем
 	// Пол на Y = (Height-2) * tileSize = 8 * 64 = 512
 	groundLevel := float64(g.levelData.Height-2)*float64(g.levelData.TileSize)
 	
-	g.player = entity.NewPlayer(100, groundLevel, g.spriteSheet)
+	g.player = entity.NewPlayer(100, groundLevel, g.charType, g.spriteSheet)
 	g.player.Physics.OnGround = true // Сразу на земле
 	g.player.Physics.VelocityY = 0   // Без начальной скорости
 	
@@ -118,15 +121,23 @@ func (g *Game) Update() error {
 			g.state = StatePaused
 		case StatePaused:
 			g.state = StatePlaying
+		case StateCharacterSelect:
+			g.state = StateMenu
 		case StateMenu, StateGameOver, StateVictory:
 			return ebiten.Termination
 		}
 	}
 
-	// Меню - старт игры
+	// Меню - переход к выбору персонажа
 	if g.state == StateMenu && ebiten.IsKeyPressed(ebiten.KeySpace) {
-		g.Reset()
-		g.state = StatePlaying
+		g.charSelectIndex = 0 // Начинаем с Призрака
+		g.charType = entity.CharGhost
+		g.state = StateCharacterSelect
+	}
+
+	// Выбор персонажа
+	if g.state == StateCharacterSelect {
+		g.handleCharacterSelect()
 	}
 
 	// Game Over - рестарт
@@ -158,6 +169,25 @@ func (g *Game) Update() error {
 	}
 
 	return nil
+}
+
+// handleCharacterSelect обрабатывает выбор персонажа
+func (g *Game) handleCharacterSelect() {
+	// Переключение между персонажами (A/D или стрелки)
+	if ebiten.IsKeyPressed(ebiten.KeyA) || ebiten.IsKeyPressed(ebiten.KeyLeft) {
+		g.charSelectIndex = 0
+		g.charType = entity.CharGhost
+	}
+	if ebiten.IsKeyPressed(ebiten.KeyD) || ebiten.IsKeyPressed(ebiten.KeyRight) {
+		g.charSelectIndex = 1
+		g.charType = entity.CharFrog
+	}
+
+	// Подтверждение выбора (Enter или Space)
+	if ebiten.IsKeyPressed(ebiten.KeyEnter) || ebiten.IsKeyPressed(ebiten.KeySpace) {
+		g.Reset()
+		g.state = StatePlaying
+	}
 }
 
 // updateGame обновляет игровую логику
@@ -611,6 +641,8 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	switch g.state {
 	case StateMenu:
 		g.renderer.DrawMenu(screen)
+	case StateCharacterSelect:
+		g.drawCharacterSelect(screen)
 	case StatePlaying:
 		g.drawHUD(screen)
 	case StatePaused:
@@ -640,6 +672,96 @@ func (g *Game) drawHUD(screen *ebiten.Image) {
 
 	// Подсказки
 	ebitenutil.DebugPrintAt(screen, "[ESC] - Пауза  [J] - Огонь  [K] - Перезарядка", 10, screenHeight-30)
+}
+
+// drawCharacterSelect отрисовывает меню выбора персонажа
+func (g *Game) drawCharacterSelect(screen *ebiten.Image) {
+	screenW := screen.Bounds().Dx()
+	screenH := screen.Bounds().Dy()
+
+	// Затемнение фона
+	overlay := ebiten.NewImage(screenW, screenH)
+	overlay.Fill(color.RGBA{0, 0, 0, 180})
+	screen.DrawImage(overlay, nil)
+
+	// Заголовок
+	title := `
+╔═══════════════════════════════════════════════╗
+║         🎮 ВЫБЕРИ ГЕРОЯ 🎮                    ║
+╠═══════════════════════════════════════════════╣
+║                                               ║
+║   Используй A/D или ←/→ для выбора           ║
+║   [SPACE] или [ENTER] - Подтвердить          ║
+║   [ESC] - Назад в меню                       ║
+║                                               ║
+╚═══════════════════════════════════════════════╝
+`
+	ebitenutil.DebugPrintAt(screen, title, screenW/2-240, 50)
+
+	// Персонажи
+	ghostConfig := entity.GetCharacterConfig(entity.CharGhost)
+	frogConfig := entity.GetCharacterConfig(entity.CharFrog)
+
+	// Призрак (слева)
+	ghostBox := "┌"
+	ghostBoxEnd := "┘"
+	if g.charSelectIndex == 0 {
+		ghostBox = "╔"
+		ghostBoxEnd = "╚"
+	}
+	
+	ghostText := fmt.Sprintf(`
+%s═══════════════════════════════════════════╗
+║  %s  ║
+║                                           ║
+║  👻 Характеристики:                       ║
+║  • Скорость: %d                            ║
+║  • Прыжок: %d                              ║
+║  • Размер: %dx%d                           ║
+║                                           ║
+║  Призрак парит над землёй,                ║
+║  проходит сквозь препятствия!             ║
+║                                           ║
+%s═══════════════════════════════════════════╝
+`, ghostBox, ghostConfig.Name, int(ghostConfig.Speed), int(ghostConfig.JumpForce), 
+	   int(ghostConfig.Width), int(ghostConfig.Height), ghostBoxEnd)
+	
+	ebitenutil.DebugPrintAt(screen, ghostText, screenW/2-350, 180)
+
+	// Лягушка (справа)
+	frogBox := "┌"
+	frogBoxEnd := "┘"
+	if g.charSelectIndex == 1 {
+		frogBox = "╔"
+		frogBoxEnd = "╚"
+	}
+	
+	frogText := fmt.Sprintf(`
+%s═══════════════════════════════════════════╗
+║  %s  ║
+║                                           ║
+║  🐸 Характеристики:                       ║
+║  • Скорость: %d                            ║
+║  • Прыжок: %d                              ║
+║  • Размер: %dx%d                           ║
+║                                           ║
+║  Лягушка прыгает высоко и далеко,         ║
+║  быстрее призрака!                        ║
+║                                           ║
+%s═══════════════════════════════════════════╝
+`, frogBox, frogConfig.Name, int(frogConfig.Speed), int(frogConfig.JumpForce),
+	   int(frogConfig.Width), int(frogConfig.Height), frogBoxEnd)
+	
+	ebitenutil.DebugPrintAt(screen, frogText, screenW/2+50, 180)
+
+	// Подсказка внизу
+	selectText := "← [A] Выбрать Призрака    [D] Выбрать Лягушку →"
+	if g.charSelectIndex == 0 {
+		selectText = "← [A] 👻 ПРИЗРАК    [D] Выбрать Лягушку →"
+	} else {
+		selectText = "← [A] Выбрать Призрака    [D] 🐸 ЛЯГУШКА →"
+	}
+	ebitenutil.DebugPrintAt(screen, selectText, screenW/2-200, screenH-80)
 }
 
 // Layout возвращает размер экрана

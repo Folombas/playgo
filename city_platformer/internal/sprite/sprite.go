@@ -96,47 +96,48 @@ func LoadSpriteSheet() (*SpriteSheet, error) {
 func (ss *SpriteSheet) loadPlayerSprites() error {
 	basePath := "assets/Player"
 
-	// Загрузка Элисы - воительницы с мечом и щитом
-	// Используем спрайт-лист и вырезаем нужные области
-	sheetPath := filepath.Join(basePath, "elisa_spritesheet.png")
-	sheetImg, err := loadImage(sheetPath)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: elisa spritesheet not loaded: %v\n", err)
-		// Загружаем монстра-паука как запасной вариант
-		return ss.loadMonsterSprites()
+	// Загрузка Призрака (Ghost)
+	ghostPath := filepath.Join(basePath, "ghost")
+	ss.PlayerSprites["ghost_stand"] = loadImageOrWarn(filepath.Join(ghostPath, "ghost_normal.png"))
+	ss.PlayerSprites["ghost_front"] = loadImageOrWarn(filepath.Join(ghostPath, "ghost.png"))
+	ss.PlayerSprites["ghost_hurt"] = loadImageOrWarn(filepath.Join(ghostPath, "ghost_hit.png"))
+	ss.PlayerSprites["ghost_death"] = loadImageOrWarn(filepath.Join(ghostPath, "ghost_dead.png"))
+
+	// Анимация призрака (парение)
+	ghostFloat := make([]*ebiten.Image, 0, 2)
+	ghostFloat = append(ghostFloat, ss.PlayerSprites["ghost_stand"])
+	ghostFloat = append(ghostFloat, ss.PlayerSprites["ghost_front"])
+	if len(ghostFloat) > 0 {
+		ss.PlayerAnims["ghost_float"] = NewAnimation("ghost_float", ghostFloat, 4, true)
 	}
 
-	// Спрайт-лист: кадры примерно 48x48, вырезаем области
-	// Idle стойка - первый кадр (0,0)
-	ss.PlayerSprites["stand"] = cropImage(sheetImg, 10, 10, 50, 50)
-	ss.PlayerSprites["front"] = cropImage(sheetImg, 10, 10, 50, 50)
-	ss.PlayerSprites["jump"] = cropImage(sheetImg, 260, 10, 50, 50)
-	ss.PlayerSprites["duck"] = cropImage(sheetImg, 130, 130, 50, 50)
-	ss.PlayerSprites["hurt"] = cropImage(sheetImg, 390, 10, 50, 50)
+	// Загрузка Лягушки (Frog)
+	frogPath := filepath.Join(basePath, "frog")
+	ss.PlayerSprites["frog_stand"] = loadImageOrWarn(filepath.Join(frogPath, "frog.png"))
+	ss.PlayerSprites["frog_front"] = loadImageOrWarn(filepath.Join(frogPath, "frog.png"))
+	ss.PlayerSprites["frog_hurt"] = loadImageOrWarn(filepath.Join(frogPath, "frog_hit.png"))
+	ss.PlayerSprites["frog_death"] = loadImageOrWarn(filepath.Join(frogPath, "frog_dead.png"))
+	ss.PlayerSprites["frog_jump"] = loadImageOrWarn(filepath.Join(frogPath, "frog_leap.png"))
 
-	// Анимация ходьбы - второй ряд
-	walkFrames := make([]*ebiten.Image, 0, 8)
-	for i := 0; i < 8; i++ {
-		x := 10 + i*65
-		frame := cropImage(sheetImg, x, 130, 50, 50)
-		walkFrames = append(walkFrames, frame)
-	}
-	if len(walkFrames) > 0 {
-		ss.PlayerAnims["walk"] = NewAnimation("walk", walkFrames, 10, true)
-	}
-
-	// Анимация атаки - четвёртый ряд
-	attackFrames := make([]*ebiten.Image, 0, 3)
-	for i := 0; i < 3; i++ {
-		x := 10 + i*130
-		frame := cropImage(sheetImg, x, 390, 100, 50)
-		attackFrames = append(attackFrames, frame)
-	}
-	if len(attackFrames) > 0 {
-		ss.PlayerAnims["attack"] = NewAnimation("attack", attackFrames, 15, false)
+	// Анимация лягушки (прыжок)
+	frogJump := make([]*ebiten.Image, 0, 2)
+	frogJump = append(frogJump, ss.PlayerSprites["frog_stand"])
+	frogJump = append(frogJump, ss.PlayerSprites["frog_jump"])
+	if len(frogJump) > 0 {
+		ss.PlayerAnims["frog_jump"] = NewAnimation("frog_jump", frogJump, 8, true)
 	}
 
 	return nil
+}
+
+// loadImageOrWarn загружает изображение или выводит предупреждение
+func loadImageOrWarn(path string) *ebiten.Image {
+	img, err := loadImage(path)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: %s not loaded: %v\n", path, err)
+		return nil
+	}
+	return img
 }
 
 // cropImage вырезает область из изображения
