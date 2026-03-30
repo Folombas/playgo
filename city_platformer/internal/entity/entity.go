@@ -301,7 +301,7 @@ const (
 // NewPlayer создаёт нового игрока
 func NewPlayer(x, y float64, ss *sprite.SpriteSheet) *Player {
 	p := &Player{
-		Transform: NewTransform(x, y, 40, 60),
+		Transform: NewTransform(x, y, 64, 48), // Размер монстра-паука
 		Physics:   NewPhysics(),
 		Health:    NewHealth(100),
 		Animator:  NewAnimator(),
@@ -317,6 +317,12 @@ func NewPlayer(x, y float64, ss *sprite.SpriteSheet) *Player {
 	// Загрузка анимаций
 	if walkAnim := ss.GetPlayerAnim("walk"); walkAnim != nil {
 		p.Animator.AddAnim("walk", walkAnim)
+	}
+	if hurtAnim := ss.GetPlayerAnim("hurt"); hurtAnim != nil {
+		p.Animator.AddAnim("hurt", hurtAnim)
+	}
+	if deathAnim := ss.GetPlayerAnim("death"); deathAnim != nil {
+		p.Animator.AddAnim("death", deathAnim)
 	}
 
 	// Установка начального спрайта
@@ -345,6 +351,22 @@ func (p *Player) Update(dt float64) {
 
 // updateAnimation обновляет анимацию игрока
 func (p *Player) updateAnimation() {
+	// Анимация смерти
+	if p.Health.Dead {
+		if deathAnim := p.Renderer.SpriteSheet.GetPlayerAnim("death"); deathAnim != nil {
+			p.Renderer.SetAnim(deathAnim)
+		}
+		return
+	}
+
+	// Анимация получения урона
+	if p.Health.Invincible > 0 && p.Health.Invincible < 1.8 {
+		if hurtAnim := p.Renderer.SpriteSheet.GetPlayerAnim("hurt"); hurtAnim != nil {
+			p.Renderer.SetAnim(hurtAnim)
+		}
+		return
+	}
+
 	if p.Health.Invincible > 0 && int(p.Health.Invincible*10)%2 == 0 {
 		return // Мигание при неуязвимости
 	}

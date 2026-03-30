@@ -96,57 +96,97 @@ func LoadSpriteSheet() (*SpriteSheet, error) {
 func (ss *SpriteSheet) loadPlayerSprites() error {
 	basePath := "assets/Player"
 
-	// Загрузка отдельных спрайтов (используем p2 - синий скафандр)
-	spriteFiles := []string{
-		"p2_stand.png",
-		"p2_front.png",
-		"p2_jump.png",
-		"p2_duck.png",
-		"p2_hurt.png",
-	}
-
-	for _, file := range spriteFiles {
-		path := filepath.Join(basePath, file)
+	// Загрузка спрайтов монстра-паука (furr_walking_monster)
+	// Idle анимация (16 кадров)
+	for i := 0; i < 16; i++ {
+		filename := fmt.Sprintf("skeleton-idle_%d.png", i)
+		path := filepath.Join(basePath, "monster_idle", filename)
 		img, err := loadImage(path)
 		if err != nil {
-			return fmt.Errorf("load %s: %w", file, err)
+			fmt.Fprintf(os.Stderr, "Warning: monster idle %d not loaded: %v\n", i, err)
+			continue
 		}
-		// Убираем префикс p2_ для ключа
-		key := file[3 : len(file)-4] // "stand", "front", "jump", etc.
-		ss.PlayerSprites[key] = img
+		if i == 0 {
+			ss.PlayerSprites["stand"] = img
+		}
 	}
 
-	// Загрузка анимации ходьбы
-	walkFrames := make([]*ebiten.Image, 0, 11)
-
-	for i := 1; i <= 11; i++ {
-		filename := fmt.Sprintf("p2_walk%02d.png", i)
-		if i == 1 {
-			filename = "p2_walk01.png"
-		}
-		path := filepath.Join(basePath, "p2_walk", "PNG", "default", filename)
-		
-		// Пробуем несколько возможных путей
+	// Walk анимация (13 кадров)
+	walkFrames := make([]*ebiten.Image, 0, 13)
+	for i := 0; i < 13; i++ {
+		filename := fmt.Sprintf("skeleton-walking_%d.png", i)
+		path := filepath.Join(basePath, "monster_walk", filename)
 		img, err := loadImage(path)
 		if err != nil {
-			// Пробуем без подпапки default
-			path = filepath.Join(basePath, "p1_walk", "PNG", filename)
-			img, err = loadImage(path)
-		}
-		if err != nil {
-			// Пробуем просто p1_walk
-			path = filepath.Join(basePath, "p1_walk", filename)
-			img, err = loadImage(path)
-		}
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: walk frame %d not found: %v\n", i, err)
+			fmt.Fprintf(os.Stderr, "Warning: monster walk %d not loaded: %v\n", i, err)
 			continue
 		}
 		walkFrames = append(walkFrames, img)
 	}
 
 	if len(walkFrames) > 0 {
-		ss.PlayerAnims["walk"] = NewAnimation("walk", walkFrames, 10, true)
+		ss.PlayerAnims["walk"] = NewAnimation("walk", walkFrames, 12, true)
+	}
+
+	// Hurt анимация (8 кадров)
+	hurtFrames := make([]*ebiten.Image, 0, 8)
+	for i := 0; i < 8; i++ {
+		filename := fmt.Sprintf("skeleton-got_hit_%d.png", i)
+		path := filepath.Join(basePath, "monster_hurt", filename)
+		img, err := loadImage(path)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: monster hurt %d not loaded: %v\n", i, err)
+			continue
+		}
+		hurtFrames = append(hurtFrames, img)
+	}
+
+	if len(hurtFrames) > 0 {
+		ss.PlayerAnims["hurt"] = NewAnimation("hurt", hurtFrames, 15, false)
+	}
+
+	// Death анимация (26 кадров)
+	deathFrames := make([]*ebiten.Image, 0, 26)
+	for i := 0; i < 26; i++ {
+		filename := fmt.Sprintf("skeleton-defeated_%d.png", i)
+		path := filepath.Join(basePath, "monster_death", filename)
+		img, err := loadImage(path)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: monster death %d not loaded: %v\n", i, err)
+			continue
+		}
+		deathFrames = append(deathFrames, img)
+	}
+
+	if len(deathFrames) > 0 {
+		ss.PlayerAnims["death"] = NewAnimation("death", deathFrames, 15, false)
+	}
+
+	// Загрузка отдельных спрайтов для совместимости
+	spriteFiles := []string{
+		"monster_idle/skeleton-idle_0.png", // stand
+		"monster_walk/skeleton-walking_0.png", // front
+	}
+
+	for i, file := range spriteFiles {
+		path := filepath.Join(basePath, file)
+		img, err := loadImage(path)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: monster sprite %s not loaded: %v\n", file, err)
+			continue
+		}
+		if i == 0 {
+			ss.PlayerSprites["stand"] = img
+		} else {
+			ss.PlayerSprites["front"] = img
+		}
+	}
+
+	// Прыжок и присед используем как stand (заглушка)
+	if ss.PlayerSprites["stand"] != nil {
+		ss.PlayerSprites["jump"] = ss.PlayerSprites["stand"]
+		ss.PlayerSprites["duck"] = ss.PlayerSprites["stand"]
+		ss.PlayerSprites["hurt"] = ss.PlayerSprites["stand"]
 	}
 
 	return nil
