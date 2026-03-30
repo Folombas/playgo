@@ -96,13 +96,13 @@ func LoadSpriteSheet() (*SpriteSheet, error) {
 func (ss *SpriteSheet) loadPlayerSprites() error {
 	basePath := "assets/Player"
 
-	// Загрузка отдельных спрайтов
+	// Загрузка отдельных спрайтов (используем p2 - синий скафандр)
 	spriteFiles := []string{
-		"p1_stand.png",
-		"p1_front.png",
-		"p1_jump.png",
-		"p1_duck.png",
-		"p1_hurt.png",
+		"p2_stand.png",
+		"p2_front.png",
+		"p2_jump.png",
+		"p2_duck.png",
+		"p2_hurt.png",
 	}
 
 	for _, file := range spriteFiles {
@@ -111,7 +111,7 @@ func (ss *SpriteSheet) loadPlayerSprites() error {
 		if err != nil {
 			return fmt.Errorf("load %s: %w", file, err)
 		}
-		// Убираем префикс p1_ для ключа
+		// Убираем префикс p2_ для ключа
 		key := file[3 : len(file)-4] // "stand", "front", "jump", etc.
 		ss.PlayerSprites[key] = img
 	}
@@ -120,11 +120,11 @@ func (ss *SpriteSheet) loadPlayerSprites() error {
 	walkFrames := make([]*ebiten.Image, 0, 11)
 
 	for i := 1; i <= 11; i++ {
-		filename := fmt.Sprintf("p1_walk%02d.png", i)
+		filename := fmt.Sprintf("p2_walk%02d.png", i)
 		if i == 1 {
-			filename = "p1_walk01.png"
+			filename = "p2_walk01.png"
 		}
-		path := filepath.Join(basePath, "p1_walk", "PNG", "default", filename)
+		path := filepath.Join(basePath, "p2_walk", "PNG", "default", filename)
 		
 		// Пробуем несколько возможных путей
 		img, err := loadImage(path)
