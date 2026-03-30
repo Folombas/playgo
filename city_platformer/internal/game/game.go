@@ -297,10 +297,21 @@ func (g *Game) applyPhysics(dt float64) {
 
 	// Коллизии с платформами
 	g.player.Physics.OnGround = false
+	onLadder = g.checkLadderCollision()
+	
 	for _, p := range g.levelData.Platforms {
 		if !p.Solid {
 			continue
 		}
+		
+		// Если на лестнице и движемся вверх - пропускаем коллизию сверху
+		if onLadder && g.player.Physics.VelocityY < 0 {
+			// Проверяем, это та же лестница или другая платформа
+			if p.Type == level.TileLadder {
+				continue // Не блокируем движение по лестнице
+			}
+		}
+		
 		if g.checkCollision(g.player.Transform, p) {
 			// Простая коллизия сверху (приземление)
 			if g.player.Physics.VelocityY > 0 && oldY+g.player.Transform.Height <= p.Y+10 {
@@ -309,9 +320,11 @@ func (g *Game) applyPhysics(dt float64) {
 				g.player.Physics.OnGround = true
 				g.player.State = entity.PlayerIdle
 			} else if g.player.Physics.VelocityY < 0 && oldY >= p.Y+p.Height-10 {
-				// Удар головой
-				g.player.Transform.Y = p.Y + p.Height
-				g.player.Physics.VelocityY = 0
+				// Удар головой - не блокируем если на лестнице
+				if !onLadder {
+					g.player.Transform.Y = p.Y + p.Height
+					g.player.Physics.VelocityY = 0
+				}
 			} else if g.player.Physics.VelocityX > 0 && oldX+g.player.Transform.Width <= p.X+10 {
 				// Столкновение слева
 				g.player.Transform.X = p.X - g.player.Transform.Width
