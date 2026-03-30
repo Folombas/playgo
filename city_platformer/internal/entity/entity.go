@@ -301,9 +301,9 @@ const (
 
 // NewPlayer создаёт нового игрока
 func NewPlayer(x, y float64, ss *sprite.SpriteSheet) *Player {
-	// Размер хитбокса для коллизий
+	// Размер хитбокса для Элисы - воительницы
 	p := &Player{
-		Transform: NewTransform(x, y, 64, 48), // Хитбокс монстра-паука
+		Transform: NewTransform(x, y, 40, 50), // Хитбокс Элисы
 		Physics:   NewPhysics(),
 		Health:    NewHealth(100),
 		Animator:  NewAnimator(),
@@ -315,9 +315,9 @@ func NewPlayer(x, y float64, ss *sprite.SpriteSheet) *Player {
 	}
 
 	p.Renderer = NewSpriteRenderer(ss)
-	// Масштабируем спрайт под хитбокс (спрайты ~128x96, уменьшаем в 2 раза)
-	p.Renderer.ScaleX = 0.5
-	p.Renderer.ScaleY = 0.5
+	// Спрайты Элисы не масштабируем - они нужного размера
+	p.Renderer.ScaleX = 1.0
+	p.Renderer.ScaleY = 1.0
 
 	// Загрузка анимаций
 	if walkAnim := ss.GetPlayerAnim("walk"); walkAnim != nil {
@@ -326,8 +326,8 @@ func NewPlayer(x, y float64, ss *sprite.SpriteSheet) *Player {
 	if hurtAnim := ss.GetPlayerAnim("hurt"); hurtAnim != nil {
 		p.Animator.AddAnim("hurt", hurtAnim)
 	}
-	if deathAnim := ss.GetPlayerAnim("death"); deathAnim != nil {
-		p.Animator.AddAnim("death", deathAnim)
+	if attackAnim := ss.GetPlayerAnim("attack"); attackAnim != nil {
+		p.Animator.AddAnim("attack", attackAnim)
 	}
 
 	// Установка начального спрайта

@@ -96,14 +96,68 @@ func LoadSpriteSheet() (*SpriteSheet, error) {
 func (ss *SpriteSheet) loadPlayerSprites() error {
 	basePath := "assets/Player"
 
-	// Загрузка спрайтов монстра-паука (furr_walking_monster)
+	// Загрузка Элисы - воительницы с мечом и щитом
+	// Используем спрайт-лист и вырезаем нужные области
+	sheetPath := filepath.Join(basePath, "elisa_spritesheet.png")
+	sheetImg, err := loadImage(sheetPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: elisa spritesheet not loaded: %v\n", err)
+		// Загружаем монстра-паука как запасной вариант
+		return ss.loadMonsterSprites()
+	}
+
+	// Спрайт-лист: кадры примерно 48x48, вырезаем области
+	// Idle стойка - первый кадр (0,0)
+	ss.PlayerSprites["stand"] = cropImage(sheetImg, 10, 10, 50, 50)
+	ss.PlayerSprites["front"] = cropImage(sheetImg, 10, 10, 50, 50)
+	ss.PlayerSprites["jump"] = cropImage(sheetImg, 260, 10, 50, 50)
+	ss.PlayerSprites["duck"] = cropImage(sheetImg, 130, 130, 50, 50)
+	ss.PlayerSprites["hurt"] = cropImage(sheetImg, 390, 10, 50, 50)
+
+	// Анимация ходьбы - второй ряд
+	walkFrames := make([]*ebiten.Image, 0, 8)
+	for i := 0; i < 8; i++ {
+		x := 10 + i*65
+		frame := cropImage(sheetImg, x, 130, 50, 50)
+		walkFrames = append(walkFrames, frame)
+	}
+	if len(walkFrames) > 0 {
+		ss.PlayerAnims["walk"] = NewAnimation("walk", walkFrames, 10, true)
+	}
+
+	// Анимация атаки - четвёртый ряд
+	attackFrames := make([]*ebiten.Image, 0, 3)
+	for i := 0; i < 3; i++ {
+		x := 10 + i*130
+		frame := cropImage(sheetImg, x, 390, 100, 50)
+		attackFrames = append(attackFrames, frame)
+	}
+	if len(attackFrames) > 0 {
+		ss.PlayerAnims["attack"] = NewAnimation("attack", attackFrames, 15, false)
+	}
+
+	return nil
+}
+
+// cropImage вырезает область из изображения
+func cropImage(src *ebiten.Image, x, y, w, h int) *ebiten.Image {
+	subImage := ebiten.NewImage(w, h)
+	opts := &ebiten.DrawImageOptions{}
+	opts.GeoM.Translate(-float64(x), -float64(y))
+	subImage.DrawImage(src, opts)
+	return subImage
+}
+
+// loadMonsterSprites загружает спрайты монстра-паука (запасной вариант)
+func (ss *SpriteSheet) loadMonsterSprites() error {
+	basePath := "assets/Player"
+
 	// Idle анимация (16 кадров)
 	for i := 0; i < 16; i++ {
 		filename := fmt.Sprintf("skeleton-idle_%d.png", i)
 		path := filepath.Join(basePath, "monster_idle", filename)
 		img, err := loadImage(path)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: monster idle %d not loaded: %v\n", i, err)
 			continue
 		}
 		if i == 0 {
@@ -118,75 +172,12 @@ func (ss *SpriteSheet) loadPlayerSprites() error {
 		path := filepath.Join(basePath, "monster_walk", filename)
 		img, err := loadImage(path)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: monster walk %d not loaded: %v\n", i, err)
 			continue
 		}
 		walkFrames = append(walkFrames, img)
 	}
-
 	if len(walkFrames) > 0 {
 		ss.PlayerAnims["walk"] = NewAnimation("walk", walkFrames, 12, true)
-	}
-
-	// Hurt анимация (8 кадров)
-	hurtFrames := make([]*ebiten.Image, 0, 8)
-	for i := 0; i < 8; i++ {
-		filename := fmt.Sprintf("skeleton-got_hit_%d.png", i)
-		path := filepath.Join(basePath, "monster_hurt", filename)
-		img, err := loadImage(path)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: monster hurt %d not loaded: %v\n", i, err)
-			continue
-		}
-		hurtFrames = append(hurtFrames, img)
-	}
-
-	if len(hurtFrames) > 0 {
-		ss.PlayerAnims["hurt"] = NewAnimation("hurt", hurtFrames, 15, false)
-	}
-
-	// Death анимация (26 кадров)
-	deathFrames := make([]*ebiten.Image, 0, 26)
-	for i := 0; i < 26; i++ {
-		filename := fmt.Sprintf("skeleton-defeated_%d.png", i)
-		path := filepath.Join(basePath, "monster_death", filename)
-		img, err := loadImage(path)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: monster death %d not loaded: %v\n", i, err)
-			continue
-		}
-		deathFrames = append(deathFrames, img)
-	}
-
-	if len(deathFrames) > 0 {
-		ss.PlayerAnims["death"] = NewAnimation("death", deathFrames, 15, false)
-	}
-
-	// Загрузка отдельных спрайтов для совместимости
-	spriteFiles := []string{
-		"monster_idle/skeleton-idle_0.png", // stand
-		"monster_walk/skeleton-walking_0.png", // front
-	}
-
-	for i, file := range spriteFiles {
-		path := filepath.Join(basePath, file)
-		img, err := loadImage(path)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: monster sprite %s not loaded: %v\n", file, err)
-			continue
-		}
-		if i == 0 {
-			ss.PlayerSprites["stand"] = img
-		} else {
-			ss.PlayerSprites["front"] = img
-		}
-	}
-
-	// Прыжок и присед используем как stand (заглушка)
-	if ss.PlayerSprites["stand"] != nil {
-		ss.PlayerSprites["jump"] = ss.PlayerSprites["stand"]
-		ss.PlayerSprites["duck"] = ss.PlayerSprites["stand"]
-		ss.PlayerSprites["hurt"] = ss.PlayerSprites["stand"]
 	}
 
 	return nil
