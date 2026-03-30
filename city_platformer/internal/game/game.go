@@ -85,7 +85,12 @@ func (g *Game) Reset() {
 // startLevel запускает уровень
 func (g *Game) startLevel() {
 	g.levelData = g.levelGen.GenerateLevel(g.levelNum)
-	g.player = entity.NewPlayer(100, 500, g.spriteSheet)
+	
+	// Спавн игрока на уровне земли (groundY = data.Height - 2, tileSize = 64)
+	// Y позиции платформы минус высота игрока
+	spawnY := float64(g.levelData.Height-2)*float64(g.levelData.TileSize) - 60
+	
+	g.player = entity.NewPlayer(100, spawnY, g.spriteSheet)
 	g.enemies = make([]*entity.Enemy, 0)
 	g.projectiles = make([]*entity.Projectile, 0)
 	g.particles = make([]render.Particle, 0)
@@ -293,7 +298,9 @@ func (g *Game) applyPhysics(dt float64) {
 	}
 
 	// Пол (если упал с карты)
-	if g.player.Transform.Y > float64(screenHeight)+100 {
+	// Смерть если игрок упал ниже уровня земли на 200 пикселей
+	groundLevel := float64(g.levelData.Height-2)*float64(g.levelData.TileSize)
+	if g.player.Transform.Y > groundLevel+200 {
 		g.player.Health.TakeDamage(100)
 	}
 
