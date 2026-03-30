@@ -408,6 +408,20 @@ func (p *Player) Stand() {
 	p.Transform.Height = 60
 }
 
+// ClimbUp лазает вверх по лестнице
+func (p *Player) ClimbUp() {
+	p.Physics.VelocityY = -150
+	p.Physics.OnGround = true // На лестнице считаем что на земле
+	p.State = PlayerRunning
+}
+
+// ClimbDown лазает вниз по лестнице
+func (p *Player) ClimbDown() {
+	p.Physics.VelocityY = 150
+	p.Physics.OnGround = true
+	p.State = PlayerCrouching
+}
+
 // CanShoot может ли стрелять
 func (p *Player) CanShoot() bool {
 	return p.ShootCooldown <= 0 && p.Ammo > 0 && p.Health.IsAlive()

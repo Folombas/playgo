@@ -198,25 +198,47 @@ func (g *Game) updateGame() {
 
 // handlePlayerInput обрабатывает ввод игрока
 func (g *Game) handlePlayerInput() {
+	// Проверка на лестнице ли игрок
+	onLadder := g.checkLadderCollision()
+
 	// Движение
 	if ebiten.IsKeyPressed(ebiten.KeyA) || ebiten.IsKeyPressed(ebiten.KeyLeft) {
-		g.player.MoveLeft()
+		if onLadder {
+			g.player.MoveLeft()
+			g.player.Physics.VelocityY = 0
+		} else {
+			g.player.MoveLeft()
+		}
 	}
 	if ebiten.IsKeyPressed(ebiten.KeyD) || ebiten.IsKeyPressed(ebiten.KeyRight) {
-		g.player.MoveRight()
+		if onLadder {
+			g.player.MoveRight()
+			g.player.Physics.VelocityY = 0
+		} else {
+			g.player.MoveRight()
+		}
 	}
 
-	// Прыжок
-	if (ebiten.IsKeyPressed(ebiten.KeyW) || ebiten.IsKeyPressed(ebiten.KeyUp)) && g.player.Physics.OnGround {
+	// Прыжок (W, Up или Пробел)
+	if (ebiten.IsKeyPressed(ebiten.KeyW) || ebiten.IsKeyPressed(ebiten.KeyUp) || ebiten.IsKeyPressed(ebiten.KeySpace)) && g.player.Physics.OnGround && !onLadder {
 		g.player.Jump()
 		g.spawnParticles(g.player.Transform.X+20, g.player.Transform.Y+g.player.Transform.Height, 0, -50, 8, color.RGBA{150, 150, 150, 255})
 	}
 
-	// Приседание
-	if ebiten.IsKeyPressed(ebiten.KeyS) || ebiten.IsKeyPressed(ebiten.KeyDown) {
-		g.player.Crouch()
+	// Лазание по лестнице
+	if onLadder {
+		if ebiten.IsKeyPressed(ebiten.KeyW) || ebiten.IsKeyPressed(ebiten.KeyUp) {
+			g.player.ClimbUp()
+		} else if ebiten.IsKeyPressed(ebiten.KeyS) || ebiten.IsKeyPressed(ebiten.KeyDown) {
+			g.player.ClimbDown()
+		}
 	} else {
-		g.player.Stand()
+		// Приседание только когда не на лестнице
+		if ebiten.IsKeyPressed(ebiten.KeyS) || ebiten.IsKeyPressed(ebiten.KeyDown) {
+			g.player.Crouch()
+		} else {
+			g.player.Stand()
+		}
 	}
 
 	// Выстрел
@@ -252,12 +274,17 @@ func (g *Game) shoot() {
 
 // applyPhysics применяет физику
 func (g *Game) applyPhysics(dt float64) {
+	// Проверка на лестнице
+	onLadder := g.checkLadderCollision()
+
 	// Сохраняем старую позицию для отката
 	oldX := g.player.Transform.X
 	oldY := g.player.Transform.Y
 
-	// Применяем гравитацию
-	g.player.Physics.VelocityY += g.player.Physics.Gravity * dt
+	// Гравитация не действует на лестнице
+	if !onLadder {
+		g.player.Physics.VelocityY += g.player.Physics.Gravity * dt
+	}
 
 	// Трение
 	if !g.player.Physics.IsMoving {
@@ -338,6 +365,23 @@ func (g *Game) updateCamera() {
 	if g.cameraY > maxCameraY {
 		g.cameraY = maxCameraY
 	}
+}
+
+// checkLadderCollision проверяет, находится ли игрок на лестнице
+func (g *Game) checkLadderCollision() bool {
+	playerCenter := g.player.Transform.X + g.player.Transform.Width/2
+	playerBottom := g.player.Transform.Y + g.player.Transform.Height
+
+	for _, platform := range g.levelData.Platforms {
+		if platform.Type == level.TileLadder {
+			// Проверяем, находится ли игрок в зоне лестницы
+			if playerCenter >= platform.X && playerCenter <= platform.X+platform.Width &&
+				playerBottom >= platform.Y && playerBottom <= platform.Y+platform.Height+10 {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // collectItems обрабатывает сбор предметов
