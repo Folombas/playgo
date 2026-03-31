@@ -399,20 +399,38 @@ func (g *LevelGenerator) selectItemType(itemTypes []struct {
 	return itemTypes[0]
 }
 
-// generateDecors генерирует декорации
+// generateDecors генерирует декорации - ВСЕ спрайты!
 func (g *LevelGenerator) generateDecors(data *LevelData, levelNum int) {
 	ts := float64(g.tileSize)
 
-	// Типы декораций - только готовые спрайты!
+	// ВСЕ возможные декорации из спрайтов
 	decorTypes := []string{
-		"hill_large", "hill_small",
+		// Тайлы
+		"hill_large", "hill_largeAlt", "hill_small", "hill_smallAlt",
+		"grassHillLeft", "grassHillRight", "grassHillLeft2", "grassHillRight2",
+		"dirtHillLeft", "dirtHillRight", "dirtHillLeft2", "dirtHillRight2",
+		"castleHillLeft", "castleHillRight", "castleHillLeft2", "castleHillRight2",
+		// Предметы-декорации
 		"mushroomRed", "mushroomBrown",
 		"bush", "rock", "plant", "plantPurple",
-		"cactus", "fence", "spikes",
+		"cactus", "spikes", "snowhill",
+		// Флаги
+		"flagBlue", "flagBlue2", "flagGreen", "flagGreen2",
+		"flagRed", "flagRed2", "flagYellow", "flagYellow2",
+		// Коробки
+		"box", "boxAlt", "boxCoin", "boxItem", "boxEmpty",
+		// Замковые элементы
+		"castle", "castleCenter", "castleHalf", "castleMid",
+		// Разное
+		"fence", "fenceBroken", "bridge", "bridgeLogs",
+		"door_closedTop", "door_openTop",
+		"sign", "signExit", "signLeft", "signRight",
+		"torch", "tochLit", "tochLit2",
+		"window", "lock_blue", "lock_green", "lock_red", "lock_yellow",
 	}
 
 	// Количество декораций растёт с уровнем
-	decorCount := 5 + levelNum*2
+	decorCount := 10 + levelNum*3
 
 	for i := 0; i < decorCount; i++ {
 		x := g.rng.Intn(data.Width-5) * int(ts)

@@ -409,7 +409,7 @@ func (r *Renderer) DrawParticles(screen *ebiten.Image, particles []Particle, cam
 	}
 }
 
-// DrawDecor отрисовывает декорацию
+// DrawDecor отрисовывает декорацию - ВСЕ спрайты!
 func (r *Renderer) DrawDecor(screen *ebiten.Image, decor *level.LevelDecor, cameraX, cameraY float64) {
 	x := decor.X - cameraX
 	y := decor.Y - cameraY
@@ -419,32 +419,12 @@ func (r *Renderer) DrawDecor(screen *ebiten.Image, decor *level.LevelDecor, came
 
 	var spriteImg *ebiten.Image
 
-	switch decor.Type {
-	case "tree_large":
-		// Используем холм с травой как дерево
-		spriteImg = r.spriteSheet.GetTileSprite("hill_large")
-	case "tree_small":
-		spriteImg = r.spriteSheet.GetTileSprite("hill_small")
-	case "mushroom_red":
-		spriteImg = r.spriteSheet.GetItemSprite("mushroomRed")
-	case "mushroom_brown":
-		spriteImg = r.spriteSheet.GetItemSprite("mushroomBrown")
-	case "bush":
-		spriteImg = r.spriteSheet.GetTileSprite("bush")
-	case "rock":
-		spriteImg = r.spriteSheet.GetTileSprite("rock")
-	case "plant":
-		spriteImg = r.spriteSheet.GetTileSprite("plant")
-	case "plantPurple":
-		spriteImg = r.spriteSheet.GetTileSprite("plantPurple")
-	case "cactus":
-		spriteImg = r.spriteSheet.GetTileSprite("cactus")
-	case "fence":
-		spriteImg = r.spriteSheet.GetTileSprite("fence")
-	case "spikes":
-		spriteImg = r.spriteSheet.GetTileSprite("spikes")
-	case "snowhill":
-		spriteImg = r.spriteSheet.GetItemSprite("snowhill")
+	// Пробуем получить спрайт из тайлов
+	spriteImg = r.spriteSheet.GetTileSprite(decor.Type)
+	
+	// Если не нашли, пробуем из предметов
+	if spriteImg == nil {
+		spriteImg = r.spriteSheet.GetItemSprite(decor.Type)
 	}
 
 	if spriteImg != nil {
