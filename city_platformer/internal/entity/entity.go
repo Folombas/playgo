@@ -251,7 +251,7 @@ func (l *Light) UseLight(amount float64) bool {
 	return false
 }
 
-// Player - Солнышко (игрок)
+// Player - Зайчик (игрок)
 type Player struct {
 	Transform   *Transform
 	Renderer    *SpriteRenderer
@@ -265,6 +265,7 @@ type Player struct {
 	FriendCount int // Количество друзей
 	Score       int
 	ShootTimer  float64
+	CarrotCount int // Собранные морковки
 }
 
 // PlayerSize - размер солнышка
@@ -287,7 +288,7 @@ const (
 	PlayerHurt
 )
 
-// NewPlayer создаёт нового игрока (Солнышко)
+// NewPlayer создаёт нового игрока (Зайчика)
 func NewPlayer(x, y float64, ss *sprite.SpriteSheet) *Player {
 	p := &Player{
 		Transform: NewTransform(x, y, 48, 48),
@@ -301,10 +302,9 @@ func NewPlayer(x, y float64, ss *sprite.SpriteSheet) *Player {
 
 	p.Renderer = NewSpriteRenderer(ss)
 
-	// Загрузка спрайта солнышка
-	if sunSprite := ss.GetItemSprite("star"); sunSprite != nil {
-		// Используем звезду как солнышко
-		p.Renderer.SetSprite(sunSprite)
+	// Загрузка спрайта зайчика
+	if bunnySprite := ss.GetPlayerSprite("bunny"); bunnySprite != nil {
+		p.Renderer.SetSprite(bunnySprite)
 	}
 
 	return p
