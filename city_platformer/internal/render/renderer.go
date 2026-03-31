@@ -168,83 +168,15 @@ func (r *Renderer) DrawPlatform(screen *ebiten.Image, platform *level.Platform, 
 	}
 }
 
-// DrawPlayer отрисовывает игрока (Зайчика)
+// DrawPlayer отрисовывает игрока
 func (r *Renderer) DrawPlayer(screen *ebiten.Image, player *entity.Player, cameraX, cameraY float64) {
 	if player.Health.Invincible > 0 && int(player.Health.Invincible*10)%2 == 0 {
-		return
+		return // Мигание при неуязвимости
 	}
 
-	if player.Renderer.CurrentImg != nil {
+	// Отрисовка спрайта через SpriteRenderer
+	if player.Renderer != nil && player.Renderer.CurrentImg != nil {
 		player.Renderer.Draw(screen, player.Transform, cameraX, cameraY)
-		return
-	}
-
-	x := player.Transform.X - cameraX
-	y := player.Transform.Y - cameraY - player.Transform.Height
-
-	// Милый белый зайчик
-	radius := player.Transform.Width / 2
-
-	// Тело зайчика
-	ebitenutil.DrawCircle(screen, x+radius, y+radius, radius, color.RGBA{255, 250, 240, 255})
-	ebitenutil.DrawCircle(screen, x+radius, y+radius, radius-5, color.RGBA{255, 255, 255, 255})
-
-	// Ушки длинные
-	earWidth := 8.0
-	earHeight := 20.0
-	earX := x + radius
-
-	// Левое ухо
-	ebitenutil.DrawRect(screen, earX-12, y+radius-earHeight, earWidth, earHeight, color.RGBA{255, 250, 240, 255})
-	ebitenutil.DrawRect(screen, earX-10, y+radius-earHeight+3, 4, earHeight-6, color.RGBA{255, 180, 180, 255})
-
-	// Правое ухо
-	ebitenutil.DrawRect(screen, earX+4, y+radius-earHeight, earWidth, earHeight, color.RGBA{255, 250, 240, 255})
-	ebitenutil.DrawRect(screen, earX+6, y+radius-earHeight+3, 4, earHeight-6, color.RGBA{255, 180, 180, 255})
-
-	// Лицо
-	eyeY := y + radius - 5
-
-	// Глаза
-	eyeX := x + radius
-	if player.Transform.Facing == 1 {
-		eyeX += 8
-	} else {
-		eyeX -= 8
-	}
-	ebitenutil.DrawCircle(screen, eyeX, eyeY, 5, color.RGBA{0, 0, 0, 255})
-
-	// Носик розовый
-	noseY := y + radius + 3
-	ebitenutil.DrawCircle(screen, x+radius, noseY, 3, color.RGBA{255, 150, 150, 255})
-
-	// Рот (улыбка!)
-	mouthY := y + radius + 10
-	r.drawSmile(screen, x+radius, mouthY, 8, color.RGBA{255, 100, 100, 255})
-
-	// Лапки
-	pawY := y + player.Transform.Height - 8
-	ebitenutil.DrawCircle(screen, x+radius-12, pawY, 5, color.RGBA{255, 250, 240, 255})
-	ebitenutil.DrawCircle(screen, x+radius+12, pawY, 5, color.RGBA{255, 250, 240, 255})
-
-	// Хвостик пушистый
-	tailX := x + radius
-	if player.Transform.Facing == 1 {
-		tailX -= 20
-	} else {
-		tailX += 20
-	}
-	ebitenutil.DrawCircle(screen, tailX, y+radius+10, 6, color.RGBA{255, 255, 255, 255})
-}
-
-// drawSmile рисует улыбку
-func (r *Renderer) drawSmile(screen *ebiten.Image, cx, y, radius float64, c color.Color) {
-	// Рисуем дугу улыбки точками
-	for i := 0; i < 20; i++ {
-		angle := math.Pi + float64(i)*math.Pi/19
-		x := cx + math.Cos(angle)*radius
-		y := y + math.Sin(angle)*radius*0.5
-		ebitenutil.DrawCircle(screen, x, y, 2, c)
 	}
 }
 
@@ -468,9 +400,6 @@ func (r *Renderer) DrawMenu(screen *ebiten.Image) {
 		ebitenutil.DrawRect(screen, 0, float64(y), float64(screenW), 1, color.RGBA{r, g, b, 255})
 	}
 
-	// Милый зайчик в центре (схематично)
-	r.drawBunnyOnBackground(screen, float64(screenW/2), 180)
-
 	// Облачка
 	r.drawCloudOnBackground(screen, 200, 100, 2)
 	r.drawCloudOnBackground(screen, 900, 120, 3)
@@ -485,9 +414,9 @@ func (r *Renderer) DrawMenu(screen *ebiten.Image) {
 	title := `
 ╔═══════════════════════════════════════════════╗
 ║                                               ║
-║     🌈  SUNNY ADVENTURE  🐰                   ║
+║     🌈  SUNNY ADVENTURE  🏃                   ║
 ║                                               ║
-║     Приключения Зайчика в Облачной Стране    ║
+║     Приключения Героя в Облачной Стране      ║
 ║                                               ║
 ╠═══════════════════════════════════════════════╣
 ║                                               ║
@@ -504,26 +433,6 @@ func (r *Renderer) DrawMenu(screen *ebiten.Image) {
 ╚═══════════════════════════════════════════════╝
 `
 	ebitenutil.DebugPrintAt(screen, title, screenW/2-240, screenH/2-150)
-}
-
-// drawBunnyOnBackground рисует зайчика на фоне
-func (r *Renderer) drawBunnyOnBackground(screen *ebiten.Image, x, y float64) {
-	// Тело
-	ebitenutil.DrawCircle(screen, x, y, 35, color.RGBA{255, 255, 255, 255})
-	ebitenutil.DrawCircle(screen, x, y, 30, color.RGBA{255, 250, 240, 255})
-
-	// Ушки
-	ebitenutil.DrawRect(screen, x-15, y-45, 10, 25, color.RGBA{255, 255, 255, 255})
-	ebitenutil.DrawRect(screen, x+5, y-45, 10, 25, color.RGBA{255, 255, 255, 255})
-	ebitenutil.DrawRect(screen, x-13, y-42, 6, 20, color.RGBA{255, 180, 180, 255})
-	ebitenutil.DrawRect(screen, x+7, y-42, 6, 20, color.RGBA{255, 180, 180, 255})
-
-	// Глаза
-	ebitenutil.DrawCircle(screen, x-8, y-5, 4, color.RGBA{0, 0, 0, 255})
-	ebitenutil.DrawCircle(screen, x+8, y-5, 4, color.RGBA{0, 0, 0, 255})
-
-	// Носик
-	ebitenutil.DrawCircle(screen, x, y+5, 3, color.RGBA{255, 150, 150, 255})
 }
 
 // drawCarrot рисует морковку

@@ -3,6 +3,7 @@
 package sprite
 
 import (
+	"fmt"
 	"image"
 	_ "image/png"
 	"os"
@@ -65,9 +66,31 @@ func LoadSpriteSheet() (*SpriteSheet, error) {
 func (ss *SpriteSheet) loadPlayerSprites() {
 	basePath := "assets/Base pack/Player"
 
-	// Используем звезду как солнышко
-	ss.playerSprites["sun"] = ss.loadImage(filepath.Join(basePath, "p1_stand.png"))
-	ss.playerSprites["sunHappy"] = ss.loadImage(filepath.Join(basePath, "p1_jump.png"))
+	// Загружаем все спрайты персонажа p1
+	ss.playerSprites["stand"] = ss.loadImage(filepath.Join(basePath, "p1_stand.png"))
+	ss.playerSprites["jump"] = ss.loadImage(filepath.Join(basePath, "p1_jump.png"))
+	ss.playerSprites["duck"] = ss.loadImage(filepath.Join(basePath, "p1_duck.png"))
+	ss.playerSprites["hurt"] = ss.loadImage(filepath.Join(basePath, "p1_hurt.png"))
+	ss.playerSprites["front"] = ss.loadImage(filepath.Join(basePath, "p1_front.png"))
+
+	// Загружаем анимацию ходьбы из PNG файлов
+	walkPath := filepath.Join(basePath, "p1_walk", "PNG")
+	walkFrames := make([]*ebiten.Image, 0)
+	for i := 1; i <= 11; i++ {
+		frame := ss.loadImage(filepath.Join(walkPath, fmt.Sprintf("p1_walk%02d.png", i)))
+		if frame != nil {
+			walkFrames = append(walkFrames, frame)
+		}
+	}
+	if len(walkFrames) > 0 {
+		ss.playerAnims["walk"] = &Animation{
+			Frames:    walkFrames,
+			FrameTime: 0.1,
+			Loop:      true,
+			Name:      "walk",
+		}
+	}
+	ss.playerAnims["run"] = ss.playerAnims["walk"]
 }
 
 // loadEnemySprites загружает спрайты врагов и друзей

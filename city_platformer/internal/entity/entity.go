@@ -126,6 +126,36 @@ func (sr *SpriteRenderer) Draw(screen *ebiten.Image, transform *Transform, camer
 	screen.DrawImage(sr.CurrentImg, opts)
 }
 
+// Animator - компонент управления анимациями
+type Animator struct {
+	Animations  map[string]*sprite.Animation
+	CurrentAnim string
+}
+
+// NewAnimator создаёт аниматор
+func NewAnimator() *Animator {
+	return &Animator{
+		Animations: make(map[string]*sprite.Animation),
+	}
+}
+
+// AddAnim добавляет анимацию
+func (a *Animator) AddAnim(name string, anim *sprite.Animation) {
+	a.Animations[name] = anim
+}
+
+// Play запускает анимацию
+func (a *Animator) Play(name string) {
+	if _, ok := a.Animations[name]; ok {
+		a.CurrentAnim = name
+	}
+}
+
+// GetCurrentAnim возвращает текущую анимацию
+func (a *Animator) GetCurrentAnim() *sprite.Animation {
+	return a.Animations[a.CurrentAnim]
+}
+
 // Physics - компонент физики
 type Physics struct {
 	VelocityX    float64
@@ -251,12 +281,13 @@ func (l *Light) UseLight(amount float64) bool {
 	return false
 }
 
-// Player - Зайчик (игрок)
+// Player - главный герой
 type Player struct {
 	Transform   *Transform
 	Renderer    *SpriteRenderer
 	Physics     *Physics
 	Health      *Health
+	Animator    *Animator
 	Light       *Light
 	State       PlayerState
 	JumpCount   int
@@ -288,12 +319,13 @@ const (
 	PlayerHurt
 )
 
-// NewPlayer создаёт нового игрока (Зайчика)
+// NewPlayer создаёт нового игрока
 func NewPlayer(x, y float64, ss *sprite.SpriteSheet) *Player {
 	p := &Player{
-		Transform: NewTransform(x, y, 48, 48),
+		Transform: NewTransform(x, y, 40, 56), // Размер как у спрайта p1
 		Physics:   NewPhysics(),
 		Health:    NewHealth(100),
+		Animator:  NewAnimator(),
 		Light:     NewLight(100),
 		State:     PlayerIdle,
 		MaxJumps:  2, // Двойной прыжок!
@@ -302,9 +334,20 @@ func NewPlayer(x, y float64, ss *sprite.SpriteSheet) *Player {
 
 	p.Renderer = NewSpriteRenderer(ss)
 
-	// Загрузка спрайта зайчика
-	if bunnySprite := ss.GetPlayerSprite("bunny"); bunnySprite != nil {
-		p.Renderer.SetSprite(bunnySprite)
+	// Загрузка спрайтов и анимаций
+	if standSprite := ss.GetPlayerSprite("stand"); standSprite != nil {
+		p.Renderer.SetSprite(standSprite)
+	}
+	if walkAnim := ss.GetPlayerAnim("walk"); walkAnim != nil {
+		p.Animator.AddAnim("walk", walkAnim)
+	}
+	if jumpSprite := ss.GetPlayerSprite("jump"); jumpSprite != nil {
+		p.Animator.AddAnim("jump", &sprite.Animation{
+			Frames:    []*ebiten.Image{jumpSprite},
+			FrameTime: 0.1,
+			Loop:      false,
+			Name:      "jump",
+		})
 	}
 
 	return p
@@ -332,11 +375,16 @@ func (p *Player) updateAnimation() {
 	}
 
 	if !p.Physics.OnGround {
-		p.State = PlayerJumping
+		p.Animator.Play("jump")
 	} else if p.Physics.IsMoving {
-		p.State = PlayerRunning
+		p.Animator.Play("walk")
 	} else {
-		p.State = PlayerIdle
+		p.Animator.Play("walk") // Используем walk как idle
+	}
+
+	// Применяем текущую анимацию к рендереру
+	if anim := p.Animator.GetCurrentAnim(); anim != nil {
+		p.Renderer.SetAnim(anim)
 	}
 }
 
