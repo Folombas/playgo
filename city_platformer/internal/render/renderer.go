@@ -409,6 +409,150 @@ func (r *Renderer) DrawParticles(screen *ebiten.Image, particles []Particle, cam
 	}
 }
 
+// DrawDecor отрисовывает декорацию
+func (r *Renderer) DrawDecor(screen *ebiten.Image, decor *level.LevelDecor, cameraX, cameraY float64) {
+	x := decor.X - cameraX
+	y := decor.Y - cameraY
+
+	switch decor.Type {
+	case "tree_large":
+		r.drawTreeLarge(screen, x, y)
+	case "tree_small":
+		r.drawTreeSmall(screen, x, y)
+	case "mushroom_red":
+		r.drawMushroom(screen, x, y, true)
+	case "mushroom_brown":
+		r.drawMushroom(screen, x, y, false)
+	case "bush":
+		r.drawBush(screen, x, y)
+	case "rock":
+		r.drawRock(screen, x, y)
+	case "flower_red":
+		r.drawFlower(screen, x, y, color.RGBA{255, 50, 50, 255})
+	case "flower_yellow":
+		r.drawFlower(screen, x, y, color.RGBA{255, 255, 0, 255})
+	case "flower_pink":
+		r.drawFlower(screen, x, y, color.RGBA{255, 150, 200, 255})
+	}
+}
+
+// drawTreeLarge рисует большое дерево
+func (r *Renderer) drawTreeLarge(screen *ebiten.Image, x, y float64) {
+	// Ствол
+	trunkWidth := 24.0
+	trunkHeight := 70.0
+	trunkX := x + 32 - trunkWidth/2
+	trunkY := y - trunkHeight
+
+	ebitenutil.DrawRect(screen, trunkX, trunkY, trunkWidth, trunkHeight, color.RGBA{101, 67, 33, 255})
+
+	// Крона - три круга
+	crownY := y - trunkHeight - 45
+	crownSize := 40.0
+
+	// Верхний круг
+	ebitenutil.DrawCircle(screen, x+32, crownY, crownSize, color.RGBA{34, 139, 34, 255})
+	ebitenutil.DrawCircle(screen, x+32, crownY, crownSize-10, color.RGBA{50, 205, 50, 255})
+
+	// Левый круг
+	ebitenutil.DrawCircle(screen, x+32-30, crownY+20, crownSize-8, color.RGBA{34, 139, 34, 255})
+	ebitenutil.DrawCircle(screen, x+32-30, crownY+20, crownSize-16, color.RGBA{50, 205, 50, 255})
+
+	// Правый круг
+	ebitenutil.DrawCircle(screen, x+32+30, crownY+20, crownSize-8, color.RGBA{34, 139, 34, 255})
+	ebitenutil.DrawCircle(screen, x+32+30, crownY+20, crownSize-16, color.RGBA{50, 205, 50, 255})
+}
+
+// drawTreeSmall рисует маленькое дерево
+func (r *Renderer) drawTreeSmall(screen *ebiten.Image, x, y float64) {
+	// Ствол
+	trunkWidth := 14.0
+	trunkHeight := 45.0
+	trunkX := x + 24 - trunkWidth/2
+	trunkY := y - trunkHeight
+
+	ebitenutil.DrawRect(screen, trunkX, trunkY, trunkWidth, trunkHeight, color.RGBA{101, 67, 33, 255})
+
+	// Крона - два круга
+	crownY := y - trunkHeight - 28
+	crownSize := 28.0
+
+	ebitenutil.DrawCircle(screen, x+24, crownY, crownSize, color.RGBA{34, 139, 34, 255})
+	ebitenutil.DrawCircle(screen, x+24, crownY, crownSize-8, color.RGBA{50, 205, 50, 255})
+
+	ebitenutil.DrawCircle(screen, x+24-18, crownY+12, crownSize-10, color.RGBA{34, 139, 34, 255})
+	ebitenutil.DrawCircle(screen, x+24+18, crownY+12, crownSize-10, color.RGBA{34, 139, 34, 255})
+}
+
+// drawMushroom рисует гриб
+func (r *Renderer) drawMushroom(screen *ebiten.Image, x, y float64, isRed bool) {
+	// Ножка
+	stemWidth := 12.0
+	stemHeight := 20.0
+	stemX := x + 16 - stemWidth/2
+	stemY := y - stemHeight
+
+	ebitenutil.DrawRect(screen, stemX, stemY, stemWidth, stemHeight, color.RGBA{255, 250, 240, 255})
+
+	// Шляпка
+	capY := y - stemHeight - 10
+	capSize := 20.0
+
+	if isRed {
+		// Красный гриб с белыми точками
+		ebitenutil.DrawCircle(screen, x+16, capY, capSize, color.RGBA{255, 50, 50, 255})
+		ebitenutil.DrawCircle(screen, x+16-7, capY-5, 4, color.RGBA{255, 255, 255, 255})
+		ebitenutil.DrawCircle(screen, x+16+7, capY-5, 4, color.RGBA{255, 255, 255, 255})
+		ebitenutil.DrawCircle(screen, x+16, capY-10, 3, color.RGBA{255, 255, 255, 255})
+	} else {
+		// Коричневый гриб
+		ebitenutil.DrawCircle(screen, x+16, capY, capSize, color.RGBA{139, 90, 43, 255})
+		ebitenutil.DrawCircle(screen, x+16, capY, capSize-5, color.RGBA{160, 100, 50, 255})
+	}
+}
+
+// drawBush рисует куст
+func (r *Renderer) drawBush(screen *ebiten.Image, x, y float64) {
+	bushSize := 22.0
+
+	ebitenutil.DrawCircle(screen, x+24, y-18, bushSize, color.RGBA{34, 139, 34, 255})
+	ebitenutil.DrawCircle(screen, x+10, y-12, bushSize-4, color.RGBA{34, 139, 34, 255})
+	ebitenutil.DrawCircle(screen, x+38, y-12, bushSize-4, color.RGBA{34, 139, 34, 255})
+
+	// Светлые блики
+	ebitenutil.DrawCircle(screen, x+24, y-24, bushSize-10, color.RGBA{50, 205, 50, 255})
+	ebitenutil.DrawCircle(screen, x+10, y-18, bushSize-12, color.RGBA{50, 205, 50, 255})
+	ebitenutil.DrawCircle(screen, x+38, y-18, bushSize-12, color.RGBA{50, 205, 50, 255})
+}
+
+// drawRock рисует камень
+func (r *Renderer) drawRock(screen *ebiten.Image, x, y float64) {
+	// Неправильная форма - несколько кругов
+	ebitenutil.DrawCircle(screen, x+16, y-12, 14, color.RGBA{128, 128, 128, 255})
+	ebitenutil.DrawCircle(screen, x+8, y-8, 12, color.RGBA{128, 128, 128, 255})
+	ebitenutil.DrawCircle(screen, x+24, y-8, 12, color.RGBA{128, 128, 128, 255})
+
+	// Блик
+	ebitenutil.DrawCircle(screen, x+16, y-16, 6, color.RGBA{180, 180, 180, 255})
+}
+
+// drawFlower рисует цветок
+func (r *Renderer) drawFlower(screen *ebiten.Image, x, y float64, petalColor color.RGBA) {
+	// Стебель
+	ebitenutil.DrawLine(screen, x+8, y, x+8, y-14, color.RGBA{50, 205, 50, 255})
+
+	// Пять лепестков
+	for i := 0; i < 5; i++ {
+		angle := float64(i)*72*3.14159/180 + 3.14159/2
+		px := x + 8 + math.Cos(angle)*7
+		py := y - 14 + math.Sin(angle)*7
+		ebitenutil.DrawCircle(screen, px, py, 5, petalColor)
+	}
+
+	// Центр
+	ebitenutil.DrawCircle(screen, x+8, y-14, 4, color.RGBA{255, 255, 0, 255})
+}
+
 // DrawHUD отрисовывает интерфейс
 func (r *Renderer) DrawHUD(screen *ebiten.Image, health, maxHealth int, light, maxLight float64, score, levelNum int, levelName string, friendCount, cloudCount int) {
 	// Полоска здоровья - розовая

@@ -60,6 +60,12 @@ type LevelItem struct {
 	Collected bool
 }
 
+// LevelDecor - данные декорации на уровне
+type LevelDecor struct {
+	X, Y float64
+	Type string
+}
+
 // LevelData - данные уровня
 type LevelData struct {
 	Platforms []*Platform
@@ -67,6 +73,7 @@ type LevelData struct {
 	Friends   []*LevelFriend
 	Clouds    []*LevelCloud
 	Items     []*LevelItem
+	Decors    []*LevelDecor // Декорации
 	Width     int
 	Height    int
 	TileSize  int
@@ -115,6 +122,7 @@ func (g *LevelGenerator) GenerateLevel(levelNum int) *LevelData {
 		Friends:   make([]*LevelFriend, 0),
 		Clouds:    make([]*LevelCloud, 0),
 		Items:     make([]*LevelItem, 0),
+		Decors:    make([]*LevelDecor, 0),
 		Width:     levelWidth,
 		Height:    levelHeight,
 		TileSize:  g.tileSize,
@@ -128,6 +136,7 @@ func (g *LevelGenerator) GenerateLevel(levelNum int) *LevelData {
 	g.generateFriends(data, levelNum)
 	g.generateClouds(data, levelNum)
 	g.generateItems(data, levelNum)
+	g.generateDecors(data, levelNum) // Генерация декораций
 
 	data.ExitX = float64(levelWidth-5) * float64(g.tileSize)
 	data.ExitY = float64(levelHeight-3) * float64(g.tileSize)
@@ -388,6 +397,47 @@ func (g *LevelGenerator) selectItemType(itemTypes []struct {
 		}
 	}
 	return itemTypes[0]
+}
+
+// generateDecors генерирует декорации
+func (g *LevelGenerator) generateDecors(data *LevelData, levelNum int) {
+	ts := float64(g.tileSize)
+
+	// Типы декораций
+	decorTypes := []string{
+		"tree_large", "tree_small",
+		"mushroom_red", "mushroom_brown",
+		"bush", "rock",
+		"flower_red", "flower_yellow", "flower_pink",
+	}
+
+	// Количество декораций растёт с уровнем
+	decorCount := 5 + levelNum*2
+
+	for i := 0; i < decorCount; i++ {
+		x := g.rng.Intn(data.Width-5) * int(ts)
+		y := data.Height - 2 // На земле
+
+		// Выбираем случайный тип декорации
+		decorType := decorTypes[g.rng.Intn(len(decorTypes))]
+
+		// Иногда размещаем на платформах
+		if g.rng.Float32() < 0.3 {
+			for _, p := range data.Platforms {
+				if p.Solid && p.Type != TileLadder && p.Width >= ts*2 {
+					x = int(p.X) + g.rng.Intn(int(p.Width)-20)
+					y = int(p.Y)
+					break
+				}
+			}
+		}
+
+		data.Decors = append(data.Decors, &LevelDecor{
+			X:    float64(x),
+			Y:    float64(y),
+			Type: decorType,
+		})
+	}
 }
 
 // getLevelName возвращает название уровня

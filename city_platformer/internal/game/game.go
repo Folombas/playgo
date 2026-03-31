@@ -571,6 +571,11 @@ func (g *Game) Draw(screen *ebiten.Image) {
 			g.renderer.DrawPlatform(screen, p, g.cameraX, g.cameraY)
 		}
 
+		// Декорации (задний план)
+		for _, decor := range g.levelData.Decors {
+			g.renderer.DrawDecor(screen, decor, g.cameraX, g.cameraY)
+		}
+
 		// Предметы
 		for _, item := range g.levelData.Items {
 			if !item.Collected {
