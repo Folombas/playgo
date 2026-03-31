@@ -35,24 +35,25 @@ const (
 
 // Game - основная игровая структура
 type Game struct {
-	state       GameState
-	player      *entity.Player
-	levelData   *level.LevelData
-	enemies     []*entity.Enemy
-	friends     []*entity.Friend
-	clouds      []*entity.Cloud
-	projectiles []*entity.Projectile
-	particles   []render.Particle
-	cameraX     float64
-	cameraY     float64
-	score       int
-	levelNum    int
-	spriteSheet *sprite.SpriteSheet
-	renderer    *render.Renderer
-	rng         *rand.Rand
-	levelGen    *level.LevelGenerator
-	jumpPressed bool
-	shootPressed bool
+	state         GameState
+	player        *entity.Player
+	currentChunk  *level.LevelData
+	enemies       []*entity.Enemy
+	friends       []*entity.Friend
+	clouds        []*entity.Cloud
+	projectiles   []*entity.Projectile
+	particles     []render.Particle
+	cameraX       float64
+	cameraY       float64
+	score         int
+	chunkNum      int // Текущий чанк
+	spriteSheet   *sprite.SpriteSheet
+	renderer      *render.Renderer
+	rng           *rand.Rand
+	levelGen      *level.LevelGenerator
+	jumpPressed   bool
+	shootPressed  bool
+	infiniteWorld bool // Бесконечный мир
 }
 
 // NewGame создаёт новую игру
@@ -78,18 +79,26 @@ func NewGame() *Game {
 
 // Reset сбрасывает игру
 func (g *Game) Reset() {
-	g.levelNum = 1
+	g.chunkNum = 0
 	g.score = 0
-	g.startLevel()
+	g.infiniteWorld = true // Включаем бесконечный мир
+	g.startChunk()
 }
 
-// startLevel запускает уровень
-func (g *Game) startLevel() {
-	g.levelData = g.levelGen.GenerateLevel(g.levelNum)
+// startChunk запускает чанок
+func (g *Game) startChunk() {
+	g.currentChunk = g.levelGen.GenerateChunk(g.chunkNum)
 
-	groundLevel := float64(g.levelData.Height-2)*float64(g.levelData.TileSize)
+	groundLevel := float64(g.currentChunk.Height-2)*float64(g.currentChunk.TileSize)
 
-	g.player = entity.NewPlayer(100, groundLevel, g.spriteSheet)
+	// Если это первый чанк или смерть - спавним в начале
+	spawnX := 100.0
+	if g.chunkNum > 0 && !g.player.Health.Dead {
+		// Спавним у выхода из предыдущего чанка
+		spawnX = float64(g.chunkNum) * float64(g.levelGen.ChunkWidth) * float64(g.levelGen.TileSize)
+	}
+
+	g.player = entity.NewPlayer(spawnX, groundLevel, g.spriteSheet)
 	g.player.Physics.OnGround = true
 	g.player.Physics.VelocityY = 0
 
@@ -98,25 +107,24 @@ func (g *Game) startLevel() {
 	g.clouds = make([]*entity.Cloud, 0)
 	g.projectiles = make([]*entity.Projectile, 0)
 	g.particles = make([]render.Particle, 0)
-	g.cameraX = 0
-	g.cameraY = 0
+	g.cameraX = spawnX - screenWidth/2
 
-	// Создание врагов
-	for _, le := range g.levelData.Enemies {
+	// Создаём врагов из чанка
+	for _, le := range g.currentChunk.Enemies {
 		if le.Active {
 			enemy := entity.NewEnemy(le.X, le.Y, entity.EnemyType(le.Type), g.spriteSheet)
 			g.enemies = append(g.enemies, enemy)
 		}
 	}
 
-	// Создание друзей
-	for _, lf := range g.levelData.Friends {
+	// Создаём друзей
+	for _, lf := range g.currentChunk.Friends {
 		friend := entity.NewFriend(lf.X, lf.Y, entity.FriendType(lf.Type), g.spriteSheet)
 		g.friends = append(g.friends, friend)
 	}
 
-	// Создание облачков
-	for _, lc := range g.levelData.Clouds {
+	// Создаём облачка
+	for _, lc := range g.currentChunk.Clouds {
 		cloud := entity.NewCloud(lc.X, lc.Y, lc.Num, g.spriteSheet)
 		g.clouds = append(g.clouds, cloud)
 	}
@@ -148,17 +156,6 @@ func (g *Game) Update() error {
 		g.state = StatePlaying
 	}
 
-	// Level Complete - следующий уровень
-	if g.state == StateLevelComplete && ebiten.IsKeyPressed(ebiten.KeySpace) {
-		g.levelNum++
-		if g.levelNum > 10 {
-			g.state = StateVictory
-		} else {
-			g.startLevel()
-			g.state = StatePlaying
-		}
-	}
-
 	// Victory - рестарт
 	if g.state == StateVictory && ebiten.IsKeyPressed(ebiten.KeySpace) {
 		g.Reset()
@@ -187,6 +184,7 @@ func (g *Game) updateGame() {
 	g.updateProjectiles(dt)
 	g.updateEnemies(dt)
 	g.updateParticles(dt)
+	g.checkChunkTransition() // Проверка перехода в новый чанк
 
 	// Проверка победы (все облачка собраны + выход достигнут)
 	allCloudsCollected := true
@@ -197,13 +195,55 @@ func (g *Game) updateGame() {
 		}
 	}
 
-	if allCloudsCollected && g.levelData.CheckExitReach(g.player.Transform.X, g.player.Transform.Y, g.player.Transform.Width, g.player.Transform.Height) {
-		g.state = StateLevelComplete
+	// В бесконечном мире переходим в следующий чанк
+	if g.infiniteWorld && allCloudsCollected && g.currentChunk.CheckExitReach(g.player.Transform.X, g.player.Transform.Y, g.player.Transform.Width, g.player.Transform.Height) {
+		g.chunkNum++
+		g.startChunk()
+		g.score += 100 // Бонус за завершение чанка
 	}
 
-	// Проверка смерти
+	// Проверка смерти - респавн в начале чанка
 	if g.player.Health.Dead {
-		g.state = StateGameOver
+		g.player.Health.Dead = false
+		g.player.Health.Current = g.player.Health.Max
+		g.startChunk()
+		g.score -= 50 // Штраф за смерть
+		if g.score < 0 {
+			g.score = 0
+		}
+	}
+}
+
+// checkChunkTransition проверяет переход в соседний чанк
+func (g *Game) checkChunkTransition() {
+	if g.player == nil {
+		return
+	}
+
+	currentChunkX := int(g.player.Transform.X) / (g.levelGen.ChunkWidth * g.levelGen.TileSize)
+	if currentChunkX != g.chunkNum && currentChunkX >= 0 {
+		g.chunkNum = currentChunkX
+		g.currentChunk = g.levelGen.GenerateChunk(g.chunkNum)
+		
+		// Пересоздаём врагов, друзей и т.д. для нового чанка
+		g.enemies = make([]*entity.Enemy, 0)
+		g.friends = make([]*entity.Friend, 0)
+		g.clouds = make([]*entity.Cloud, 0)
+		
+		for _, le := range g.currentChunk.Enemies {
+			if le.Active {
+				enemy := entity.NewEnemy(le.X, le.Y, entity.EnemyType(le.Type), g.spriteSheet)
+				g.enemies = append(g.enemies, enemy)
+			}
+		}
+		for _, lf := range g.currentChunk.Friends {
+			friend := entity.NewFriend(lf.X, lf.Y, entity.FriendType(lf.Type), g.spriteSheet)
+			g.friends = append(g.friends, friend)
+		}
+		for _, lc := range g.currentChunk.Clouds {
+			cloud := entity.NewCloud(lc.X, lc.Y, lc.Num, g.spriteSheet)
+			g.clouds = append(g.clouds, cloud)
+		}
 	}
 }
 
@@ -307,7 +347,7 @@ func (g *Game) applyPhysics(dt float64) {
 
 	g.player.Physics.OnGround = false
 
-	for _, p := range g.levelData.Platforms {
+	for _, p := range g.currentChunk.Platforms {
 		if !p.Solid {
 			continue
 		}
@@ -344,13 +384,13 @@ func (g *Game) applyPhysics(dt float64) {
 	if g.player.Transform.X < 0 {
 		g.player.Transform.X = 0
 	}
-	maxX := float64(g.levelData.Width*g.levelData.TileSize) - g.player.Transform.Width
+	maxX := float64(g.currentChunk.Width*g.currentChunk.TileSize) - g.player.Transform.Width
 	if g.player.Transform.X > maxX {
 		g.player.Transform.X = maxX
 	}
 
 	// Падение в пропасть
-	if g.player.Transform.Y > float64(g.levelData.Height)*float64(tileSize) {
+	if g.player.Transform.Y > float64(g.currentChunk.Height)*float64(tileSize) {
 		g.player.Health.TakeDamage(100)
 	}
 }
@@ -366,14 +406,14 @@ func (g *Game) updateCamera() {
 	if g.cameraX < 0 {
 		g.cameraX = 0
 	}
-	maxCameraX := float64(g.levelData.Width*g.levelData.TileSize) - screenWidth
+	maxCameraX := float64(g.currentChunk.Width*g.currentChunk.TileSize) - screenWidth
 	if g.cameraX > maxCameraX {
 		g.cameraX = maxCameraX
 	}
 	if g.cameraY < -100 {
 		g.cameraY = -100
 	}
-	maxCameraY := float64(g.levelData.Height*g.levelData.TileSize) - screenHeight
+	maxCameraY := float64(g.currentChunk.Height*g.currentChunk.TileSize) - screenHeight
 	if g.cameraY > maxCameraY {
 		g.cameraY = maxCameraY
 	}
@@ -384,7 +424,7 @@ func (g *Game) checkLadderCollision() bool {
 	playerCenter := g.player.Transform.X + g.player.Transform.Width/2
 	playerBottom := g.player.Transform.Y + g.player.Transform.Height
 
-	for _, platform := range g.levelData.Platforms {
+	for _, platform := range g.currentChunk.Platforms {
 		if platform.Type == level.TileLadder {
 			if playerCenter >= platform.X && playerCenter <= platform.X+platform.Width &&
 				playerBottom >= platform.Y && playerBottom <= platform.Y+platform.Height+10 {
@@ -397,7 +437,7 @@ func (g *Game) checkLadderCollision() bool {
 
 // collectItems обрабатывает сбор предметов
 func (g *Game) collectItems() {
-	for _, item := range g.levelData.Items {
+	for _, item := range g.currentChunk.Items {
 		if item.Collected {
 			continue
 		}
@@ -483,7 +523,7 @@ func (g *Game) updateProjectiles(dt float64) {
 
 			// Коллизия с платформами
 			if p.Active {
-				for _, platform := range g.levelData.Platforms {
+				for _, platform := range g.currentChunk.Platforms {
 					if platform.Solid && entity.CheckCollision(p.Transform, &platform.Transform) {
 						p.Active = false
 						g.spawnParticles(p.Transform.X, p.Transform.Y, 0, -50, 3, color.RGBA{255, 255, 200, 255})
@@ -563,21 +603,21 @@ func (g *Game) checkCollision(transform *entity.Transform, platform *level.Platf
 
 // Draw отрисовывает игру
 func (g *Game) Draw(screen *ebiten.Image) {
-	g.renderer.DrawBackground(screen, g.cameraX, g.cameraY, g.levelNum)
+	g.renderer.DrawBackground(screen, g.cameraX, g.cameraY, g.chunkNum)
 
-	if g.levelData != nil {
+	if g.currentChunk != nil {
 		// Платформы
-		for _, p := range g.levelData.Platforms {
+		for _, p := range g.currentChunk.Platforms {
 			g.renderer.DrawPlatform(screen, p, g.cameraX, g.cameraY)
 		}
 
-		// Декорации (задний план)
-		for _, decor := range g.levelData.Decors {
+		// Декорации
+		for _, decor := range g.currentChunk.Decors {
 			g.renderer.DrawDecor(screen, decor, g.cameraX, g.cameraY)
 		}
 
 		// Предметы
-		for _, item := range g.levelData.Items {
+		for _, item := range g.currentChunk.Items {
 			if !item.Collected {
 				entityItem := entity.NewItem(item.X, item.Y, item.Type, item.Value, g.spriteSheet)
 				g.renderer.DrawItem(screen, entityItem, g.cameraX, g.cameraY)
@@ -613,8 +653,10 @@ func (g *Game) Draw(screen *ebiten.Image) {
 			g.renderer.DrawPlayer(screen, g.player, g.cameraX, g.cameraY)
 		}
 
-		// Выход
-		g.renderer.DrawExit(screen, g.levelData.ExitX, g.levelData.ExitY, g.cameraX, g.cameraY)
+		// Выход (если есть)
+		if g.currentChunk.ExitX > 0 {
+			g.renderer.DrawExit(screen, g.currentChunk.ExitX, g.currentChunk.ExitY, g.cameraX, g.cameraY)
+		}
 	}
 
 	g.renderer.DrawParticles(screen, g.particles, g.cameraX, g.cameraY)
@@ -628,11 +670,9 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		g.drawHUD(screen)
 		g.renderer.DrawPause(screen)
 	case StateGameOver:
-		g.renderer.DrawGameOver(screen, g.score, g.levelNum)
+		g.renderer.DrawGameOver(screen, g.score, g.chunkNum)
 	case StateVictory:
 		g.renderer.DrawVictory(screen, g.score, g.player.FriendCount)
-	case StateLevelComplete:
-		g.renderer.DrawLevelComplete(screen, g.levelNum, g.score, len(g.clouds))
 	}
 }
 
@@ -645,13 +685,13 @@ func (g *Game) drawHUD(screen *ebiten.Image) {
 		g.player.Light.Current,
 		g.player.Light.Max,
 		g.score,
-		g.levelNum,
-		g.levelData.Name,
+		g.chunkNum,
+		g.currentChunk.Name,
 		g.player.FriendCount,
 		len(g.clouds),
 	)
 
-	ebitenutil.DebugPrintAt(screen, "[ESC] Пауза  [J] Лучик  [K] Обнимашки", 10, screenHeight-30)
+	ebitenutil.DebugPrintAt(screen, "[ESC] Пауза  [J] Морковка  [K] Обнимашки  🌍 Бесконечный мир!", 10, screenHeight-30)
 }
 
 // Layout возвращает размер экрана
