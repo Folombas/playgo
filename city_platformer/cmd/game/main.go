@@ -1,12 +1,12 @@
-// City Survivor - постапокалиптический платформер на Go + Ebitengine
-// Go365 Challenge - День 90 (30 марта 2026)
+// Cyber City Runner - динамичный 2D платформер в стиле киберпанк
+// Go365 Challenge - День 91 (31 марта 2026)
 package main
 
 import (
 	"log"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"city_platformer/internal/game"
+	"cyber_city_runner/internal/game"
 )
 
 const (
@@ -16,7 +16,7 @@ const (
 
 func init() {
 	ebiten.SetWindowSize(screenWidth, screenHeight)
-	ebiten.SetWindowTitle("🏙️ City Survivor - Go365 Day 90")
+	ebiten.SetWindowTitle("🌃 Cyber City Runner - Go365 Day 91")
 	ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
 }
 

@@ -1,4 +1,4 @@
-module city_platformer
+module cyber_city_runner
 
 go 1.25.0
 
