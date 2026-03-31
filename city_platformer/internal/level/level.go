@@ -403,12 +403,12 @@ func (g *LevelGenerator) selectItemType(itemTypes []struct {
 func (g *LevelGenerator) generateDecors(data *LevelData, levelNum int) {
 	ts := float64(g.tileSize)
 
-	// Типы декораций
+	// Типы декораций - только готовые спрайты!
 	decorTypes := []string{
-		"tree_large", "tree_small",
-		"mushroom_red", "mushroom_brown",
-		"bush", "rock",
-		"flower_red", "flower_yellow", "flower_pink",
+		"hill_large", "hill_small",
+		"mushroomRed", "mushroomBrown",
+		"bush", "rock", "plant", "plantPurple",
+		"cactus", "fence", "spikes",
 	}
 
 	// Количество декораций растёт с уровнем
