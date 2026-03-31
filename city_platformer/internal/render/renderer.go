@@ -110,61 +110,114 @@ func (r *Renderer) drawHills(screen *ebiten.Image, offsetX float64) {
 func (r *Renderer) DrawPlatform(screen *ebiten.Image, platform *level.Platform, cameraX, cameraY float64) {
 	x := platform.X - cameraX
 	y := platform.Y - cameraY
+	ts := platform.Height // Размер тайла
 
+	// Рисуем платформу из спрайтов тайлами
 	switch platform.Type {
-	case level.TileGround:
-		// Земля с травкой
-		ebitenutil.DrawRect(screen, x, y, platform.Width, platform.Height, color.RGBA{139, 90, 43, 255})
-		// Зелёная травка сверху
-		ebitenutil.DrawRect(screen, x, y, platform.Width, 8, color.RGBA{34, 139, 34, 255})
-		// Цветочки на траве
-		for fx := x + 20; fx < x+platform.Width-20; fx += 40 {
-			ebitenutil.DrawCircle(screen, fx, y+4, 3, color.RGBA{255, 100, 100, 255})
+	case level.TileGround, level.TileGrass:
+		// Земля с травой - рисуем тайлами
+		for tx := x; tx < x+platform.Width; tx += ts {
+			// Верхний ряд - трава
+			if grassSprite := r.spriteSheet.GetTileSprite("grassHalf"); grassSprite != nil {
+				screen.DrawImage(grassSprite, &ebiten.DrawImageOptions{
+					GeoM: func() ebiten.GeoM {
+						var g ebiten.GeoM
+						g.Translate(tx, y)
+						return g
+					}(),
+				})
+			}
+			// Нижние ряды - земля
+			for ty := y + ts; ty < y+platform.Height; ty += ts {
+				if dirtSprite := r.spriteSheet.GetTileSprite("dirt"); dirtSprite != nil {
+					screen.DrawImage(dirtSprite, &ebiten.DrawImageOptions{
+						GeoM: func() ebiten.GeoM {
+							var g ebiten.GeoM
+							g.Translate(tx, ty)
+							return g
+						}(),
+					})
+				}
+			}
 		}
 
-	case level.TileGrass:
-		// Трава
-		ebitenutil.DrawRect(screen, x, y, platform.Width, platform.Height, color.RGBA{34, 139, 34, 255})
-		ebitenutil.DrawRect(screen, x, y, platform.Width, 5, color.RGBA{144, 238, 144, 255})
-
 	case level.TileBrick, level.TileCastle:
-		// Замок/кирпич - розоватый
-		ebitenutil.DrawRect(screen, x, y, platform.Width, platform.Height, color.RGBA{255, 182, 193, 255})
-		// Рисуем кирпичики
-		for bx := x; bx < x+platform.Width; bx += 32 {
-			for by := y; by < y+platform.Height; by += 16 {
-				ebitenutil.DrawRect(screen, bx+1, by+1, 30, 14, color.RGBA{255, 150, 150, 255})
+		// Замок/кирпич - рисуем тайлами
+		for tx := x; tx < x+platform.Width; tx += ts {
+			for ty := y; ty < y+platform.Height; ty += ts {
+				if brickSprite := r.spriteSheet.GetTileSprite("brickWall"); brickSprite != nil {
+					screen.DrawImage(brickSprite, &ebiten.DrawImageOptions{
+						GeoM: func() ebiten.GeoM {
+							var g ebiten.GeoM
+							g.Translate(tx, ty)
+							return g
+						}(),
+					})
+				}
 			}
 		}
 
 	case level.TileBox:
-		// Грибная платформа - коричневая с точками
-		ebitenutil.DrawRect(screen, x, y, platform.Width, platform.Height, color.RGBA{139, 69, 19, 255})
-		// Красные точки
-		for dx := x + 15; dx < x+platform.Width-15; dx += 30 {
-			ebitenutil.DrawCircle(screen, dx, y+platform.Height/2, 5, color.RGBA{255, 50, 50, 255})
+		// Коробки - рисуем тайлами
+		for tx := x; tx < x+platform.Width; tx += ts {
+			for ty := y; ty < y+platform.Height; ty += ts {
+				if boxSprite := r.spriteSheet.GetTileSprite("box"); boxSprite != nil {
+					screen.DrawImage(boxSprite, &ebiten.DrawImageOptions{
+						GeoM: func() ebiten.GeoM {
+							var g ebiten.GeoM
+							g.Translate(tx, ty)
+							return g
+						}(),
+					})
+				}
+			}
 		}
 
 	case level.TileCandy:
-		// Конфетная платформа - розово-белая полоска
-		ebitenutil.DrawRect(screen, x, y, platform.Width, platform.Height, color.RGBA{255, 182, 193, 255})
-		for cx := x; cx < x+platform.Width; cx += 20 {
-			ebitenutil.DrawRect(screen, cx, y, 10, platform.Height, color.RGBA{255, 255, 255, 255})
+		// Конфетная платформа
+		for tx := x; tx < x+platform.Width; tx += ts {
+			for ty := y; ty < y+platform.Height; ty += ts {
+				if candySprite := r.spriteSheet.GetTileSprite("candy"); candySprite != nil {
+					screen.DrawImage(candySprite, &ebiten.DrawImageOptions{
+						GeoM: func() ebiten.GeoM {
+							var g ebiten.GeoM
+							g.Translate(tx, ty)
+							return g
+						}(),
+					})
+				}
+			}
 		}
 
 	case level.TileIce:
-		// Ледяная платформа - голубая полупрозрачная
-		ebitenutil.DrawRect(screen, x, y, platform.Width, platform.Height, color.RGBA{173, 216, 230, 200})
-		ebitenutil.DrawRect(screen, x, y, platform.Width, 5, color.RGBA{224, 255, 255, 255})
+		// Ледяная платформа
+		for tx := x; tx < x+platform.Width; tx += ts {
+			for ty := y; ty < y+platform.Height; ty += ts {
+				if iceSprite := r.spriteSheet.GetTileSprite("iceHalf"); iceSprite != nil {
+					screen.DrawImage(iceSprite, &ebiten.DrawImageOptions{
+						GeoM: func() ebiten.GeoM {
+							var g ebiten.GeoM
+							g.Translate(tx, ty)
+							return g
+						}(),
+					})
+				}
+			}
+		}
 
 	case level.TileLadder:
-		// Лестница - деревянные перекладины
-		for by := y; by < y+platform.Height; by += 20 {
-			ebitenutil.DrawRect(screen, x, by, platform.Width, 5, color.RGBA{139, 90, 43, 255})
+		// Лестница
+		for ty := y; ty < y+platform.Height; ty += ts {
+			if ladderSprite := r.spriteSheet.GetTileSprite("ladder_mid"); ladderSprite != nil {
+				screen.DrawImage(ladderSprite, &ebiten.DrawImageOptions{
+					GeoM: func() ebiten.GeoM {
+						var g ebiten.GeoM
+						g.Translate(x, ty)
+						return g
+					}(),
+				})
+			}
 		}
-		// Вертикальные перила
-		ebitenutil.DrawRect(screen, x+5, y, 4, platform.Height, color.RGBA{139, 90, 43, 255})
-		ebitenutil.DrawRect(screen, x+platform.Width-9, y, 4, platform.Height, color.RGBA{139, 90, 43, 255})
 	}
 }
 

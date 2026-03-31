@@ -175,20 +175,67 @@ func (ss *SpriteSheet) loadTileSprites() {
 	ss.tileSprites["grassHalf"] = ss.loadImage(filepath.Join(basePath, "grassHalf.png"))
 	ss.tileSprites["grassLeft"] = ss.loadImage(filepath.Join(basePath, "grassLeft.png"))
 	ss.tileSprites["grassRight"] = ss.loadImage(filepath.Join(basePath, "grassRight.png"))
+	ss.tileSprites["grassMid"] = ss.loadImage(filepath.Join(basePath, "grassMid.png"))
+	ss.tileSprites["dirtMid"] = ss.loadImage(filepath.Join(basePath, "dirtMid.png"))
+	ss.tileSprites["dirtHalf"] = ss.loadImage(filepath.Join(basePath, "dirtHalf.png"))
+
+	// Холмы с травой
+	ss.tileSprites["grassHillLeft"] = ss.loadImage(filepath.Join(basePath, "grassHillLeft.png"))
+	ss.tileSprites["grassHillRight"] = ss.loadImage(filepath.Join(basePath, "grassHillRight.png"))
+	ss.tileSprites["grassHillLeft2"] = ss.loadImage(filepath.Join(basePath, "grassHillLeft2.png"))
+	ss.tileSprites["grassHillRight2"] = ss.loadImage(filepath.Join(basePath, "grassHillRight2.png"))
 
 	// Кирпич и замок
 	ss.tileSprites["brickWall"] = ss.loadImage(filepath.Join(basePath, "brickWall.png"))
 	ss.tileSprites["castle"] = ss.loadImage(filepath.Join(basePath, "castle.png"))
 	ss.tileSprites["castleCenter"] = ss.loadImage(filepath.Join(basePath, "castleCenter.png"))
 	ss.tileSprites["castleHalf"] = ss.loadImage(filepath.Join(basePath, "castleHalf.png"))
+	ss.tileSprites["castleMid"] = ss.loadImage(filepath.Join(basePath, "castleMid.png"))
 
-	// Коробки (грибные платформы)
+	// Коробки
 	ss.tileSprites["box"] = ss.loadImage(filepath.Join(basePath, "box.png"))
 	ss.tileSprites["boxAlt"] = ss.loadImage(filepath.Join(basePath, "boxAlt.png"))
+	ss.tileSprites["boxCoin"] = ss.loadImage(filepath.Join(basePath, "boxCoin.png"))
+	ss.tileSprites["boxItem"] = ss.loadImage(filepath.Join(basePath, "boxItem.png"))
+	ss.tileSprites["boxEmpty"] = ss.loadImage(filepath.Join(basePath, "boxEmpty.png"))
 
 	// Лестницы
 	ss.tileSprites["ladder_mid"] = ss.loadImage(filepath.Join(basePath, "ladder_mid.png"))
 	ss.tileSprites["ladder_top"] = ss.loadImage(filepath.Join(basePath, "ladder_top.png"))
+
+	// Заборы
+	ss.tileSprites["fence"] = ss.loadImage(filepath.Join(basePath, "fence.png"))
+	ss.tileSprites["fenceBroken"] = ss.loadImage(filepath.Join(basePath, "fenceBroken.png"))
+
+	// Шипы
+	ss.tileSprites["spikes"] = ss.loadImage(filepath.Join(basePath, "spikes.png"))
+
+	// Мосты
+	ss.tileSprites["bridge"] = ss.loadImage(filepath.Join(basePath, "bridge.png"))
+	ss.tileSprites["bridgeLogs"] = ss.loadImage(filepath.Join(basePath, "bridgeLogs.png"))
+
+	// Вода и лава
+	ss.tileSprites["liquidWater"] = ss.loadImage(filepath.Join(basePath, "liquidWater.png"))
+	ss.tileSprites["liquidWaterTop"] = ss.loadImage(filepath.Join(basePath, "liquidWaterTop.png"))
+	ss.tileSprites["liquidLava"] = ss.loadImage(filepath.Join(basePath, "liquidLava.png"))
+	ss.tileSprites["liquidLavaTop"] = ss.loadImage(filepath.Join(basePath, "liquidLavaTop.png"))
+
+	// Камни
+	ss.tileSprites["rock"] = ss.loadImage(filepath.Join(basePath, "rock.png"))
+
+	// Кусты и растения
+	ss.tileSprites["bush"] = ss.loadImage(filepath.Join(basePath, "bush.png"))
+	ss.tileSprites["plant"] = ss.loadImage(filepath.Join(basePath, "plant.png"))
+	ss.tileSprites["plantPurple"] = ss.loadImage(filepath.Join(basePath, "plantPurple.png"))
+	ss.tileSprites["cactus"] = ss.loadImage(filepath.Join(basePath, "cactus.png"))
+
+	// Грибы (из Items)
+	ss.tileSprites["mushroomRed"] = ss.loadImage(filepath.Join("assets/Base pack/Items", "mushroomRed.png"))
+	ss.tileSprites["mushroomBrown"] = ss.loadImage(filepath.Join("assets/Base pack/Items", "mushroomBrown.png"))
+
+	// Холмы большие и маленькие
+	ss.tileSprites["hill_large"] = ss.loadImage(filepath.Join(basePath, "hill_large.png"))
+	ss.tileSprites["hill_small"] = ss.loadImage(filepath.Join(basePath, "hill_small.png"))
 
 	// Лёд (из Ice expansion)
 	icePath := "assets/Ice expansion/Tiles"
