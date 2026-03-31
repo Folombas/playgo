@@ -1,18 +1,13 @@
-// Package entity - игровые сущности с компонентной архитектурой (ECS)
-// Go365 Day 91 - Cyber City Runner
+// Package entity - игровые сущности для Sunny Adventure
+// Go365 Day 91 - Доброе сказочное приключение
 package entity
 
 import (
 	"math"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"cyber_city_runner/internal/sprite"
+	"sunny_adventure/internal/sprite"
 )
-
-// Component - базовый интерфейс компонента
-type Component interface {
-	Update(dt float64)
-}
 
 // Transform - компонент позиции и размера
 type Transform struct {
@@ -20,7 +15,6 @@ type Transform struct {
 	Width    float64
 	Height   float64
 	VX, VY   float64
-	Rotation float64
 	ScaleX   float64
 	ScaleY   float64
 	Facing   int // 1 = вправо, -1 = влево
@@ -50,11 +44,6 @@ func (t *Transform) Center() (float64, float64) {
 	return t.X + t.Width/2, t.Y + t.Height/2
 }
 
-// Bounds возвращает прямоугольник коллизии
-func (t *Transform) Bounds() (float64, float64, float64, float64) {
-	return t.X, t.Y, t.Width, t.Height
-}
-
 // SpriteRenderer - компонент отрисовки спрайта
 type SpriteRenderer struct {
 	SpriteSheet *sprite.SpriteSheet
@@ -64,7 +53,6 @@ type SpriteRenderer struct {
 	AnimFrame   int
 	AnimTimer   float64
 	AnimPlaying bool
-	Color       *ebiten.ColorM
 	ScaleX      float64
 	ScaleY      float64
 }
@@ -135,43 +123,7 @@ func (sr *SpriteRenderer) Draw(screen *ebiten.Image, transform *Transform, camer
 	screenY := transform.Y - cameraY - transform.Height
 	opts.GeoM.Translate(screenX, screenY)
 
-	if sr.Color != nil {
-		opts.ColorM = *sr.Color
-	}
-
 	screen.DrawImage(sr.CurrentImg, opts)
-}
-
-// Animator - компонент управления анимациями
-type Animator struct {
-	Animations  map[string]*sprite.Animation
-	CurrentAnim string
-	BlendTime   float64
-	BlendTimer  float64
-}
-
-// NewAnimator создаёт аниматор
-func NewAnimator() *Animator {
-	return &Animator{
-		Animations: make(map[string]*sprite.Animation),
-	}
-}
-
-// AddAnim добавляет анимацию
-func (a *Animator) AddAnim(name string, anim *sprite.Animation) {
-	a.Animations[name] = anim
-}
-
-// Play запускает анимацию
-func (a *Animator) Play(name string) {
-	if _, ok := a.Animations[name]; ok {
-		a.CurrentAnim = name
-	}
-}
-
-// GetCurrentAnim возвращает текущую анимацию
-func (a *Animator) GetCurrentAnim() *sprite.Animation {
-	return a.Animations[a.CurrentAnim]
 }
 
 // Physics - компонент физики
@@ -188,9 +140,9 @@ type Physics struct {
 // NewPhysics создаёт компонент физики
 func NewPhysics() *Physics {
 	return &Physics{
-		Acceleration: 800,
+		Acceleration: 600,
 		Friction:     0.85,
-		Gravity:      1200,
+		Gravity:      1000,
 	}
 }
 
@@ -262,105 +214,67 @@ func (h *Health) IsAlive() bool {
 	return !h.Dead
 }
 
-// CharacterType - тип персонажа
-type CharacterType int
-
-const (
-	CharHacker CharacterType = iota // Хакер 👨‍💻
-	CharRobot                       // Робот 🤖
-	CharNinja                       // Ниндзя 🥷
-)
-
-// CharacterConfig - конфигурация персонажа
-type CharacterConfig struct {
-	Type        CharacterType
-	Name        string
-	Width       float64
-	Height      float64
-	Speed       float64
-	JumpForce   float64
-	MaxHealth   int
-	DashCost    float64
-	Special     string
-	WalkAnim    string
-	JumpAnim    string
-	RunAnim    string
+// Light - солнечная энергия
+type Light struct {
+	Current  float64
+	Max      float64
+	Regen    float64
+	Dimming  float64 // Скорость потери света
 }
 
-// GetCharacterConfig возвращает конфигурацию для типа персонажа
-func GetCharacterConfig(charType CharacterType) *CharacterConfig {
-	switch charType {
-	case CharHacker:
-		return &CharacterConfig{
-			Type:        CharHacker,
-			Name:        "Хакер",
-			Width:       40,
-			Height:      56,
-			Speed:       300,
-			JumpForce:   550,
-			MaxHealth:   100,
-			DashCost:    20,
-			Special:     "Взлом",
-			WalkAnim:    "walk",
-			JumpAnim:    "jump",
-			RunAnim:     "run",
-		}
-	case CharRobot:
-		return &CharacterConfig{
-			Type:        CharRobot,
-			Name:        "Робот",
-			Width:       44,
-			Height:      52,
-			Speed:       250,
-			JumpForce:   480,
-			MaxHealth:   150,
-			DashCost:    25,
-			Special:     "Щит",
-			WalkAnim:    "walk",
-			JumpAnim:    "jump",
-			RunAnim:     "run",
-		}
-	case CharNinja:
-		return &CharacterConfig{
-			Type:        CharNinja,
-			Name:        "Ниндзя",
-			Width:       38,
-			Height:      54,
-			Speed:       380,
-			JumpForce:   620,
-			MaxHealth:   80,
-			DashCost:    15,
-			Special:     "Невидимость",
-			WalkAnim:    "walk",
-			JumpAnim:    "jump",
-			RunAnim:     "run",
-		}
-	default:
-		return GetCharacterConfig(CharHacker)
+// NewLight создаёт компонент света
+func NewLight(max float64) *Light {
+	return &Light{
+		Current: max,
+		Max:     max,
+		Regen:   10,
+		Dimming: 2,
 	}
 }
 
-// Player - сущность игрока
-type Player struct {
-	Transform     *Transform
-	Renderer      *SpriteRenderer
-	Physics       *Physics
-	Health        *Health
-	Animator      *Animator
-	CharacterType CharacterType
-	State         PlayerState
-	Energy        float64
-	MaxEnergy     float64
-	Speed         float64
-	JumpForce     float64
-	DashCooldown  float64
-	Dashing       bool
-	DashTimer     float64
-	JumpCount     int
-	MaxJumps      int
-	Invisible     float64
-	Score         int
+// Update обновляет свет
+func (l *Light) Update(dt float64) {
+	if l.Current < l.Max {
+		l.Current += l.Regen * dt
+		if l.Current > l.Max {
+			l.Current = l.Max
+		}
+	}
 }
+
+// UseLight тратит свет
+func (l *Light) UseLight(amount float64) bool {
+	if l.Current >= amount {
+		l.Current -= amount
+		return true
+	}
+	return false
+}
+
+// Player - Солнышко (игрок)
+type Player struct {
+	Transform   *Transform
+	Renderer    *SpriteRenderer
+	Physics     *Physics
+	Health      *Health
+	Light       *Light
+	State       PlayerState
+	JumpCount   int
+	MaxJumps    int
+	Size        PlayerSize
+	FriendCount int // Количество друзей
+	Score       int
+	ShootTimer  float64
+}
+
+// PlayerSize - размер солнышка
+type PlayerSize int
+
+const (
+	SizeSmall PlayerSize = iota
+	SizeNormal
+	SizeBig
+)
 
 // PlayerState - состояние игрока
 type PlayerState int
@@ -369,46 +283,28 @@ const (
 	PlayerIdle PlayerState = iota
 	PlayerRunning
 	PlayerJumping
-	PlayerDashing
-	PlayerCrouching
+	PlayerHappy
 	PlayerHurt
 )
 
-// NewPlayer создаёт нового игрока
-func NewPlayer(x, y float64, charType CharacterType, ss *sprite.SpriteSheet) *Player {
-	config := GetCharacterConfig(charType)
-
+// NewPlayer создаёт нового игрока (Солнышко)
+func NewPlayer(x, y float64, ss *sprite.SpriteSheet) *Player {
 	p := &Player{
-		Transform:     NewTransform(x, y, config.Width, config.Height),
-		Physics:       NewPhysics(),
-		Health:        NewHealth(config.MaxHealth),
-		Animator:      NewAnimator(),
-		CharacterType: charType,
-		State:         PlayerIdle,
-		Energy:        100,
-		MaxEnergy:     100,
-		Speed:         config.Speed,
-		JumpForce:     config.JumpForce,
-		MaxJumps:      2, // Двойной прыжок
+		Transform: NewTransform(x, y, 48, 48),
+		Physics:   NewPhysics(),
+		Health:    NewHealth(100),
+		Light:     NewLight(100),
+		State:     PlayerIdle,
+		MaxJumps:  2, // Двойной прыжок!
+		Size:      SizeNormal,
 	}
 
 	p.Renderer = NewSpriteRenderer(ss)
 
-	// Загрузка анимаций
-	if config.WalkAnim != "" {
-		if walkAnim := ss.GetPlayerAnim(config.WalkAnim); walkAnim != nil {
-			p.Animator.AddAnim("walk", walkAnim)
-		}
-	}
-	if config.JumpAnim != "" {
-		if jumpAnim := ss.GetPlayerAnim(config.JumpAnim); jumpAnim != nil {
-			p.Animator.AddAnim("jump", jumpAnim)
-		}
-	}
-	if config.RunAnim != "" {
-		if runAnim := ss.GetPlayerAnim(config.RunAnim); runAnim != nil {
-			p.Animator.AddAnim("run", runAnim)
-		}
+	// Загрузка спрайта солнышка
+	if sunSprite := ss.GetItemSprite("star"); sunSprite != nil {
+		// Используем звезду как солнышко
+		p.Renderer.SetSprite(sunSprite)
 	}
 
 	return p
@@ -419,97 +315,49 @@ func (p *Player) Update(dt float64) {
 	p.Transform.Update(dt)
 	p.Physics.Update(dt, p.Transform)
 	p.Health.Update(dt)
+	p.Light.Update(dt)
 	p.Renderer.Update(dt)
 
-	// Восстановление энергии
-	if p.Energy < p.MaxEnergy && !p.Dashing {
-		p.Energy += 15 * dt
-		if p.Energy > p.MaxEnergy {
-			p.Energy = p.MaxEnergy
-		}
-	}
-
-	// Кулдаун рывка
-	if p.DashCooldown > 0 {
-		p.DashCooldown -= dt
-	}
-
-	// Таймер рывка
-	if p.Dashing {
-		p.DashTimer -= dt
-		if p.DashTimer <= 0 {
-			p.Dashing = false
-			p.State = PlayerRunning
-		}
-	}
-
-	// Невидимость
-	if p.Invisible > 0 {
-		p.Invisible -= dt
+	if p.ShootTimer > 0 {
+		p.ShootTimer -= dt
 	}
 
 	p.updateAnimation()
 }
 
-// updateAnimation обновляет анимацию игрока
+// updateAnimation обновляет анимацию
 func (p *Player) updateAnimation() {
-	if p.Health.Dead {
-		return
-	}
-
-	if p.Invisible > 0 && int(p.Invisible*10)%2 == 0 {
+	if p.Health.Invincible > 0 && int(p.Health.Invincible*10)%2 == 0 {
 		return // Мигание
 	}
 
-	if p.Dashing {
-		if runAnim := p.Animator.GetCurrentAnim(); runAnim != nil {
-			p.Renderer.SetAnim(runAnim)
-		}
-	} else if !p.Physics.OnGround {
-		if jumpAnim := p.Animator.GetCurrentAnim(); jumpAnim != nil {
-			p.Renderer.SetAnim(jumpAnim)
-		}
+	if !p.Physics.OnGround {
+		p.State = PlayerJumping
 	} else if p.Physics.IsMoving {
-		if p.Speed > 350 {
-			if runAnim := p.Animator.GetCurrentAnim(); runAnim != nil {
-				p.Renderer.SetAnim(runAnim)
-			}
-		} else {
-			if walkAnim := p.Animator.GetCurrentAnim(); walkAnim != nil {
-				p.Renderer.SetAnim(walkAnim)
-			}
-		}
+		p.State = PlayerRunning
 	} else {
-		if walkAnim := p.Animator.GetCurrentAnim(); walkAnim != nil {
-			p.Renderer.SetAnim(walkAnim)
-		}
+		p.State = PlayerIdle
 	}
 }
 
 // MoveLeft движется влево
 func (p *Player) MoveLeft() {
-	p.Physics.VelocityX = -p.Speed
+	p.Physics.VelocityX = -250
 	p.Transform.Facing = -1
 	p.Physics.IsMoving = true
-	if p.State != PlayerJumping && p.State != PlayerDashing {
-		p.State = PlayerRunning
-	}
 }
 
 // MoveRight движется вправо
 func (p *Player) MoveRight() {
-	p.Physics.VelocityX = p.Speed
+	p.Physics.VelocityX = 250
 	p.Transform.Facing = 1
 	p.Physics.IsMoving = true
-	if p.State != PlayerJumping && p.State != PlayerDashing {
-		p.State = PlayerRunning
-	}
 }
 
-// Jump прыгает (поддерживает двойной прыжок)
+// Jump прыгает
 func (p *Player) Jump() {
 	if p.JumpCount < p.MaxJumps {
-		p.Physics.ApplyJump(p.JumpForce)
+		p.Physics.ApplyJump(500)
 		p.JumpCount++
 		p.State = PlayerJumping
 	}
@@ -520,50 +368,52 @@ func (p *Player) ResetJump() {
 	p.JumpCount = 0
 }
 
-// Dash выполняет рывок
-func (p *Player) Dash() bool {
-	config := GetCharacterConfig(p.CharacterType)
-	if p.Energy >= config.DashCost && p.DashCooldown <= 0 {
-		p.Energy -= config.DashCost
-		p.Dashing = true
-		p.DashTimer = 0.2
-		p.DashCooldown = 1.0
-
-		// Ускорение в направлении движения
-		dashForce := p.Speed * 3
-		if p.Transform.Facing == 1 {
-			p.Physics.VelocityX = dashForce
-		} else {
-			p.Physics.VelocityX = -dashForce
-		}
-		p.State = PlayerDashing
-		return true
-	}
-	return false
-}
-
-// Crouch приседает
-func (p *Player) Crouch() {
-	p.State = PlayerCrouching
-	p.Transform.Height = 30
-}
-
-// Stand встаёт
-func (p *Player) Stand() {
-	config := GetCharacterConfig(p.CharacterType)
-	p.State = PlayerIdle
-	p.Transform.Height = config.Height
-}
-
-// CanShoot может ли стрелять
+// CanShoot может ли стрелять лучиком
 func (p *Player) CanShoot() bool {
-	return p.Health.IsAlive()
+	return p.ShootTimer <= 0 && p.Light.Current >= 10
 }
 
-// ActivateSpecial активирует специальную способность
-func (p *Player) ActivateSpecial() {
-	if p.CharacterType == CharNinja {
-		p.Invisible = 3.0 // 3 секунды невидимости
+// Shoot стреляет лучиком света
+func (p *Player) Shoot() {
+	p.ShootTimer = 0.3
+	p.Light.UseLight(10)
+}
+
+// Grow увеличивается в размере
+func (p *Player) Grow() {
+	if p.Size == SizeSmall {
+		p.Size = SizeNormal
+		p.Transform.Width = 48
+		p.Transform.Height = 48
+		p.Health.Max = 100
+		p.Health.Heal(50)
+	} else if p.Size == SizeNormal {
+		p.Size = SizeBig
+		p.Transform.Width = 64
+		p.Transform.Height = 64
+		p.Health.Max = 150
+		p.Health.Heal(50)
+	}
+}
+
+// Shrink уменьшается
+func (p *Player) Shrink() {
+	if p.Size == SizeBig {
+		p.Size = SizeNormal
+		p.Transform.Width = 48
+		p.Transform.Height = 48
+		p.Health.Max = 100
+		if p.Health.Current > 100 {
+			p.Health.Current = 100
+		}
+	} else if p.Size == SizeNormal {
+		p.Size = SizeSmall
+		p.Transform.Width = 32
+		p.Transform.Height = 32
+		p.Health.Max = 50
+		if p.Health.Current > 50 {
+			p.Health.Current = 50
+		}
 	}
 }
 
@@ -572,84 +422,171 @@ func (p *Player) Draw(screen *ebiten.Image, cameraX, cameraY float64) {
 	p.Renderer.Draw(screen, p.Transform, cameraX, cameraY)
 }
 
-// Enemy - сущность врага
+// FriendType - тип друга
+type FriendType string
+
+const (
+	FriendBee      FriendType = "bee"      // Пчёлка 🐝
+	FriendLadybug  FriendType = "ladybug"  // Божья коровка 🐞
+	FriendFrog     FriendType = "frog"     // Лягушонок 🐸
+	FriendSnail    FriendType = "snail"    // Улитка 🐌
+	FriendGhost    FriendType = "ghost"    // Призрачок 👻
+)
+
+// Friend - друг (маленькое существо)
+type Friend struct {
+	Transform  *Transform
+	Renderer   *SpriteRenderer
+	FriendType FriendType
+	Collected  bool
+	AnimTimer  float64
+	FloatY     float64
+}
+
+// NewFriend создаёт нового друга
+func NewFriend(x, y float64, friendType FriendType, ss *sprite.SpriteSheet) *Friend {
+	f := &Friend{
+		Transform:  NewTransform(x, y, 32, 32),
+		FriendType: friendType,
+	}
+
+	f.Renderer = NewSpriteRenderer(ss)
+
+	// Загрузка спрайта по типу
+	var spriteName string
+	switch friendType {
+	case FriendBee:
+		spriteName = "bee_fly"
+	case FriendLadybug:
+		spriteName = "ladyBug_walk"
+	case FriendFrog:
+		spriteName = "frog"
+	case FriendSnail:
+		spriteName = "snail_walk"
+	case FriendGhost:
+		spriteName = "ghost_normal"
+	}
+
+	if img := ss.GetEnemySprite(spriteName); img != nil {
+		f.Renderer.SetSprite(img)
+	}
+
+	return f
+}
+
+// Update обновляет друга
+func (f *Friend) Update(dt float64) {
+	f.AnimTimer += dt
+	f.FloatY = math.Sin(f.AnimTimer*2) * 3
+}
+
+// Draw отрисовывает друга
+func (f *Friend) Draw(screen *ebiten.Image, cameraX, cameraY float64) {
+	if f.Collected {
+		return
+	}
+
+	origY := f.Transform.Y
+	f.Transform.Y += f.FloatY
+	f.Renderer.Draw(screen, f.Transform, cameraX, cameraY)
+	f.Transform.Y = origY
+}
+
+// EnemyType - тип врага
+type EnemyType string
+
+const (
+	EnemyWind     EnemyType = "wind"     // Ветерок 🌬️
+	EnemyStorm    EnemyType = "storm"    // Тучка ⛈️
+	EnemyBat      EnemyType = "bat"      // Летучая мышь 🦇
+	EnemySpider   EnemyType = "spider"   // Паучок 🕷️
+	EnemySnake    EnemyType = "snake"    // Змейка 🐍
+)
+
+// Enemy - враг
 type Enemy struct {
 	Transform     *Transform
 	Renderer      *SpriteRenderer
 	Physics       *Physics
+	EnemyType     EnemyType
 	Health        *Health
-	Animator      *Animator
-	EnemyType     string
 	Damage        int
 	Speed         float64
-	AttackRange   float64
-	ShootCooldown float64
 	Behavior      EnemyBehavior
 	PatrolStart   float64
 	PatrolEnd     float64
-	DetectionRange float64
-	Alerted       bool
+	Converted     bool // Превращён в друга
+	ShootCooldown float64
 }
 
-// EnemyBehavior - тип поведения врага
+// EnemyBehavior - поведение врага
 type EnemyBehavior int
 
 const (
-	EnemyMelee EnemyBehavior = iota
-	EnemyRanged
+	EnemyPatrol EnemyBehavior = iota
+	EnemyChase
 	EnemyFlying
-	EnemyPatrol
-	EnemyTurret
-	EnemyCamera
+	EnemyStationary
 )
 
 // NewEnemy создаёт нового врага
-func NewEnemy(x, y float64, enemyType string, ss *sprite.SpriteSheet) *Enemy {
+func NewEnemy(x, y float64, enemyType EnemyType, ss *sprite.SpriteSheet) *Enemy {
 	e := &Enemy{
 		Transform: NewTransform(x, y, 40, 40),
 		Physics:   NewPhysics(),
 		Health:    NewHealth(30),
-		Animator:  NewAnimator(),
 		EnemyType: enemyType,
 		Damage:    10,
-		Speed:     80,
-		Behavior:  EnemyMelee,
+		Speed:     60,
+		Behavior:  EnemyPatrol,
 	}
 
 	e.Renderer = NewSpriteRenderer(ss)
 
+	// Настройка по типу врага
 	switch enemyType {
-	case "drone":
+	case EnemyWind:
 		e.Behavior = EnemyFlying
-		e.Health.Max = 25
-		e.Health.Current = 25
-		e.Speed = 90
-		e.Damage = 15
-		e.DetectionRange = 300
-	case "robodog":
-		e.Behavior = EnemyPatrol
-		e.Health.Max = 40
-		e.Health.Current = 40
-		e.Speed = 120
-		e.Damage = 20
-		e.PatrolStart = x - 100
-		e.PatrolEnd = x + 100
-	case "turret":
-		e.Behavior = EnemyTurret
-		e.Health.Max = 50
-		e.Health.Current = 50
-		e.Damage = 25
-		e.DetectionRange = 400
-		e.ShootCooldown = 1.5
-	case "camera":
-		e.Behavior = EnemyCamera
 		e.Health.Max = 20
-		e.Health.Current = 20
-		e.DetectionRange = 350
-		e.Transform.Width = 30
-		e.Transform.Height = 30
-	default:
-		e.Behavior = EnemyMelee
+		e.Speed = 80
+	case EnemyStorm:
+		e.Behavior = EnemyFlying
+		e.Health.Max = 40
+		e.Damage = 20
+		e.Speed = 50
+	case EnemyBat:
+		e.Behavior = EnemyChase
+		e.Health.Max = 25
+		e.Speed = 100
+	case EnemySpider:
+		e.Behavior = EnemyStationary
+		e.Health.Max = 20
+		e.Damage = 15
+	case EnemySnake:
+		e.Behavior = EnemyPatrol
+		e.Health.Max = 30
+		e.Speed = 90
+		e.PatrolStart = x - 80
+		e.PatrolEnd = x + 80
+	}
+
+	// Загрузка спрайта
+	var spriteName string
+	switch enemyType {
+	case EnemyWind:
+		spriteName = "fly_fly"
+	case EnemyStorm:
+		spriteName = "ghost"
+	case EnemyBat:
+		spriteName = "bat_fly"
+	case EnemySpider:
+		spriteName = "spider_walk1"
+	case EnemySnake:
+		spriteName = "snake_walk"
+	}
+
+	if img := ss.GetEnemySprite(spriteName); img != nil {
+		e.Renderer.SetSprite(img)
 	}
 
 	return e
@@ -658,33 +595,22 @@ func NewEnemy(x, y float64, enemyType string, ss *sprite.SpriteSheet) *Enemy {
 // Update обновляет врага
 func (e *Enemy) Update(dt float64, playerX, playerY float64) {
 	e.Transform.Update(dt)
-	e.Physics.Update(dt, e.Transform)
 	e.Health.Update(dt)
 	e.Renderer.Update(dt)
 
 	if e.ShootCooldown > 0 {
 		e.ShootCooldown -= dt
 	}
-
-	// Проверка обнаружения игрока
-	distX := playerX - e.Transform.X
-	distY := playerY - e.Transform.Y
-	distance := math.Sqrt(distX*distX + distY*distY)
-
-	if distance < e.DetectionRange {
-		e.Alerted = true
-	}
 }
 
 // AI обновляет ИИ врага
 func (e *Enemy) AI(dt float64, playerX, playerY float64) {
-	if !e.Health.IsAlive() {
+	if !e.Health.IsAlive() || e.Converted {
 		return
 	}
 
 	distX := playerX - e.Transform.X
-	distY := playerY - e.Transform.Y
-	distance := math.Sqrt(distX*distX + distY*distY)
+	distance := math.Sqrt(distX*distX)
 
 	if distX > 0 {
 		e.Transform.Facing = 1
@@ -693,52 +619,39 @@ func (e *Enemy) AI(dt float64, playerX, playerY float64) {
 	}
 
 	switch e.Behavior {
-	case EnemyMelee:
-		if e.Alerted && distance < 400 {
+	case EnemyPatrol:
+		if e.Transform.X <= e.PatrolStart {
+			e.Physics.VelocityX = e.Speed
+		} else if e.Transform.X >= e.PatrolEnd {
+			e.Physics.VelocityX = -e.Speed
+		}
+
+	case EnemyChase:
+		if distance < 300 {
 			if distX > 0 {
 				e.Physics.VelocityX = e.Speed
 			} else {
 				e.Physics.VelocityX = -e.Speed
 			}
-			e.Physics.IsMoving = true
 		}
 
 	case EnemyFlying:
-		if e.Alerted && distance < 500 {
+		if distance < 400 {
 			if distX > 0 {
 				e.Physics.VelocityX = e.Speed * 0.7
 			} else {
 				e.Physics.VelocityX = -e.Speed * 0.7
 			}
-			e.Physics.IsMoving = true
 		}
-
-	case EnemyPatrol:
-		if e.Alerted && distance < 300 {
-			// Преследование
-			if distX > 0 {
-				e.Physics.VelocityX = e.Speed * 1.2
-			} else {
-				e.Physics.VelocityX = -e.Speed * 1.2
-			}
-		} else {
-			// Патрулирование
-			if e.Transform.X <= e.PatrolStart {
-				e.Physics.VelocityX = e.Speed
-			} else if e.Transform.X >= e.PatrolEnd {
-				e.Physics.VelocityX = -e.Speed
-			}
-		}
-		e.Physics.IsMoving = true
-
-	case EnemyTurret:
-		// Турель не двигается, только стреляет
-		break
-
-	case EnemyCamera:
-		// Камера только обнаруживает
-		break
 	}
+}
+
+// Convert превращает врага в друга
+func (e *Enemy) Convert() {
+	e.Converted = true
+	e.Health.Current = e.Health.Max
+	e.Behavior = EnemyPatrol
+	e.Damage = 0
 }
 
 // Draw отрисовывает врага
@@ -746,32 +659,33 @@ func (e *Enemy) Draw(screen *ebiten.Image, cameraX, cameraY float64) {
 	e.Renderer.Draw(screen, e.Transform, cameraX, cameraY)
 }
 
-// Projectile - снаряд
+// Projectile - лучик света
 type Projectile struct {
 	Transform *Transform
 	Renderer  *SpriteRenderer
 	VelocityX float64
 	VelocityY float64
 	LifeTime  float64
-	IsEnemy   bool
 	Damage    int
 	Active    bool
+	IsFriend  bool // Лучик добра
 }
 
-// NewProjectile создаёт новый снаряд
-func NewProjectile(x, y, vx, vy float64, isEnemy bool, damage int, ss *sprite.SpriteSheet) *Projectile {
+// NewProjectile создаёт новый снаряд (лучик)
+func NewProjectile(x, y, vx, vy float64, damage int, isFriend bool, ss *sprite.SpriteSheet) *Projectile {
 	p := &Projectile{
-		Transform: NewTransform(x, y, 16, 8),
+		Transform: NewTransform(x, y, 24, 8),
 		VelocityX: vx,
 		VelocityY: vy,
-		LifeTime:  2.0,
-		IsEnemy:   isEnemy,
+		LifeTime:  1.5,
 		Damage:    damage,
+		IsFriend:  isFriend,
 		Active:    true,
 	}
 
 	p.Renderer = NewSpriteRenderer(ss)
 
+	// Жёлтый лучик света
 	if bulletSprite := ss.GetItemSprite("coinGold"); bulletSprite != nil {
 		p.Renderer.SetSprite(bulletSprite)
 	}
@@ -783,7 +697,6 @@ func NewProjectile(x, y, vx, vy float64, isEnemy bool, damage int, ss *sprite.Sp
 func (p *Projectile) Update(dt float64) {
 	p.Transform.X += p.VelocityX * dt
 	p.Transform.Y += p.VelocityY * dt
-	p.VelocityY += 200 * dt
 	p.LifeTime -= dt
 
 	if p.LifeTime <= 0 {
@@ -843,6 +756,61 @@ func (i *Item) Draw(screen *ebiten.Image, cameraX, cameraY float64) {
 	i.Transform.Y += i.FloatOffset
 	i.Renderer.Draw(screen, i.Transform, cameraX, cameraY)
 	i.Transform.Y = origY
+}
+
+// Cloud - облачко (коллекционный предмет)
+type Cloud struct {
+	Transform *Transform
+	Renderer  *SpriteRenderer
+	Collected bool
+	AnimTimer float64
+	FloatY    float64
+	CloudNum  int // 1, 2, или 3
+}
+
+// NewCloud создаёт новое облачко
+func NewCloud(x, y float64, cloudNum int, ss *sprite.SpriteSheet) *Cloud {
+	c := &Cloud{
+		Transform: NewTransform(x, y, 48, 32),
+		CloudNum:  cloudNum,
+	}
+
+	c.Renderer = NewSpriteRenderer(ss)
+
+	// Загрузка спрайта облака
+	var spriteName string
+	switch cloudNum {
+	case 1:
+		spriteName = "cloud1"
+	case 2:
+		spriteName = "cloud2"
+	case 3:
+		spriteName = "cloud3"
+	}
+
+	if img := ss.GetItemSprite(spriteName); img != nil {
+		c.Renderer.SetSprite(img)
+	}
+
+	return c
+}
+
+// Update обновляет облачко
+func (c *Cloud) Update(dt float64) {
+	c.AnimTimer += dt
+	c.FloatY = math.Sin(c.AnimTimer) * 2
+}
+
+// Draw отрисовывает облачко
+func (c *Cloud) Draw(screen *ebiten.Image, cameraX, cameraY float64) {
+	if c.Collected {
+		return
+	}
+
+	origY := c.Transform.Y
+	c.Transform.Y += c.FloatY
+	c.Renderer.Draw(screen, c.Transform, cameraX, cameraY)
+	c.Transform.Y = origY
 }
 
 // CheckCollision проверяет коллизию AABB
