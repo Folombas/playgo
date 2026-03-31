@@ -216,33 +216,35 @@ func (g *Game) updateGame() {
 
 // checkChunkTransition проверяет переход в соседний чанк
 func (g *Game) checkChunkTransition() {
-	if g.player == nil {
+	if g.player == nil || g.currentChunk == nil {
 		return
 	}
 
-	currentChunkX := int(g.player.Transform.X) / (g.levelGen.ChunkWidth * g.levelGen.TileSize)
-	if currentChunkX != g.chunkNum && currentChunkX >= 0 {
-		g.chunkNum = currentChunkX
+	newChunkNum := int(g.player.Transform.X) / (g.levelGen.ChunkWidth * g.levelGen.TileSize)
+	if newChunkNum < 0 {
+		newChunkNum = 0
+	}
+	
+	// Если перешли в новый чанк
+	if newChunkNum != g.chunkNum {
+		g.chunkNum = newChunkNum
 		g.currentChunk = g.levelGen.GenerateChunk(g.chunkNum)
 		
-		// Пересоздаём врагов, друзей и т.д. для нового чанка
-		g.enemies = make([]*entity.Enemy, 0)
-		g.friends = make([]*entity.Friend, 0)
-		g.clouds = make([]*entity.Cloud, 0)
+		// Быстрое обновление сущностей без лишних аллокаций
+		g.enemies = g.enemies[:0]
+		g.friends = g.friends[:0]
+		g.clouds = g.clouds[:0]
 		
 		for _, le := range g.currentChunk.Enemies {
 			if le.Active {
-				enemy := entity.NewEnemy(le.X, le.Y, entity.EnemyType(le.Type), g.spriteSheet)
-				g.enemies = append(g.enemies, enemy)
+				g.enemies = append(g.enemies, entity.NewEnemy(le.X, le.Y, entity.EnemyType(le.Type), g.spriteSheet))
 			}
 		}
 		for _, lf := range g.currentChunk.Friends {
-			friend := entity.NewFriend(lf.X, lf.Y, entity.FriendType(lf.Type), g.spriteSheet)
-			g.friends = append(g.friends, friend)
+			g.friends = append(g.friends, entity.NewFriend(lf.X, lf.Y, entity.FriendType(lf.Type), g.spriteSheet))
 		}
 		for _, lc := range g.currentChunk.Clouds {
-			cloud := entity.NewCloud(lc.X, lc.Y, lc.Num, g.spriteSheet)
-			g.clouds = append(g.clouds, cloud)
+			g.clouds = append(g.clouds, entity.NewCloud(lc.X, lc.Y, lc.Num, g.spriteSheet))
 		}
 	}
 }
