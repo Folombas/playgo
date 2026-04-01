@@ -149,26 +149,61 @@
 - ✅ Создан exe-файл `cyber_city_runner.exe`
 - ✅ Работает на Windows
 
+### 10. Интеграция спрайтов
+
+**Добавлены спрайты из PlatformerComplete:**
+
+- **Игрок:** p1_spritesheet.png
+  - stand (66x92)
+  - walk (11 кадров, 72x97)
+  - jump (67x94)
+  - hurt (69x92)
+
+- **Тайлы:** 174 файла
+  - grass, dirt, stone, brick
+  - ladder, door
+  - castle, fence, window
+
+- **Предметы:** 61 файл
+  - coinGold, coinSilver, coinBronze
+  - gemRed, gemBlue, gemGreen, gemYellow
+  - star, mushroom, bomb, key
+
+- **Враги:** 100 файлов
+  - bat_fly, bee_fly, fly_fly
+  - ghost_normal, ghost_hit
+  - slime_walk, snake_walk
+  - spider_walk, ladyBug_walk
+
+**Система загрузки:**
+- `internal/sprite/sprite.go` — загрузка и нарезка спрайтов
+- `SpriteSheet` — хранит все спрайты
+- `SpriteRenderer` — отрисовка с анимациями
+- Векторная графика — fallback если спрайт не найден
+
 ---
 
 ## 📊 Статистика изменений
 
 ### Удалённые файлы
-- `internal/sprite/sprite.go` — спрайты не нужны
+- `internal/sprite/sprite.go` — спрайты не нужны (восстановлен!)
 - `internal/level/level.go` — генерация в game.go
 - `internal/render/renderer.go` — отрисовка в game.go
 
 ### Новые файлы
 - `cmd/game/main.go` — точка входа (~30 строк)
-- `internal/game/game.go` — игровая логика (~1160 строк)
-- `internal/entity/entity.go` — сущности (~1140 строк)
+- `internal/game/game.go` — игровая логика (~1184 строк)
+- `internal/entity/entity.go` — сущности (~1169 строк)
+- `internal/sprite/sprite.go` — загрузка спрайтов (~300 строк)
+- `assets/sprites/*` — 336 файлов спрайтов
 
 ### Сравнение с Go91
 
 | Метрика | Go91 (Sunny) | Go92 (Cyber) | Изменение |
 |---------|--------------|--------------|-----------|
-| Строк кода | ~2785 | ~2330 | -455 |
-| Файлов | 6 | 3 | -3 |
+| Строк кода | ~2785 | ~2650 | -135 |
+| Файлов | 6 | 4 | -2 |
+| Спрайтов | 0 | 336 | +336 |
 | Сущностей | 7 | 8 | +1 |
 | Механик | 4 | 7 | +3 |
 | Стиль | Сказочный | Киберпанк | 🔄 |
