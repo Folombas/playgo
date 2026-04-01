@@ -133,13 +133,14 @@ func (g *Game) startLevel() {
 func (g *Game) generateLevel(levelNum int) {
 	g.levelWidth = 2000 + levelNum*500
 	g.levelHeight = 600
-	
-	// Создаём игрока в начале уровня
-	g.player = entity.NewPlayer(100, float64(g.levelHeight)-150, g.spriteSheet)
-	
-	// Генерация платформ
+
+	// Генерация платформ ПЕРЕД созданием игрока
 	g.platforms = make([]*Platform, 0)
 	g.generateTerrain()
+
+	// Создаём игрока на первом сегменте пола
+	groundY := float64(g.levelHeight) - 20
+	g.player = entity.NewPlayer(100, groundY-64, g.spriteSheet)
 	
 	// Враги
 	g.enemies = make([]*entity.Enemy, 0)
@@ -176,21 +177,30 @@ func (g *Game) generateLevel(levelNum int) {
 func (g *Game) generateTerrain() {
 	// Пол
 	groundY := float64(g.levelHeight) - 20
-	
+
 	// Создаём пол с ямами
 	x := 0.0
 	segmentLength := 200.0
-	
+
+	// Первый сегмент всегда сплошной (для спавна игрока)
+	firstSegLen := 400.0
+	g.platforms = append(g.platforms, &Platform{
+		X: 0, Y: groundY, Width: firstSegLen, Height: 20,
+		Type: "ground",
+		Color: color.RGBA{80, 80, 100, 255},
+	})
+	x += firstSegLen
+
 	for x < float64(g.levelWidth) {
-		// Ямы после первого сегмента
-		if x > 300 && g.rng.Float64() < 0.2 {
+		// Ямы
+		if g.rng.Float64() < 0.2 {
 			gapSize := 80.0 + g.rng.Float64()*80
 			x += gapSize
 			if x >= float64(g.levelWidth) {
 				break
 			}
 		}
-		
+
 		segLen := segmentLength + g.rng.Float64()*100
 		g.platforms = append(g.platforms, &Platform{
 			X: x, Y: groundY, Width: segLen, Height: 20,
