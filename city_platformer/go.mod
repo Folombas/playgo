@@ -1,4 +1,4 @@
-module cyber_city_runner
+module sunny_adventure
 
 go 1.25.0
 
