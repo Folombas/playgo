@@ -1,12 +1,12 @@
-// Sunny Adventure: Путешествие в Облачную Страну
-// Go365 Challenge - День 91 (31 марта 2026)
+// Cyber City Runner - Киберпанк-платформер с паркуром и хакерством
+// Go365 Challenge - День 92 (1 апреля 2026)
 package main
 
 import (
 	"log"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"sunny_adventure/internal/game"
+	"cyber_city_runner/internal/game"
 )
 
 const (
@@ -16,7 +16,7 @@ const (
 
 func init() {
 	ebiten.SetWindowSize(screenWidth, screenHeight)
-	ebiten.SetWindowTitle("🌈 Sunny Adventure - Go365 Day 91")
+	ebiten.SetWindowTitle("🌃 Cyber City Runner - Go365 Day 92")
 	ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
 }
 

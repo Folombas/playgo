@@ -1,24 +1,23 @@
-// Package game - основная игровая логика Sunny Adventure
-// Go365 Day 91 - Доброе сказочное приключение
+// Package game - основная игровая логика Cyber City Runner
+// Go365 Day 92 - Киберпанк-платформер
 package game
 
 import (
 	"image/color"
+	"math"
 	"math/rand"
 	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
-	"sunny_adventure/internal/entity"
-	"sunny_adventure/internal/level"
-	"sunny_adventure/internal/render"
-	"sunny_adventure/internal/sprite"
+	"github.com/hajimehoshi/ebiten/v2/vector"
+	"cyber_city_runner/internal/entity"
 )
 
 const (
 	screenWidth  = 1280
 	screenHeight = 720
-	tileSize     = 64
+	tileSize     = 48
 )
 
 // GameState - состояние игры
@@ -30,112 +29,282 @@ const (
 	StatePaused
 	StateGameOver
 	StateVictory
-	StateLevelComplete
+	StateHacking
 )
 
 // Game - основная игровая структура
 type Game struct {
-	state         GameState
-	player        *entity.Player
-	currentChunk  *level.LevelData
-	enemies       []*entity.Enemy
-	friends       []*entity.Friend
-	clouds        []*entity.Cloud
-	projectiles   []*entity.Projectile
-	particles     []render.Particle
-	cameraX       float64
-	cameraY       float64
-	score         int
-	chunkNum      int // Текущий чанк
-	spriteSheet   *sprite.SpriteSheet
-	renderer      *render.Renderer
-	rng           *rand.Rand
-	levelGen      *level.LevelGenerator
-	jumpPressed   bool
-	shootPressed  bool
-	infiniteWorld bool // Бесконечный мир
+	state       GameState
+	player      *entity.Player
+	platforms   []*Platform
+	enemies     []*entity.Enemy
+	terminals   []*entity.Terminal
+	doors       []*entity.Door
+	items       []*entity.Item
+	cameras     []*entity.Camera
+	turrets     []*entity.Turret
+	particles   []Particle
+	
+	cameraX     float64
+	cameraY     float64
+	
+	score       int
+	level       int
+	alertLevel  int // уровень тревоги
+	
+	rng *rand.Rand
+	
+	// Ввод
+	jumpPressed    bool
+	dashPressed    bool
+	shootPressed   bool
+	hackPressed    bool
+	
+	// Хакерская мини-игра
+	hackTarget    *entity.Terminal
+	hackBarY      float64
+	hackBarSpeed  float64
+	hackZoneStart float64
+	hackZoneEnd   float64
+	
+	// Стрельба
+	projectiles []Projectile
+	
+	// Уровень
+	levelWidth  int
+	levelHeight int
+	exitX       float64
+	exitY       float64
+}
+
+// Platform - платформа
+type Platform struct {
+	X, Y, Width, Height float64
+	Type                string
+	Color               color.Color
+}
+
+// Projectile - снаряд
+type Projectile struct {
+	X, Y, VX, VY float64
+	Width, Height float64
+	Damage       int
+	LifeTime     float64
+	Active       bool
+	FromPlayer   bool
+	Color        color.Color
 }
 
 // NewGame создаёт новую игру
 func NewGame() *Game {
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
-
+	
 	g := &Game{
 		state: StateMenu,
 		rng:   rng,
 	}
-
-	var err error
-	g.spriteSheet, err = sprite.LoadSpriteSheet()
-	if err != nil {
-		println("Warning: sprite loading error:", err.Error())
-	}
-
-	g.renderer = render.NewRenderer(g.spriteSheet)
-	g.levelGen = level.NewLevelGenerator(rng, tileSize, g.spriteSheet)
-
+	
 	return g
 }
 
 // Reset сбрасывает игру
 func (g *Game) Reset() {
-	g.chunkNum = 0
+	g.level = 1
 	g.score = 0
-	g.infiniteWorld = true // Включаем бесконечный мир
-	g.startChunk()
+	g.alertLevel = 0
+	g.startLevel()
 }
 
-// startChunk запускает чанок
-func (g *Game) startChunk() {
-	g.currentChunk = g.levelGen.GenerateChunk(g.chunkNum)
+// startLevel запускает уровень
+func (g *Game) startLevel() {
+	g.generateLevel(g.level)
+}
 
-	groundLevel := float64(g.currentChunk.Height-2)*float64(g.currentChunk.TileSize)
-
-	// Если это первый чанк или смерть - спавним в начале
-	spawnX := 100.0
-	if g.chunkNum > 0 && !g.player.Health.Dead {
-		// Спавним у выхода из предыдущего чанка
-		spawnX = float64(g.chunkNum) * float64(g.levelGen.ChunkWidth) * float64(g.levelGen.TileSize)
-	}
-
-	g.player = entity.NewPlayer(spawnX, groundLevel, g.spriteSheet)
-	g.player.Physics.OnGround = true
-	g.player.Physics.VelocityY = 0
-
+// generateLevel генерирует уровень
+func (g *Game) generateLevel(levelNum int) {
+	g.levelWidth = 2000 + levelNum*500
+	g.levelHeight = 600
+	
+	// Создаём игрока в начале уровня
+	g.player = entity.NewPlayer(100, float64(g.levelHeight)-150)
+	
+	// Генерация платформ
+	g.platforms = make([]*Platform, 0)
+	g.generateTerrain()
+	
+	// Враги
 	g.enemies = make([]*entity.Enemy, 0)
-	g.friends = make([]*entity.Friend, 0)
-	g.clouds = make([]*entity.Cloud, 0)
-	g.projectiles = make([]*entity.Projectile, 0)
-	g.particles = make([]render.Particle, 0)
-	g.cameraX = spawnX - screenWidth/2
+	g.generateEnemies(levelNum)
+	
+	// Терминалы и двери
+	g.terminals = make([]*entity.Terminal, 0)
+	g.doors = make([]*entity.Door, 0)
+	g.generateObstacles(levelNum)
+	
+	// Предметы
+	g.items = make([]*entity.Item, 0)
+	g.generateItems(levelNum)
+	
+	// Камеры и турели
+	g.cameras = make([]*entity.Camera, 0)
+	g.turrets = make([]*entity.Turret, 0)
+	g.generateSecurity(levelNum)
+	
+	// Выход
+	g.exitX = float64(g.levelWidth) - 100
+	g.exitY = float64(g.levelHeight) - 100
+	
+	// Камера
+	g.cameraX = 0
+	g.cameraY = 0
+	
+	// Частицы
+	g.particles = make([]Particle, 0)
+	g.projectiles = make([]Projectile, 0)
+}
 
-	// Создаём врагов из чанка
-	for _, le := range g.currentChunk.Enemies {
-		if le.Active {
-			enemy := entity.NewEnemy(le.X, le.Y, entity.EnemyType(le.Type), g.spriteSheet)
-			g.enemies = append(g.enemies, enemy)
+// generateTerrain генерирует местность
+func (g *Game) generateTerrain() {
+	// Пол
+	groundY := float64(g.levelHeight) - 20
+	
+	// Создаём пол с ямами
+	x := 0.0
+	segmentLength := 200.0
+	
+	for x < float64(g.levelWidth) {
+		// Ямы после первого сегмента
+		if x > 300 && g.rng.Float64() < 0.2 {
+			gapSize := 80.0 + g.rng.Float64()*80
+			x += gapSize
+			if x >= float64(g.levelWidth) {
+				break
+			}
 		}
+		
+		segLen := segmentLength + g.rng.Float64()*100
+		g.platforms = append(g.platforms, &Platform{
+			X: x, Y: groundY, Width: segLen, Height: 20,
+			Type: "ground",
+			Color: color.RGBA{80, 80, 100, 255},
+		})
+		x += segLen
 	}
-
-	// Создаём друзей
-	for _, lf := range g.currentChunk.Friends {
-		friend := entity.NewFriend(lf.X, lf.Y, entity.FriendType(lf.Type), g.spriteSheet)
-		g.friends = append(g.friends, friend)
+	
+	// Платформы
+	numPlatforms := 5 + g.level*2
+	for i := 0; i < numPlatforms; i++ {
+		px := 300.0 + g.rng.Float64()*float64(g.levelWidth-400)
+		py := float64(g.levelHeight) - 150.0 - g.rng.Float64()*250
+		width := 80.0 + g.rng.Float64()*120
+		
+		g.platforms = append(g.platforms, &Platform{
+			X: px, Y: py, Width: width, Height: 20,
+			Type: "platform",
+			Color: color.RGBA{60, 60, 90, 255},
+		})
 	}
+	
+	// Стены для wall run
+	wallX := 400.0 + g.rng.Float64()*float64(g.levelWidth-500)
+	g.platforms = append(g.platforms, &Platform{
+		X: wallX, Y: float64(g.levelHeight) - 300, Width: 20, Height: 200,
+		Type: "wall",
+		Color: color.RGBA{70, 70, 100, 255},
+	})
+}
 
-	// Создаём облачка
-	for _, lc := range g.currentChunk.Clouds {
-		cloud := entity.NewCloud(lc.X, lc.Y, lc.Num, g.spriteSheet)
-		g.clouds = append(g.clouds, cloud)
+// generateEnemies генерирует врагов
+func (g *Game) generateEnemies(levelNum int) {
+	numEnemies := 3 + levelNum
+	types := []entity.EnemyType{entity.EnemySoldier, entity.EnemyDrone, entity.EnemyRobot}
+	if levelNum >= 5 {
+		types = append(types, entity.EnemyElite)
+	}
+	
+	for i := 0; i < numEnemies; i++ {
+		x := 400.0 + g.rng.Float64()*float64(g.levelWidth-500)
+		y := float64(g.levelHeight) - 80
+		
+		// Дроны выше
+		enemyType := types[g.rng.Intn(len(types))]
+		if enemyType == entity.EnemyDrone {
+			y = float64(g.levelHeight) - 200 - g.rng.Float64()*150
+		}
+		
+		enemy := entity.NewEnemy(x, y, enemyType)
+		enemy.PatrolStart = x - 80
+		enemy.PatrolEnd = x + 80
+		g.enemies = append(g.enemies, enemy)
 	}
 }
 
-// Update обновляет игровое состояние
+// generateObstacles генерирует препятствия
+func (g *Game) generateObstacles(levelNum int) {
+	// Двери
+	numDoors := 1 + levelNum/2
+	for i := 0; i < numDoors; i++ {
+		x := 500.0 + float64(i)*400 + g.rng.Float64()*100
+		door := entity.NewDoor(x, float64(g.levelHeight)-140, 80)
+		g.doors = append(g.doors, door)
+		
+		// Терминал рядом
+		termX := x + 70
+		termY := float64(g.levelHeight) - 200
+		terminal := entity.NewTerminal(termX, termY)
+		terminal.LinkedDoor = door
+		g.terminals = append(g.terminals, terminal)
+	}
+}
+
+// generateItems генерирует предметы
+func (g *Game) generateItems(levelNum int) {
+	numItems := 8 + levelNum*2
+	itemTypes := []string{
+		entity.ItemHealth, entity.ItemEnergy, entity.ItemArmor,
+		entity.ItemData, entity.ItemGrenade, entity.ItemEMP,
+	}
+	
+	for i := 0; i < numItems; i++ {
+		x := 200.0 + g.rng.Float64()*float64(g.levelWidth-300)
+		y := float64(g.levelHeight) - 100 - g.rng.Float64()*200
+		
+		itemType := itemTypes[g.rng.Intn(len(itemTypes))]
+		value := 1
+		if itemType == entity.ItemData {
+			value = 100
+		}
+		
+		item := entity.NewItem(x, y, itemType, value)
+		g.items = append(g.items, item)
+	}
+}
+
+// generateSecurity генерирует системы безопасности
+func (g *Game) generateSecurity(levelNum int) {
+	// Камеры
+	numCameras := 2 + levelNum/2
+	for i := 0; i < numCameras; i++ {
+		x := 400.0 + float64(i)*350 + g.rng.Float64()*100
+		y := float64(g.levelHeight) - 250 - g.rng.Float64()*100
+		g.cameras = append(g.cameras, entity.NewCamera(x, y))
+	}
+	
+	// Турели
+	numTurrets := 1 + levelNum/3
+	for i := 0; i < numTurrets; i++ {
+		x := 500.0 + float64(i)*450
+		y := float64(g.levelHeight) - 120
+		g.turrets = append(g.turrets, entity.NewTurret(x, y))
+	}
+}
+
+// Update обновляет игру
 func (g *Game) Update() error {
 	// ESC - пауза/меню
 	if ebiten.IsKeyPressed(ebiten.KeyEscape) {
 		switch g.state {
-		case StatePlaying:
+		case StatePlaying, StateHacking:
 			g.state = StatePaused
 		case StatePaused:
 			g.state = StatePlaying
@@ -143,426 +312,527 @@ func (g *Game) Update() error {
 			return ebiten.Termination
 		}
 	}
-
-	// Меню - старт игры
+	
+	// Меню - старт
 	if g.state == StateMenu && ebiten.IsKeyPressed(ebiten.KeySpace) {
 		g.Reset()
 		g.state = StatePlaying
 	}
-
+	
 	// Game Over - рестарт
 	if g.state == StateGameOver && ebiten.IsKeyPressed(ebiten.KeySpace) {
 		g.Reset()
 		g.state = StatePlaying
 	}
-
-	// Victory - рестарт
+	
+	// Victory - следующий уровень
 	if g.state == StateVictory && ebiten.IsKeyPressed(ebiten.KeySpace) {
-		g.Reset()
+		g.level++
+		g.startLevel()
 		g.state = StatePlaying
 	}
-
+	
 	// Игровой процесс
 	if g.state == StatePlaying {
 		g.updateGame()
 	}
-
+	
+	// Хакерство
+	if g.state == StateHacking {
+		g.updateHacking()
+	}
+	
 	return nil
 }
 
 // updateGame обновляет игровую логику
 func (g *Game) updateGame() {
 	dt := 1.0 / 60.0
-
-	g.handlePlayerInput()
+	
+	g.handleInput()
 	g.player.Update(dt)
 	g.applyPhysics(dt)
 	g.updateCamera()
-	g.collectItems()
-	g.collectFriends()
-	g.collectClouds()
-	g.updateProjectiles(dt)
 	g.updateEnemies(dt)
+	g.updateSecurity(dt)
+	g.collectItems()
+	g.updateProjectiles(dt)
 	g.updateParticles(dt)
-	g.checkChunkTransition() // Проверка перехода в новый чанк
-
-	// Проверка победы (все облачка собраны + выход достигнут)
-	allCloudsCollected := true
-	for _, c := range g.clouds {
-		if !c.Collected {
-			allCloudsCollected = false
-			break
-		}
-	}
-
-	// В бесконечном мире переходим в следующий чанк
-	if g.infiniteWorld && allCloudsCollected && g.currentChunk.CheckExitReach(g.player.Transform.X, g.player.Transform.Y, g.player.Transform.Width, g.player.Transform.Height) {
-		g.chunkNum++
-		g.startChunk()
-		g.score += 100 // Бонус за завершение чанка
-	}
-
-	// Проверка смерти - респавн в начале чанка
-	if g.player.Health.Dead {
-		g.player.Health.Dead = false
-		g.player.Health.Current = g.player.Health.Max
-		g.startChunk()
-		g.score -= 50 // Штраф за смерть
-		if g.score < 0 {
-			g.score = 0
-		}
-	}
-}
-
-// checkChunkTransition проверяет переход в соседний чанк
-func (g *Game) checkChunkTransition() {
-	if g.player == nil || g.currentChunk == nil {
-		return
-	}
-
-	newChunkNum := int(g.player.Transform.X) / (g.levelGen.ChunkWidth * g.levelGen.TileSize)
-	if newChunkNum < 0 {
-		newChunkNum = 0
-	}
+	g.checkWallCollisions()
+	g.checkLevelExit()
 	
-	// Если перешли в новый чанк
-	if newChunkNum != g.chunkNum {
-		g.chunkNum = newChunkNum
-		g.currentChunk = g.levelGen.GenerateChunk(g.chunkNum)
-		
-		// Быстрое обновление сущностей без лишних аллокаций
-		g.enemies = g.enemies[:0]
-		g.friends = g.friends[:0]
-		g.clouds = g.clouds[:0]
-		
-		for _, le := range g.currentChunk.Enemies {
-			if le.Active {
-				g.enemies = append(g.enemies, entity.NewEnemy(le.X, le.Y, entity.EnemyType(le.Type), g.spriteSheet))
-			}
-		}
-		for _, lf := range g.currentChunk.Friends {
-			g.friends = append(g.friends, entity.NewFriend(lf.X, lf.Y, entity.FriendType(lf.Type), g.spriteSheet))
-		}
-		for _, lc := range g.currentChunk.Clouds {
-			g.clouds = append(g.clouds, entity.NewCloud(lc.X, lc.Y, lc.Num, g.spriteSheet))
-		}
+	// Смерть игрока
+	if g.player.Health.Dead {
+		g.state = StateGameOver
 	}
 }
 
-// handlePlayerInput обрабатывает ввод игрока
-func (g *Game) handlePlayerInput() {
-	onLadder := g.checkLadderCollision()
-
+// handleInput обрабатывает ввод
+func (g *Game) handleInput() {
 	// Движение
 	if ebiten.IsKeyPressed(ebiten.KeyA) || ebiten.IsKeyPressed(ebiten.KeyLeft) {
-		if !onLadder {
-			g.player.MoveLeft()
-		}
+		g.player.MoveLeft()
 	}
 	if ebiten.IsKeyPressed(ebiten.KeyD) || ebiten.IsKeyPressed(ebiten.KeyRight) {
-		if !onLadder {
-			g.player.MoveRight()
-		}
+		g.player.MoveRight()
 	}
-
-	// Прыжок (с поддержкой двойного)
-	if (ebiten.IsKeyPressed(ebiten.KeyW) || ebiten.IsKeyPressed(ebiten.KeyUp) || ebiten.IsKeyPressed(ebiten.KeySpace)) && !g.jumpPressed {
+	
+	// Прыжок
+	jumpKey := ebiten.IsKeyPressed(ebiten.KeyW) || ebiten.IsKeyPressed(ebiten.KeyUp) || ebiten.IsKeyPressed(ebiten.KeySpace)
+	if jumpKey && !g.jumpPressed {
 		g.jumpPressed = true
-		g.player.Jump()
-		g.spawnParticles(g.player.Transform.X+24, g.player.Transform.Y+g.player.Transform.Height, 0, -50, 8, color.RGBA{255, 255, 100, 255})
-	} else if !ebiten.IsKeyPressed(ebiten.KeyW) && !ebiten.IsKeyPressed(ebiten.KeyUp) && !ebiten.IsKeyPressed(ebiten.KeySpace) {
+		if g.player.WallSliding {
+			g.player.WallJump()
+			g.spawnParticles(g.player.Transform.X+16, g.player.Transform.Y+g.player.Transform.Height, float64(-g.player.Physics.WallSide)*100, -150, 8, color.RGBA{100, 100, 100, 255})
+		} else {
+			g.player.Jump()
+			if g.player.JumpCount == 1 {
+				// Двойной прыжок - частицы
+				g.spawnParticles(g.player.Transform.X+16, g.player.Transform.Y+g.player.Transform.Height, 0, -100, 10, color.RGBA{0, 255, 255, 255})
+			}
+		}
+	} else if !jumpKey {
 		g.jumpPressed = false
 	}
-
-	// Лазание по лестнице
-	if onLadder {
-		if ebiten.IsKeyPressed(ebiten.KeyW) || ebiten.IsKeyPressed(ebiten.KeyUp) {
-			g.player.Physics.VelocityY = -120
-		} else if ebiten.IsKeyPressed(ebiten.KeyS) || ebiten.IsKeyPressed(ebiten.KeyDown) {
-			g.player.Physics.VelocityY = 120
-		}
+	
+	// Рывок
+	dashKey := ebiten.IsKeyPressed(ebiten.KeyShift)
+	if dashKey && !g.dashPressed {
+		g.dashPressed = true
+		g.player.Dash()
+		g.spawnParticles(g.player.Transform.X+16, g.player.Transform.Y+g.player.Transform.Height/2, float64(-g.player.Transform.Facing)*200, 0, 15, color.RGBA{0, 255, 255, 255})
+	} else if !dashKey {
+		g.dashPressed = false
 	}
-
-	// Выстрел лучиком света
-	if ebiten.IsKeyPressed(ebiten.KeyJ) && !g.shootPressed && g.player.CanShoot() {
+	
+	// Стрельба
+	shootKey := ebiten.IsKeyPressed(ebiten.KeyJ) || ebiten.IsKeyPressed(ebiten.KeyK)
+	if shootKey && !g.shootPressed {
 		g.shootPressed = true
 		g.shoot()
-	} else if !ebiten.IsKeyPressed(ebiten.KeyJ) {
+	} else if !shootKey {
 		g.shootPressed = false
 	}
-
-	// Обнимашки (лечение)
-	if ebiten.IsKeyPressed(ebiten.KeyK) {
-		g.hugFriends()
+	
+	// Хакерство
+	hackKey := ebiten.IsKeyPressed(ebiten.KeyE)
+	if hackKey && !g.hackPressed {
+		g.hackPressed = true
+		g.tryStartHack()
+	} else if !hackKey {
+		g.hackPressed = false
+	}
+	
+	// Граната
+	if ebiten.IsKeyPressed(ebiten.KeyL) {
+		g.throwGrenade()
+	}
+	
+	// EMP
+	if ebiten.IsKeyPressed(ebiten.KeyI) {
+		g.useEMP()
 	}
 }
 
-// shoot производит выстрел лучиком
+// shoot стреляет
 func (g *Game) shoot() {
-	g.player.Shoot()
-
 	dirX := float64(g.player.Transform.Facing)
-	dirY := 0.0
-
-	projectile := entity.NewProjectile(
-		g.player.Transform.X+g.player.Transform.Width/2,
-		g.player.Transform.Y+g.player.Transform.Height/3,
-		dirX*500,
-		dirY,
-		15,
-		true, // Лучик добра!
-		g.spriteSheet,
-	)
-
-	g.projectiles = append(g.projectiles, projectile)
+	
+	proj := Projectile{
+		X: g.player.Transform.X + g.player.Transform.Width/2,
+		Y: g.player.Transform.Y + g.player.Transform.Height/3,
+		VX: dirX * 700,
+		VY: 0,
+		Width: 16, Height: 6,
+		Damage: 15,
+		LifeTime: 1.0,
+		Active: true,
+		FromPlayer: true,
+		Color: color.RGBA{0, 255, 255, 255},
+	}
+	g.projectiles = append(g.projectiles, proj)
 }
 
-// hugFriends обнимает друзей (лечение)
-func (g *Game) hugFriends() {
-	for _, friend := range g.friends {
-		if !friend.Collected && entity.CheckCollision(g.player.Transform, friend.Transform) {
-			friend.Collected = true
-			g.player.Health.Heal(20)
-			g.score += 10
-			g.spawnParticles(friend.Transform.X+16, friend.Transform.Y+16, 0, -50, 10, color.RGBA{255, 100, 200, 255})
-			break
+// throwGrenade бросает гранату
+func (g *Game) throwGrenade() {
+	if !g.player.UseGrenade() {
+		return
+	}
+	
+	dirX := float64(g.player.Transform.Facing)
+	
+	proj := Projectile{
+		X: g.player.Transform.X + g.player.Transform.Width/2,
+		Y: g.player.Transform.Y,
+		VX: dirX * 400,
+		VY: -300,
+		Width: 12, Height: 12,
+		Damage: 50,
+		LifeTime: 1.5,
+		Active: true,
+		FromPlayer: true,
+		Color: color.RGBA{255, 150, 50, 255},
+	}
+	g.projectiles = append(g.projectiles, proj)
+}
+
+// useEMP использует EMP-импульс
+func (g *Game) useEMP() {
+	if !g.player.UseEMP() {
+		return
+	}
+	
+	// Оглушить всех врагов в радиусе
+	empRange := 250.0
+	for _, enemy := range g.enemies {
+		dx := enemy.Transform.X - g.player.Transform.X
+		dy := enemy.Transform.Y - g.player.Transform.Y
+		dist := math.Sqrt(dx*dx + dy*dy)
+		
+		if dist < empRange {
+			enemy.Health.Invincible = 3.0
+			enemy.State = entity.EnemyHurt
 		}
+	}
+	
+	// Отключить турели и камеры
+	for _, turret := range g.turrets {
+		dx := turret.Transform.X - g.player.Transform.X
+		dy := turret.Transform.Y - g.player.Transform.Y
+		dist := math.Sqrt(dx*dx + dy*dy)
+		
+		if dist < empRange {
+			turret.Active = false
+			turret.Color = color.RGBA{100, 100, 100, 255}
+			time.AfterFunc(5*time.Second, func() {
+				if turret != nil && !turret.Hacked {
+					turret.Active = true
+					turret.Color = color.RGBA{200, 100, 100, 255}
+				}
+			})
+		}
+	}
+	
+	// Эффект
+	g.spawnParticles(g.player.Transform.X+16, g.player.Transform.Y+24, 0, 0, 30, color.RGBA{200, 100, 255, 255})
+}
+
+// tryStartHack пытается начать взлом
+func (g *Game) tryStartHack() {
+	// Поиск ближайшего терминала
+	for _, terminal := range g.terminals {
+		dx := terminal.Transform.X - g.player.Transform.X
+		dy := terminal.Transform.Y - g.player.Transform.Y
+		dist := math.Sqrt(dx*dx + dy*dy)
+		
+		if dist < 80 && !terminal.Hacked {
+			g.hackTarget = terminal
+			g.hackBarY = 0
+			g.hackBarSpeed = 100 + g.rng.Float64()*50
+			g.hackZoneStart = 0.3
+			g.hackZoneEnd = 0.5
+			g.state = StateHacking
+			return
+		}
+	}
+}
+
+// updateHacking обновляет мини-игру взлома
+func (g *Game) updateHacking() {
+	dt := 1.0 / 60.0
+	
+	// Движение полоски
+	g.hackBarY += g.hackBarSpeed * dt
+	if g.hackBarY > 1 || g.hackBarY < 0 {
+		g.hackBarSpeed = -g.hackBarSpeed
+	}
+	
+	// Взлом (удержание E)
+	if ebiten.IsKeyPressed(ebiten.KeyE) {
+		// Проверка попадания в зону
+		if g.hackBarY >= g.hackZoneStart && g.hackBarY <= g.hackZoneEnd {
+			g.hackTarget.Hack(dt*0.05, g.player.Hacker.HackSpeed)
+		}
+		
+		if g.hackTarget.Hacked {
+			g.state = StatePlaying
+			g.score += 50
+			g.spawnParticles(g.hackTarget.Transform.X+20, g.hackTarget.Transform.Y+25, 0, -50, 20, color.RGBA{0, 255, 255, 255})
+			g.hackTarget = nil
+		}
+	} else {
+		// Прерывание
+		g.hackTarget.Reset()
+		g.state = StatePlaying
+		g.hackTarget = nil
 	}
 }
 
 // applyPhysics применяет физику
 func (g *Game) applyPhysics(dt float64) {
-	onLadder := g.checkLadderCollision()
-	oldX := g.player.Transform.X
-	oldY := g.player.Transform.Y
-
-	if !onLadder {
-		g.player.Physics.VelocityY += g.player.Physics.Gravity * dt
+	// Гравитация
+	g.player.Physics.VelocityY += g.player.Physics.Gravity * dt
+	
+	// Ограничение скорости
+	if g.player.Physics.VelocityY > 800 {
+		g.player.Physics.VelocityY = 800
 	}
-
-	if !g.player.Physics.IsMoving {
-		g.player.Physics.VelocityX *= g.player.Physics.Friction
-	}
-
+	
 	g.player.Transform.X += g.player.Physics.VelocityX * dt
+	g.checkPlatformCollisions(true)
+	
 	g.player.Transform.Y += g.player.Physics.VelocityY * dt
-
 	g.player.Physics.OnGround = false
-
-	for _, p := range g.currentChunk.Platforms {
-		if !p.Solid {
-			continue
-		}
-
-		if onLadder && g.player.Physics.VelocityY < 0 && p.Type == level.TileLadder {
-			continue
-		}
-
-		if g.checkCollision(g.player.Transform, p) {
-			if g.player.Physics.VelocityY > 0 && oldY+g.player.Transform.Height <= p.Y+20 {
-				g.player.Transform.Y = p.Y - g.player.Transform.Height
-				g.player.Physics.VelocityY = 0
-				g.player.Physics.OnGround = true
-				g.player.ResetJump()
-				if g.player.State != entity.PlayerJumping {
-					g.player.State = entity.PlayerIdle
-				}
-			} else if g.player.Physics.VelocityY < 0 && oldY >= p.Y+p.Height-10 {
-				if !onLadder {
-					g.player.Transform.Y = p.Y + p.Height
-					g.player.Physics.VelocityY = 0
-				}
-			} else if g.player.Physics.VelocityX > 0 && oldX+g.player.Transform.Width <= p.X+10 {
-				g.player.Transform.X = p.X - g.player.Transform.Width
-				g.player.Physics.VelocityX = 0
-			} else if g.player.Physics.VelocityX < 0 && oldX >= p.X+p.Width-10 {
-				g.player.Transform.X = p.X + p.Width
-				g.player.Physics.VelocityX = 0
-			}
+	g.player.WallSliding = false
+	g.checkPlatformCollisions(false)
+	
+	// Wall slide
+	if !g.player.Physics.OnGround && g.player.Physics.WallSide != 0 {
+		if g.player.Physics.VelocityY > 100 {
+			g.player.WallSliding = true
+			g.player.Physics.VelocityY *= 0.5 // Замедление падения
 		}
 	}
-
+	
 	// Границы уровня
 	if g.player.Transform.X < 0 {
 		g.player.Transform.X = 0
+		g.player.Physics.VelocityX = 0
 	}
-	maxX := float64(g.currentChunk.Width*g.currentChunk.TileSize) - g.player.Transform.Width
-	if g.player.Transform.X > maxX {
-		g.player.Transform.X = maxX
+	if g.player.Transform.X > float64(g.levelWidth)-g.player.Transform.Width {
+		g.player.Transform.X = float64(g.levelWidth) - g.player.Transform.Width
+		g.player.Physics.VelocityX = 0
 	}
-
+	
 	// Падение в пропасть
-	if g.player.Transform.Y > float64(g.currentChunk.Height)*float64(tileSize) {
+	if g.player.Transform.Y > float64(g.levelHeight) {
 		g.player.Health.TakeDamage(100)
 	}
+	
+	// Трение
+	if g.player.Physics.OnGround {
+		g.player.Physics.VelocityX *= g.player.Physics.Friction
+	}
+}
+
+// checkPlatformCollisions проверяет коллизии с платформами
+func (g *Game) checkPlatformCollisions(horizontal bool) {
+	playerRect := g.player.Transform
+	
+	for _, platform := range g.platforms {
+		platRect := &entity.Transform{
+			X: platform.X, Y: platform.Y,
+			Width: platform.Width, Height: platform.Height,
+		}
+		
+		if entity.CheckCollision(playerRect, platRect) {
+			if horizontal {
+				// Столкновение по X - стена
+				if g.player.Physics.VelocityX > 0 {
+					g.player.Transform.X = platform.X - g.player.Transform.Width
+				} else if g.player.Physics.VelocityX < 0 {
+					g.player.Transform.X = platform.X + platform.Width
+				}
+				g.player.Physics.VelocityX = 0
+				g.player.Physics.WallSide = 1
+				if g.player.Physics.VelocityX < 0 {
+					g.player.Physics.WallSide = -1
+				}
+			} else {
+				// Столкновение по Y
+				if g.player.Physics.VelocityY > 0 {
+					// Падение вниз
+					g.player.Transform.Y = platform.Y - g.player.Transform.Height
+					g.player.Physics.VelocityY = 0
+					g.player.Physics.OnGround = true
+					g.player.ResetJump()
+				} else if g.player.Physics.VelocityY < 0 {
+					// Прыжок вверх
+					g.player.Transform.Y = platform.Y + platform.Height
+					g.player.Physics.VelocityY = 0
+				}
+			}
+		}
+	}
+}
+
+// checkWallCollisions проверяет коллизии со стенами
+func (g *Game) checkWallCollisions() {
+	// Для wall run
 }
 
 // updateCamera обновляет камеру
 func (g *Game) updateCamera() {
 	targetX := g.player.Transform.X - screenWidth/2
 	targetY := g.player.Transform.Y - screenHeight/2
-
+	
+	// Плавное следование
 	g.cameraX += (targetX - g.cameraX) * 0.1
 	g.cameraY += (targetY - g.cameraY) * 0.1
-
+	
+	// Ограничения
 	if g.cameraX < 0 {
 		g.cameraX = 0
 	}
-	maxCameraX := float64(g.currentChunk.Width*g.currentChunk.TileSize) - screenWidth
-	if g.cameraX > maxCameraX {
-		g.cameraX = maxCameraX
+	if g.cameraX > float64(g.levelWidth)-screenWidth {
+		g.cameraX = float64(g.levelWidth) - screenWidth
 	}
 	if g.cameraY < -100 {
 		g.cameraY = -100
 	}
-	maxCameraY := float64(g.currentChunk.Height*g.currentChunk.TileSize) - screenHeight
-	if g.cameraY > maxCameraY {
-		g.cameraY = maxCameraY
+	if g.cameraY > float64(g.levelHeight)-screenHeight {
+		g.cameraY = float64(g.levelHeight) - screenHeight
 	}
 }
 
-// checkLadderCollision проверяет, находится ли игрок на лестнице
-func (g *Game) checkLadderCollision() bool {
-	playerCenter := g.player.Transform.X + g.player.Transform.Width/2
-	playerBottom := g.player.Transform.Y + g.player.Transform.Height
-
-	for _, platform := range g.currentChunk.Platforms {
-		if platform.Type == level.TileLadder {
-			if playerCenter >= platform.X && playerCenter <= platform.X+platform.Width &&
-				playerBottom >= platform.Y && playerBottom <= platform.Y+platform.Height+10 {
-				return true
+// updateEnemies обновляет врагов
+func (g *Game) updateEnemies(dt float64) {
+	playerX := g.player.Transform.X
+	playerY := g.player.Transform.Y
+	
+	for _, enemy := range g.enemies {
+		enemy.Update(dt, playerX, playerY)
+		
+		// Атака на игрока
+		if damage, canAttack := enemy.Attack(); canAttack {
+			if entity.CheckCollision(g.player.Transform, enemy.Transform) {
+				g.player.Health.TakeDamage(damage)
+				g.spawnParticles(g.player.Transform.X+16, g.player.Transform.Y+24, 0, -50, 10, color.RGBA{255, 50, 50, 255})
 			}
 		}
 	}
-	return false
 }
 
-// collectItems обрабатывает сбор предметов
+// updateSecurity обновляет системы безопасности
+func (g *Game) updateSecurity(dt float64) {
+	playerX := g.player.Transform.X + g.player.Transform.Width/2
+	playerY := g.player.Transform.Y + g.player.Transform.Height/2
+	
+	// Камеры
+	for _, camera := range g.cameras {
+		camera.Update(dt)
+		camera.Alert = camera.CanDetect(playerX, playerY)
+		
+		if camera.Alert {
+			g.alertLevel = 1
+		}
+	}
+	
+	// Турели
+	for _, turret := range g.turrets {
+		turret.Update(dt, playerX, playerY)
+		
+		if turret.CanAttack(playerX, playerY) {
+			g.player.Health.TakeDamage(turret.Attack())
+			g.spawnParticles(g.player.Transform.X+16, g.player.Transform.Y+24, 0, -50, 10, color.RGBA{255, 50, 50, 255})
+		}
+	}
+}
+
+// collectItems собирает предметы
 func (g *Game) collectItems() {
-	for _, item := range g.currentChunk.Items {
+	for _, item := range g.items {
 		if item.Collected {
 			continue
 		}
-		// Создаём временный Transform для проверки коллизии
-		itemTransform := &entity.Transform{
-			X:      item.X,
-			Y:      item.Y,
-			Width:  32,
-			Height: 32,
-		}
-		if entity.CheckCollision(g.player.Transform, itemTransform) {
+		
+		if entity.CheckCollision(g.player.Transform, item.Transform) {
+			item.Collected = true
 			g.collectItem(item)
 		}
 	}
 }
 
-// collectItem обрабатывает сбор одного предмета
-func (g *Game) collectItem(item *level.LevelItem) {
-	item.Collected = true
-
-	switch item.Type {
-	case "coinGold", "coinSilver", "coinBronze":
+// collectItem обрабатывает сбор предмета
+func (g *Game) collectItem(item *entity.Item) {
+	switch item.ItemType {
+	case entity.ItemHealth:
+		g.player.Health.Heal(25)
+	case entity.ItemEnergy:
+		g.player.Energy.Current = g.player.Energy.Max
+	case entity.ItemArmor:
+		g.player.Health.AddArmor(25)
+	case entity.ItemData:
+		g.player.DataChips += item.Value
 		g.score += item.Value
-		g.spawnParticles(item.X+16, item.Y+16, 0, -100, 10, color.RGBA{255, 215, 0, 255})
-	case "gemRed", "gemBlue", "gemGreen", "gemYellow":
-		g.score += item.Value
-		g.spawnParticles(item.X+16, item.Y+16, 0, -100, 15, color.RGBA{100, 200, 255, 255})
-	case "star":
-		g.score += item.Value
-		g.player.Light.Current = g.player.Light.Max
-		g.spawnParticles(item.X+16, item.Y+16, 0, -100, 20, color.RGBA{255, 255, 255, 255})
-	case "mushroomRed", "mushroomBrown":
-		g.player.Grow()
-		g.spawnParticles(item.X+16, item.Y+16, 0, -100, 10, color.RGBA{255, 100, 100, 255})
+	case entity.ItemGrenade:
+		g.player.Grenades++
+	case entity.ItemEMP:
+		g.player.EMPCharges++
 	}
-}
-
-// collectFriends собирает друзей
-func (g *Game) collectFriends() {
-	for _, friend := range g.friends {
-		if !friend.Collected && entity.CheckCollision(g.player.Transform, friend.Transform) {
-			friend.Collected = true
-			g.player.FriendCount++
-			g.score += 25
-			g.spawnParticles(friend.Transform.X+16, friend.Transform.Y+16, 0, -100, 15, color.RGBA{255, 150, 200, 255})
-		}
-	}
-}
-
-// collectClouds собирает облачка
-func (g *Game) collectClouds() {
-	for _, cloud := range g.clouds {
-		if !cloud.Collected && entity.CheckCollision(g.player.Transform, cloud.Transform) {
-			cloud.Collected = true
-			g.score += 50
-			g.spawnParticles(cloud.Transform.X+24, cloud.Transform.Y+16, 0, -50, 20, color.RGBA{200, 200, 255, 255})
-		}
-	}
+	
+	g.spawnParticles(item.Transform.X+12, item.Transform.Y+12, 0, -50, 10, item.Color)
 }
 
 // updateProjectiles обновляет снаряды
 func (g *Game) updateProjectiles(dt float64) {
-	active := make([]*entity.Projectile, 0)
-
+	active := make([]Projectile, 0)
+	
 	for _, p := range g.projectiles {
-		p.Update(dt)
-
-		if p.Active {
-			// Коллизия с врагами (лучики добра превращают врагов в друзей!)
-			for _, enemy := range g.enemies {
-				if !enemy.Converted && entity.CheckCollision(p.Transform, enemy.Transform) {
-					enemy.Health.TakeDamage(p.Damage)
-					p.Active = false
-					g.spawnParticles(p.Transform.X, p.Transform.Y, p.VelocityX*0.2, 0, 8, color.RGBA{255, 255, 100, 255})
-
-					if enemy.Health.Dead && !enemy.Converted {
-						enemy.Convert() // Превратить в друга!
-						g.score += 30
+		if !p.Active {
+			continue
+		}
+		
+		p.X += p.VX * dt
+		p.Y += p.VY * dt
+		p.VY += 300 * dt // Гравитация для гранат
+		p.LifeTime -= dt
+		
+		if p.LifeTime <= 0 {
+			p.Active = false
+			// Взрыв
+			if p.Damage >= 50 {
+				g.spawnParticles(p.X, p.Y, 0, -50, 20, color.RGBA{255, 150, 50, 255})
+				// Урон врагам в радиусе
+				for _, enemy := range g.enemies {
+					dx := enemy.Transform.X - p.X
+					dy := enemy.Transform.Y - p.Y
+					dist := math.Sqrt(dx*dx + dy*dy)
+					if dist < 100 {
+						enemy.TakeDamage(p.Damage)
 					}
+				}
+			}
+			continue
+		}
+		
+		// Коллизия с врагами
+		if p.FromPlayer {
+			for _, enemy := range g.enemies {
+				enemyRect := enemy.Transform
+				if entity.CheckCollision(&entity.Transform{X: p.X, Y: p.Y, Width: p.Width, Height: p.Height}, enemyRect) {
+					enemy.TakeDamage(p.Damage)
+					p.Active = false
+					g.spawnParticles(p.X, p.Y, p.VX*0.2, 0, 8, p.Color)
 					break
 				}
 			}
-
-			// Коллизия с платформами
-			if p.Active {
-				for _, platform := range g.currentChunk.Platforms {
-					if platform.Solid && entity.CheckCollision(p.Transform, &platform.Transform) {
-						p.Active = false
-						g.spawnParticles(p.Transform.X, p.Transform.Y, 0, -50, 3, color.RGBA{255, 255, 200, 255})
-						break
-					}
+		}
+		
+		// Коллизия с платформами
+		if p.Active {
+			for _, platform := range g.platforms {
+				if p.X >= platform.X && p.X <= platform.X+platform.Width &&
+					p.Y >= platform.Y && p.Y <= platform.Y+platform.Height {
+					p.Active = false
+					g.spawnParticles(p.X, p.Y, 0, -50, 5, p.Color)
+					break
 				}
 			}
-
-			if p.Active {
-				active = append(active, p)
-			}
+		}
+		
+		if p.Active {
+			active = append(active, p)
 		}
 	}
-
+	
 	g.projectiles = active
-}
-
-// updateEnemies обновляет врагов
-func (g *Game) updateEnemies(dt float64) {
-	for _, enemy := range g.enemies {
-		enemy.Update(dt, g.player.Transform.X, g.player.Transform.Y)
-		enemy.AI(dt, g.player.Transform.X, g.player.Transform.Y)
-
-		// Коллизия с игроком
-		if !enemy.Converted && entity.CheckCollision(g.player.Transform, enemy.Transform) {
-			if g.player.Health.Invincible <= 0 {
-				g.player.Health.TakeDamage(enemy.Damage)
-				g.spawnParticles(g.player.Transform.X+24, g.player.Transform.Y+24, 0, -100, 10, color.RGBA{255, 50, 50, 255})
-			}
-		}
-	}
 }
 
 // updateParticles обновляет частицы
 func (g *Game) updateParticles(dt float64) {
-	active := make([]render.Particle, 0)
-
+	active := make([]Particle, 0)
+	
 	for i := range g.particles {
 		p := &g.particles[i]
 		p.X += p.VX * dt
@@ -570,130 +840,318 @@ func (g *Game) updateParticles(dt float64) {
 		p.VY += 200 * dt
 		p.Life -= dt * 0.5
 		p.VX *= 0.98
-
+		
 		if p.Life > 0 {
 			active = append(active, *p)
 		}
 	}
-
+	
 	g.particles = active
 }
 
 // spawnParticles создаёт частицы
 func (g *Game) spawnParticles(x, y, vx, vy float64, count int, c color.Color) {
 	for i := 0; i < count; i++ {
-		g.particles = append(g.particles, render.Particle{
-			X:      x,
-			Y:      y,
-			VX:     vx + (g.rng.Float64()-0.5)*100,
-			VY:     vy + (g.rng.Float64()-0.5)*100,
-			Life:   1.0,
-			MaxLife: 1.0,
-			Color:  c,
-			Size:   3 + g.rng.Float64()*4,
+		g.particles = append(g.particles, Particle{
+			X: x, Y: y,
+			VX: vx + (g.rng.Float64()-0.5)*100,
+			VY: vy + (g.rng.Float64()-0.5)*100,
+			Life: 1.0, MaxLife: 1.0,
+			Color: c,
+			Size: 2 + g.rng.Float64()*3,
 		})
 	}
 }
 
-// checkCollision проверяет коллизию
-func (g *Game) checkCollision(transform *entity.Transform, platform *level.Platform) bool {
-	return transform.X < platform.X+platform.Width &&
-		transform.X+transform.Width > platform.X &&
-		transform.Y < platform.Y+platform.Height &&
-		transform.Y+transform.Height > platform.Y
+// checkLevelExit проверяет выход с уровня
+func (g *Game) checkLevelExit() {
+	exitRect := &entity.Transform{
+		X: g.exitX, Y: g.exitY,
+		Width: 60, Height: 80,
+	}
+	
+	if entity.CheckCollision(g.player.Transform, exitRect) {
+		// Проверка, все ли данные собраны
+		if g.player.DataChips >= 100 {
+			g.state = StateVictory
+		}
+	}
+}
+
+// Particle - частица
+type Particle struct {
+	X, Y, VX, VY float64
+	Life, MaxLife float64
+	Color        color.Color
+	Size         float64
 }
 
 // Draw отрисовывает игру
 func (g *Game) Draw(screen *ebiten.Image) {
-	g.renderer.DrawBackground(screen, g.cameraX, g.cameraY, g.chunkNum)
-
-	if g.currentChunk != nil {
-		// Платформы
-		for _, p := range g.currentChunk.Platforms {
-			g.renderer.DrawPlatform(screen, p, g.cameraX, g.cameraY)
-		}
-
-		// Декорации
-		for _, decor := range g.currentChunk.Decors {
-			g.renderer.DrawDecor(screen, decor, g.cameraX, g.cameraY)
-		}
-
-		// Предметы
-		for _, item := range g.currentChunk.Items {
-			if !item.Collected {
-				entityItem := entity.NewItem(item.X, item.Y, item.Type, item.Value, g.spriteSheet)
-				g.renderer.DrawItem(screen, entityItem, g.cameraX, g.cameraY)
-			}
-		}
-
-		// Друзья
-		for _, friend := range g.friends {
-			if !friend.Collected {
-				g.renderer.DrawFriend(screen, friend, g.cameraX, g.cameraY)
-			}
-		}
-
-		// Облачка
-		for _, cloud := range g.clouds {
-			if !cloud.Collected {
-				g.renderer.DrawCloud(screen, cloud, g.cameraX, g.cameraY)
-			}
-		}
-
-		// Враги
-		for _, enemy := range g.enemies {
-			g.renderer.DrawEnemy(screen, enemy, g.cameraX, g.cameraY)
-		}
-
-		// Снаряды
-		for _, p := range g.projectiles {
-			g.renderer.DrawProjectile(screen, p, g.cameraX, g.cameraY)
-		}
-
-		// Игрок
-		if g.player != nil {
-			g.renderer.DrawPlayer(screen, g.player, g.cameraX, g.cameraY)
-		}
-
-		// Выход (если есть)
-		if g.currentChunk.ExitX > 0 {
-			g.renderer.DrawExit(screen, g.currentChunk.ExitX, g.currentChunk.ExitY, g.cameraX, g.cameraY)
+	// Фон
+	g.drawBackground(screen)
+	
+	if g.state == StateMenu {
+		g.drawMenu(screen)
+		return
+	}
+	
+	// Платформы
+	for _, p := range g.platforms {
+		vector.DrawFilledRect(screen, float32(p.X-g.cameraX), float32(p.Y-g.cameraY), float32(p.Width), float32(p.Height), p.Color, false)
+	}
+	
+	// Предметы
+	for _, item := range g.items {
+		item.Draw(screen, g.cameraX, g.cameraY)
+	}
+	
+	// Терминалы
+	for _, terminal := range g.terminals {
+		terminal.Draw(screen, g.cameraX, g.cameraY)
+	}
+	
+	// Двери
+	for _, door := range g.doors {
+		door.Draw(screen, g.cameraX, g.cameraY)
+	}
+	
+	// Камеры
+	for _, camera := range g.cameras {
+		camera.Draw(screen, g.cameraX, g.cameraY)
+	}
+	
+	// Турели
+	for _, turret := range g.turrets {
+		turret.Draw(screen, g.cameraX, g.cameraY)
+	}
+	
+	// Враги
+	for _, enemy := range g.enemies {
+		enemy.Draw(screen, g.cameraX, g.cameraY)
+	}
+	
+	// Снаряды
+	for _, p := range g.projectiles {
+		if p.Active {
+			vector.DrawFilledRect(screen, float32(p.X-g.cameraX), float32(p.Y-g.cameraY), float32(p.Width), float32(p.Height), p.Color, false)
 		}
 	}
-
-	g.renderer.DrawParticles(screen, g.particles, g.cameraX, g.cameraY)
-
-	switch g.state {
-	case StateMenu:
-		g.renderer.DrawMenu(screen)
-	case StatePlaying:
+	
+	// Игрок
+	if g.player != nil {
+		g.player.Draw(screen, g.cameraX, g.cameraY)
+	}
+	
+	// Частицы
+	for _, p := range g.particles {
+		vector.DrawFilledRect(screen, float32(p.X-g.cameraX), float32(p.Y-g.cameraY), float32(p.Size), float32(p.Size), p.Color, false)
+	}
+	
+	// Выход
+	g.drawExit(screen)
+	
+	// HUD
+	if g.state == StatePlaying || g.state == StateHacking {
 		g.drawHUD(screen)
-	case StatePaused:
-		g.drawHUD(screen)
-		g.renderer.DrawPause(screen)
-	case StateGameOver:
-		g.renderer.DrawGameOver(screen, g.score, g.chunkNum)
-	case StateVictory:
-		g.renderer.DrawVictory(screen, g.score, g.player.FriendCount)
+	}
+	
+	// Хакерская мини-игра
+	if g.state == StateHacking {
+		g.drawHacking(screen)
+	}
+	
+	// Пауза
+	if g.state == StatePaused {
+		g.drawPause(screen)
+	}
+	
+	// Game Over
+	if g.state == StateGameOver {
+		g.drawGameOver(screen)
+	}
+	
+	// Victory
+	if g.state == StateVictory {
+		g.drawVictory(screen)
+	}
+}
+
+// drawBackground отрисовывает фон
+func (g *Game) drawBackground(screen *ebiten.Image) {
+	// Градиент неба (тёмный киберпанк)
+	for y := 0; y < screenHeight; y++ {
+		percent := float64(y) / float64(screenHeight)
+		r := uint8(20 + percent*30)
+		g := uint8(20 + percent*20)
+		b := uint8(40 + percent*40)
+		vector.DrawFilledRect(screen, 0, float32(y), screenWidth, 1, color.RGBA{r, g, b, 255}, false)
+	}
+	
+	// Силуэт города на фоне
+	for i := 0; i < 20; i++ {
+		buildingX := float32(i*80 - int(g.cameraX*0.3)%80)
+		buildingHeight := float32(100 + (i*17)%150)
+		vector.DrawFilledRect(screen, buildingX, float32(screenHeight)-buildingHeight, 70, buildingHeight, color.RGBA{30, 30, 50, 255}, false)
+		
+		// Окна
+		for wy := float32(20); wy < buildingHeight-20; wy += 30 {
+			for wx := float32(10); wx < 60; wx += 15 {
+				if (i+int(wy))%3 == 0 {
+					vector.DrawFilledRect(screen, buildingX+wx, float32(screenHeight)-buildingHeight+wy, 8, 15, color.RGBA{200, 200, 100, 200}, false)
+				}
+			}
+		}
+	}
+}
+
+// drawMenu отрисовывает меню
+func (g *Game) drawMenu(screen *ebiten.Image) {
+	title := "CYBER CITY RUNNER"
+	ebitenutil.DebugPrintAt(screen, title, screenWidth/2-150, 150)
+	
+	subtitle := "Go365 Day 92 - Киберпанк-платформер"
+	ebitenutil.DebugPrintAt(screen, subtitle, screenWidth/2-120, 200)
+	
+	instructions := []string{
+		"",
+		"[SPACE] Начать игру",
+		"",
+		"Управление:",
+		"A/D - Бег",
+		"W/Пробел - Прыжок (двойной в воздухе)",
+		"Shift - Рывок",
+		"J/K - Стрельба",
+		"E - Хакерство",
+		"L - Граната",
+		"I - EMP",
+		"",
+		"Цель: Собрать 100 данных и добраться до выхода",
+	}
+	
+	for i, line := range instructions {
+		ebitenutil.DebugPrintAt(screen, line, screenWidth/2-150, 280+i*20)
 	}
 }
 
 // drawHUD отрисовывает интерфейс
 func (g *Game) drawHUD(screen *ebiten.Image) {
-	g.renderer.DrawHUD(
-		screen,
-		g.player.Health.Current,
-		g.player.Health.Max,
-		g.player.Light.Current,
-		g.player.Light.Max,
-		g.score,
-		g.chunkNum,
-		g.currentChunk.Name,
-		g.player.FriendCount,
-		len(g.clouds),
-	)
+	y := 10
+	
+	// Здоровье
+	vector.DrawFilledRect(screen, 10, float32(y), 200, 20, color.RGBA{50, 50, 50, 255}, false)
+	hpPercent := float32(g.player.Health.Current) / float32(g.player.Health.Max)
+	vector.DrawFilledRect(screen, 10, float32(y), 200*hpPercent, 20, color.RGBA{0, 255, 100, 255}, false)
+	ebitenutil.DebugPrintAt(screen, "HP", 220, y)
+	
+	y += 25
+	
+	// Энергия
+	vector.DrawFilledRect(screen, 10, float32(y), 200, 15, color.RGBA{50, 50, 50, 255}, false)
+	energyPercent := float32(g.player.Energy.Current) / float32(g.player.Energy.Max)
+	vector.DrawFilledRect(screen, 10, float32(y), 200*energyPercent, 15, color.RGBA{0, 200, 255, 255}, false)
+	ebitenutil.DebugPrintAt(screen, "NRG", 220, y)
+	
+	y += 25
+	
+	// Броня
+	vector.DrawFilledRect(screen, 10, float32(y), 200, 15, color.RGBA{50, 50, 50, 255}, false)
+	armorPercent := float32(g.player.Health.Armor) / 100.0
+	vector.DrawFilledRect(screen, 10, float32(y), 200*armorPercent, 15, color.RGBA{100, 100, 150, 255}, false)
+	ebitenutil.DebugPrintAt(screen, "ARM", 220, y)
+	
+	y += 30
+	
+	// Данные
+	ebitenutil.DebugPrintAt(screen, "DATA: "+string(rune(g.player.DataChips))+" / 100", 10, y)
+	y += 20
+	
+	// Счёт
+	ebitenutil.DebugPrintAt(screen, "SCORE: "+string(rune(g.score)), 10, y)
+	y += 20
+	
+	// Гранаты
+	ebitenutil.DebugPrintAt(screen, "GRENADES: "+string(rune(g.player.Grenades)), 10, y)
+	y += 20
+	
+	// EMP
+	ebitenutil.DebugPrintAt(screen, "EMP: "+string(rune(g.player.EMPCharges)), 10, y)
+	
+	// Уровень
+	ebitenutil.DebugPrintAt(screen, "LEVEL: "+string(rune(g.level)), screenWidth-100, 10)
+	
+	// Подсказки
+	ebitenutil.DebugPrintAt(screen, "[ESC] Пауза  [Shift] Рывок  [E] Хак  [L] Граната  [I] EMP", 10, screenHeight-30)
+}
 
-	ebitenutil.DebugPrintAt(screen, "[ESC] Пауза  [J] Морковка  [K] Обнимашки  🌍 Бесконечный мир!", 10, screenHeight-30)
+// drawHacking отрисовывает мини-игру взлома
+func (g *Game) drawHacking(screen *ebiten.Image) {
+	// Затемнение фона
+	vector.DrawFilledRect(screen, 0, 0, screenWidth, screenHeight, color.RGBA{0, 0, 0, 150}, false)
+	
+	// Окно взлома
+	hackX := screenWidth/2 - 150
+	hackY := screenHeight/2 - 100
+	vector.DrawFilledRect(screen, float32(hackX), float32(hackY), 300, 200, color.RGBA{20, 20, 40, 255}, false)
+	vector.StrokeRect(screen, float32(hackX), float32(hackY), 300, 200, 2, color.RGBA{0, 255, 255, 255}, false)
+	
+	ebitenutil.DebugPrintAt(screen, "HACKING...", hackX+100, hackY+10)
+	
+	// Зона взлома
+	zoneY := hackY + 60
+	zoneHeight := int((g.hackZoneEnd - g.hackZoneStart) * 100)
+	vector.DrawFilledRect(screen, float32(hackX+20), float32(zoneY)+float32(g.hackZoneStart*100), 260, float32(zoneHeight), color.RGBA{0, 255, 0, 100}, false)
+	
+	// Движущаяся полоска
+	barY := float32(zoneY) + float32(g.hackBarY*100)
+	vector.DrawFilledRect(screen, float32(hackX+20), barY, 260, 3, color.RGBA{255, 255, 0, 255}, false)
+	
+	// Прогресс
+	progressY := hackY + 170
+	progressWidth := g.hackTarget.HackProgress * 260
+	vector.DrawFilledRect(screen, float32(hackX+20), float32(progressY), float32(progressWidth), 15, color.RGBA{0, 255, 255, 255}, false)
+	
+	ebitenutil.DebugPrintAt(screen, "Удерживай E в зелёной зоне!", hackX+50, hackY+130)
+}
+
+// drawPause отрисовывает паузу
+func (g *Game) drawPause(screen *ebiten.Image) {
+	vector.DrawFilledRect(screen, 0, 0, screenWidth, screenHeight, color.RGBA{0, 0, 0, 150}, false)
+	ebitenutil.DebugPrintAt(screen, "ПАУЗА", screenWidth/2-50, screenHeight/2-50)
+	ebitenutil.DebugPrintAt(screen, "[ESC] Продолжить", screenWidth/2-80, screenHeight/2)
+}
+
+// drawGameOver отрисовывает Game Over
+func (g *Game) drawGameOver(screen *ebiten.Image) {
+	vector.DrawFilledRect(screen, 0, 0, screenWidth, screenHeight, color.RGBA{50, 0, 0, 200}, false)
+	ebitenutil.DebugPrintAt(screen, "GAME OVER", screenWidth/2-80, screenHeight/2-50)
+	ebitenutil.DebugPrintAt(screen, "SCORE: "+string(rune(g.score)), screenWidth/2-60, screenHeight/2)
+	ebitenutil.DebugPrintAt(screen, "[SPACE] Рестарт", screenWidth/2-80, screenHeight/2+50)
+}
+
+// drawVictory отрисовывает победу
+func (g *Game) drawVictory(screen *ebiten.Image) {
+	vector.DrawFilledRect(screen, 0, 0, screenWidth, screenHeight, color.RGBA{0, 50, 0, 200}, false)
+	ebitenutil.DebugPrintAt(screen, "УРОВЕНЬ ПРОЙДЕН!", screenWidth/2-100, screenHeight/2-50)
+	ebitenutil.DebugPrintAt(screen, "DATA: "+string(rune(g.player.DataChips)), screenWidth/2-60, screenHeight/2)
+	ebitenutil.DebugPrintAt(screen, "[SPACE] Следующий уровень", screenWidth/2-120, screenHeight/2+50)
+}
+
+// drawExit отрисовывает выход
+func (g *Game) drawExit(screen *ebiten.Image) {
+	x := g.exitX - g.cameraX
+	y := g.exitY - g.cameraY
+	
+	// Портал выхода
+	vector.DrawFilledRect(screen, float32(x), float32(y), 60, 80, color.RGBA{0, 255, 0, 100}, false)
+	vector.StrokeRect(screen, float32(x), float32(y), 60, 80, 3, color.RGBA{0, 255, 0, 255}, false)
+	
+	// Мигание
+	if int(time.Now().UnixMilli()/200)%2 == 0 {
+		vector.DrawFilledRect(screen, float32(x+10), float32(y+10), 40, 60, color.RGBA{0, 255, 0, 50}, false)
+	}
+	
+	ebitenutil.DebugPrintAt(screen, "EXIT", int(x)+15, int(y)-20)
 }
 
 // Layout возвращает размер экрана
