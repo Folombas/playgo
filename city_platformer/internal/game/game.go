@@ -12,6 +12,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"github.com/hajimehoshi/ebiten/v2/vector"
 	"cyber_city_runner/internal/entity"
+	"cyber_city_runner/internal/sprite"
 )
 
 const (
@@ -50,9 +51,10 @@ type Game struct {
 	
 	score       int
 	level       int
-	alertLevel  int // уровень тревоги
+	alertLevel  int
 	
 	rng *rand.Rand
+	spriteSheet *sprite.SpriteSheet
 	
 	// Ввод
 	jumpPressed    bool
@@ -104,6 +106,13 @@ func NewGame() *Game {
 		rng:   rng,
 	}
 	
+	// Загрузка спрайтов
+	var err error
+	g.spriteSheet, err = sprite.LoadSpriteSheet()
+	if err != nil {
+		println("Warning: sprite sheet loading error:", err.Error())
+	}
+	
 	return g
 }
 
@@ -126,7 +135,7 @@ func (g *Game) generateLevel(levelNum int) {
 	g.levelHeight = 600
 	
 	// Создаём игрока в начале уровня
-	g.player = entity.NewPlayer(100, float64(g.levelHeight)-150)
+	g.player = entity.NewPlayer(100, float64(g.levelHeight)-150, g.spriteSheet)
 	
 	// Генерация платформ
 	g.platforms = make([]*Platform, 0)
@@ -232,7 +241,7 @@ func (g *Game) generateEnemies(levelNum int) {
 			y = float64(g.levelHeight) - 200 - g.rng.Float64()*150
 		}
 		
-		enemy := entity.NewEnemy(x, y, enemyType)
+		enemy := entity.NewEnemy(x, y, enemyType, g.spriteSheet)
 		enemy.PatrolStart = x - 80
 		enemy.PatrolEnd = x + 80
 		g.enemies = append(g.enemies, enemy)
@@ -275,7 +284,7 @@ func (g *Game) generateItems(levelNum int) {
 			value = 100
 		}
 		
-		item := entity.NewItem(x, y, itemType, value)
+		item := entity.NewItem(x, y, itemType, value, g.spriteSheet)
 		g.items = append(g.items, item)
 	}
 }
@@ -500,14 +509,12 @@ func (g *Game) useEMP() {
 		dx := turret.Transform.X - g.player.Transform.X
 		dy := turret.Transform.Y - g.player.Transform.Y
 		dist := math.Sqrt(dx*dx + dy*dy)
-		
+
 		if dist < empRange {
 			turret.Active = false
-			turret.Color = color.RGBA{100, 100, 100, 255}
 			time.AfterFunc(5*time.Second, func() {
 				if turret != nil && !turret.Hacked {
 					turret.Active = true
-					turret.Color = color.RGBA{200, 100, 100, 255}
 				}
 			})
 		}
@@ -551,7 +558,7 @@ func (g *Game) updateHacking() {
 	if ebiten.IsKeyPressed(ebiten.KeyE) {
 		// Проверка попадания в зону
 		if g.hackBarY >= g.hackZoneStart && g.hackBarY <= g.hackZoneEnd {
-			g.hackTarget.Hack(dt*0.05, g.player.Hacker.HackSpeed)
+			g.hackTarget.Hack(dt*0.05, 0.5)
 		}
 		
 		if g.hackTarget.Hacked {
@@ -760,8 +767,24 @@ func (g *Game) collectItem(item *entity.Item) {
 	case entity.ItemEMP:
 		g.player.EMPCharges++
 	}
-	
-	g.spawnParticles(item.Transform.X+12, item.Transform.Y+12, 0, -50, 10, item.Color)
+
+	// Цвет частиц по типу предмета
+	particleColor := color.RGBA{255, 255, 255, 255}
+	switch item.ItemType {
+	case entity.ItemHealth:
+		particleColor = color.RGBA{255, 50, 50, 255}
+	case entity.ItemEnergy:
+		particleColor = color.RGBA{50, 200, 255, 255}
+	case entity.ItemArmor:
+		particleColor = color.RGBA{100, 100, 150, 255}
+	case entity.ItemData:
+		particleColor = color.RGBA{0, 255, 0, 255}
+	case entity.ItemGrenade:
+		particleColor = color.RGBA{255, 150, 50, 255}
+	case entity.ItemEMP:
+		particleColor = color.RGBA{200, 100, 255, 255}
+	}
+	g.spawnParticles(item.Transform.X+12, item.Transform.Y+12, 0, -50, 10, particleColor)
 }
 
 // updateProjectiles обновляет снаряды

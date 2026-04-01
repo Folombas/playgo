@@ -1,347 +1,300 @@
-// Package sprite - загрузка ВСЕХ спрайтов из PlatformerComplete
-// Go365 Day 91 - Sunny Adventure
+// Package sprite - загрузка и управление спрайтами
+// Go365 Day 92 - Cyber City Runner
 package sprite
 
 import (
 	"fmt"
 	"image"
+	"image/color"
 	_ "image/png"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// Animation - анимация спрайта
-type Animation struct {
-	Frames    []*ebiten.Image
-	FrameTime float64
-	Loop      bool
-	Name      string
-}
-
-// SpriteSheet - коллекция ВСЕХ спрайтов
+// SpriteSheet хранит все загруженные спрайты
 type SpriteSheet struct {
-	playerSprites  map[string]*ebiten.Image
-	playerAnims    map[string]*Animation
-	enemySprites   map[string]*ebiten.Image
-	enemyAnims     map[string]*Animation
-	itemSprites    map[string]*ebiten.Image
-	backgrounds    map[string]*ebiten.Image
-	tileSprites    map[string]*ebiten.Image
-	hudSprites     map[string]*ebiten.Image
+	// Игрок
+	PlayerStand *ebiten.Image
+	PlayerWalk  []*ebiten.Image
+	PlayerJump  *ebiten.Image
+	PlayerHurt  *ebiten.Image
+
+	// Тайлы
+	Tiles map[string]*ebiten.Image
+
+	// Предметы
+	Items map[string]*ebiten.Image
+
+	// Враги
+	Enemies map[string]*ebiten.Image
+
+	// Фон
+	Background *ebiten.Image
 }
 
-// LoadSpriteSheet загружает ВСЕ спрайты
+// LoadSpriteSheet загружает все спрайты из папки assets/sprites
 func LoadSpriteSheet() (*SpriteSheet, error) {
 	ss := &SpriteSheet{
-		playerSprites: make(map[string]*ebiten.Image),
-		playerAnims:   make(map[string]*Animation),
-		enemySprites:  make(map[string]*ebiten.Image),
-		enemyAnims:    make(map[string]*Animation),
-		itemSprites:   make(map[string]*ebiten.Image),
-		backgrounds:   make(map[string]*ebiten.Image),
-		tileSprites:   make(map[string]*ebiten.Image),
-		hudSprites:    make(map[string]*ebiten.Image),
+		Tiles:   make(map[string]*ebiten.Image),
+		Items:   make(map[string]*ebiten.Image),
+		Enemies: make(map[string]*ebiten.Image),
 	}
 
-	ss.loadPlayerSprites()
-	ss.loadEnemySprites()
-	ss.loadItemSprites()
-	ss.loadBackgrounds()
-	ss.loadTileSprites()
-	ss.loadHUDSprites()
+	basePath := "assets/sprites"
+
+	// Загрузка спрайта игрока
+	if err := ss.loadPlayerSprites(basePath); err != nil {
+		fmt.Println("Warning: player sprite error:", err)
+	}
+
+	// Загрузка тайлов
+	if err := ss.loadTiles(basePath); err != nil {
+		fmt.Println("Warning: tiles error:", err)
+	}
+
+	// Загрузка предметов
+	if err := ss.loadItems(basePath); err != nil {
+		fmt.Println("Warning: items error:", err)
+	}
+
+	// Загрузка врагов
+	if err := ss.loadEnemies(basePath); err != nil {
+		fmt.Println("Warning: enemies error:", err)
+	}
 
 	return ss, nil
 }
 
-// loadPlayerSprites - ВСЕ спрайты игрока
-func (ss *SpriteSheet) loadPlayerSprites() {
-	basePath := "assets/Base pack/Player"
-
-	// Статичные спрайты p1, p2, p3
-	for _, p := range []string{"p1", "p2", "p3"} {
-		ss.playerSprites[p+"_stand"] = ss.loadImage(filepath.Join(basePath, p+"_stand.png"))
-		ss.playerSprites[p+"_jump"] = ss.loadImage(filepath.Join(basePath, p+"_jump.png"))
-		ss.playerSprites[p+"_duck"] = ss.loadImage(filepath.Join(basePath, p+"_duck.png"))
-		ss.playerSprites[p+"_hurt"] = ss.loadImage(filepath.Join(basePath, p+"_hurt.png"))
-		ss.playerSprites[p+"_front"] = ss.loadImage(filepath.Join(basePath, p+"_front.png"))
-
-		// Анимации ходьбы
-		walkPath := filepath.Join(basePath, p+"_walk", "PNG")
-		walkFrames := make([]*ebiten.Image, 0)
-		for i := 1; i <= 11; i++ {
-			frame := ss.loadImage(filepath.Join(walkPath, fmt.Sprintf("%s_walk%02d.png", p, i)))
-			if frame != nil {
-				walkFrames = append(walkFrames, frame)
-			}
-		}
-		if len(walkFrames) > 0 {
-			ss.playerAnims[p+"_walk"] = &Animation{
-				Frames:    walkFrames,
-				FrameTime: 0.1,
-				Loop:      true,
-				Name:      p + "_walk",
-			}
-		}
+// loadPlayerSprites загружает спрайты игрока
+func (ss *SpriteSheet) loadPlayerSprites(basePath string) error {
+	// Загрузка спрайтшита
+	spriteSheetPath := filepath.Join(basePath, "p1_spritesheet.png")
+	img, err := loadEbitenImage(spriteSheetPath)
+	if err != nil {
+		return err
 	}
 
-	ss.playerAnims["walk"] = ss.playerAnims["p1_walk"]
-	ss.playerAnims["run"] = ss.playerAnims["p1_walk"]
+	// Нарезка спрайтов согласно p1_spritesheet.txt
+	// p1_stand = 67 196 66 92
+	ss.PlayerStand = cropImage(img, 67, 196, 66, 92)
+
+	// p1_jump = 438 93 67 94
+	ss.PlayerJump = cropImage(img, 438, 93, 67, 94)
+
+	// p1_hurt = 438 0 69 92
+	ss.PlayerHurt = cropImage(img, 438, 0, 69, 92)
+
+	// Анимация walk (11 кадров)
+	// p1_walk01-11 = 72x97
+	ss.PlayerWalk = make([]*ebiten.Image, 0, 11)
+	walkFrames := [][4]int{
+		{0, 0, 72, 97},
+		{73, 0, 72, 97},
+		{146, 0, 72, 97},
+		{0, 98, 72, 97},
+		{73, 98, 72, 97},
+		{146, 98, 72, 97},
+		{219, 0, 72, 97},
+		{292, 0, 72, 97},
+		{219, 98, 72, 97},
+		{365, 0, 72, 97},
+		{292, 98, 72, 97},
+	}
+
+	for _, frame := range walkFrames {
+		ss.PlayerWalk = append(ss.PlayerWalk, cropImage(img, frame[0], frame[1], frame[2], frame[3]))
+	}
+
+	return nil
 }
 
-// loadEnemySprites - ВСЕ спрайты врагов
-func (ss *SpriteSheet) loadEnemySprites() {
-	basePath := "assets/Base pack/Enemies"
-	extraPath := "assets/Extra animations and enemies/Enemy sprites"
+// loadTiles загружает тайлы
+func (ss *SpriteSheet) loadTiles(basePath string) error {
+	tilesPath := filepath.Join(basePath, "Tiles")
 
-	// Base pack враги
-	enemies := []string{
-		"blockerBody", "blockerMad", "blockerSad",
-		"fishDead", "fishSwim1", "fishSwim2",
-		"flyDead", "flyFly1", "flyFly2",
-		"pokerMad", "pokerSad",
-		"slimeDead", "slimeWalk1", "slimeWalk2",
-		"snailShell", "snailShell_upsidedown", "snailWalk1", "snailWalk2",
-	}
-	for _, e := range enemies {
-		ss.enemySprites[e] = ss.loadImage(filepath.Join(basePath, e+".png"))
+	// Загрузка основных тайлов
+	tileFiles := []string{
+		"grass.png", "grassMid.png", "grassLeft.png", "grassRight.png",
+		"dirt.png", "dirtMid.png", "dirtLeft.png", "dirtRight.png",
+		"stone.png", "stoneMid.png", "stoneLeft.png", "stoneRight.png",
+		"brickWall.png", "castle.png", "castleMid.png",
+		"ladder_mid.png", "ladder_top.png",
+		"box.png", "boxEmpty.png",
+		"door_closedMid.png", "door_openMid.png",
+		"signExit.png",
 	}
 
-	// Анимации
-	ss.enemyAnims["slimeWalk"] = &Animation{
-		Frames:    []*ebiten.Image{ss.enemySprites["slimeWalk1"], ss.enemySprites["slimeWalk2"]},
-		FrameTime: 0.15,
-		Loop:      true,
-	}
-	ss.enemyAnims["fishSwim"] = &Animation{
-		Frames:    []*ebiten.Image{ss.enemySprites["fishSwim1"], ss.enemySprites["fishSwim2"]},
-		FrameTime: 0.15,
-		Loop:      true,
-	}
-	ss.enemyAnims["flyFly"] = &Animation{
-		Frames:    []*ebiten.Image{ss.enemySprites["flyFly1"], ss.enemySprites["flyFly2"]},
-		FrameTime: 0.1,
-		Loop:      true,
-	}
-	ss.enemyAnims["snailWalk"] = &Animation{
-		Frames:    []*ebiten.Image{ss.enemySprites["snailWalk1"], ss.enemySprites["snailWalk2"]},
-		FrameTime: 0.2,
-		Loop:      true,
-	}
-
-	// Extra враги
-	extraEnemies := []string{
-		"bee", "bee_fly", "bee_dead", "bee_hit",
-		"ladyBug", "ladyBug_walk", "ladyBug_hit", "ladyBug_fly",
-		"frog", "frog_leap", "frog_dead", "frog_hit",
-		"ghost", "ghost_normal", "ghost_dead", "ghost_hit",
-		"bat", "bat_fly", "bat_dead", "bat_hit", "bat_hang",
-		"spider", "spider_walk1", "spider_walk2", "spider_dead", "spider_hit",
-		"snake", "snake_walk", "snake_dead", "snake_hit",
-		"worm", "worm_walk", "worm_dead", "worm_hit",
-		"fishGreen", "fishGreen_swim", "fishGreen_dead", "fishGreen_hit",
-		"fishPink", "fishPink_swim", "fishPink_dead", "fishPink_hit",
-		"slime", "slime_walk", "slime_dead", "slime_hit", "slime_squashed",
-		"slimeBlue", "slimeBlue_blue", "slimeBlue_dead", "slimeBlue_hit", "slimeBlue_squashed",
-		"slimeGreen", "slimeGreen_walk", "slimeGreen_dead", "slimeGreen_hit", "slimeGreen_squashed",
-		"snakeLava", "snakeLava_ani", "snakeLava_dead", "snakeLava_hit",
-		"snakeSlime", "snakeSlime_ani", "snakeSlime_dead", "snakeSlime_hit",
-		"spinner", "spinner_spin", "spinner_dead", "spinner_hit",
-		"spinnerHalf", "spinnerHalf_spin", "spinnerHalf_dead", "spinnerHalf_hit",
-		"mouse", "mouse_walk", "mouse_dead", "mouse_hit",
-		"piranha", "piranha_down", "piranha_dead", "piranha_hit",
-		"barnacle", "barnacle_bite", "barnacle_dead", "barnacle_hit",
-		"grassBlock", "grassBlock_jump", "grassBlock_dead", "grassBlock_hit",
-	}
-	for _, e := range extraEnemies {
-		ss.enemySprites[e] = ss.loadImage(filepath.Join(extraPath, e+".png"))
-	}
-}
-
-// loadItemSprites - ВСЕ спрайты предметов
-func (ss *SpriteSheet) loadItemSprites() {
-	basePath := "assets/Base pack/Items"
-
-	// Все предметы
-	items := []string{
-		"coinBronze", "coinGold", "coinSilver",
-		"gemBlue", "gemGreen", "gemRed", "gemYellow",
-		"star", "bomb", "bombFlash",
-		"mushroomRed", "mushroomBrown",
-		"keyBlue", "keyGreen", "keyRed", "keyYellow",
-		"flagBlue", "flagBlue2", "flagBlueHanging",
-		"flagGreen", "flagGreen2", "flagGreenHanging",
-		"flagRed", "flagRed2", "flagRedHanging",
-		"flagYellow", "flagYellow2", "flagYellowHanging",
-		"cloud1", "cloud2", "cloud3",
-		"bush", "plant", "plantPurple", "cactus", "rock",
-		"spikes", "springboardUp", "springboardDown",
-		"buttonBlue", "buttonBlue_pressed",
-		"buttonGreen", "buttonGreen_pressed",
-		"buttonRed", "buttonRed_pressed",
-		"buttonYellow", "buttonYellow_pressed",
-		"switchLeft", "switchMid", "switchRight",
-		"weight", "weightChained", "chain",
-		"fireball", "particleBrick1a", "particleBrick1b",
-		"particleBrick2a", "particleBrick2b",
-		"snowhill",
-	}
-	for _, item := range items {
-		ss.itemSprites[item] = ss.loadImage(filepath.Join(basePath, item+".png"))
-	}
-}
-
-// loadBackgrounds - ВСЕ фоны
-func (ss *SpriteSheet) loadBackgrounds() {
-	// Base фоны
-	ss.backgrounds["bg"] = ss.loadImage("assets/Base pack/bg.png")
-	ss.backgrounds["bg_castle"] = ss.loadImage("assets/Base pack/bg_castle.png")
-
-	// Mushroom expansion фоны
-	mushroomBg := "assets/Mushroom expansion/Backgrounds"
-	ss.backgrounds["bg_grasslands"] = ss.loadImage(filepath.Join(mushroomBg, "bg_grasslands.png"))
-	ss.backgrounds["bg_castle"] = ss.loadImage(filepath.Join(mushroomBg, "bg_castle.png"))
-	ss.backgrounds["bg_shroom"] = ss.loadImage(filepath.Join(mushroomBg, "bg_shroom.png"))
-	ss.backgrounds["bg_desert"] = ss.loadImage(filepath.Join(mushroomBg, "bg_desert.png"))
-}
-
-// loadTileSprites - ВСЕ тайлы
-func (ss *SpriteSheet) loadTileSprites() {
-	basePath := "assets/Base pack/Tiles"
-
-	// Загружаем ВСЕ файлы PNG из папки Tiles
-	tileFiles, _ := filepath.Glob(filepath.Join(basePath, "*.png"))
 	for _, file := range tileFiles {
-		name := strings.TrimSuffix(filepath.Base(file), ".png")
-		ss.tileSprites[name] = ss.loadImage(file)
+		path := filepath.Join(tilesPath, file)
+		tile, err := loadEbitenImage(path)
+		if err != nil {
+			continue
+		}
+		name := file[:len(file)-4] // без .png
+		ss.Tiles[name] = tile
 	}
 
-	// Ice expansion
-	icePath := "assets/Ice expansion/Tiles"
-	iceFiles, _ := filepath.Glob(filepath.Join(icePath, "*.png"))
-	for _, file := range iceFiles {
-		name := "ice_" + strings.TrimSuffix(filepath.Base(file), ".png")
-		ss.tileSprites[name] = ss.loadImage(file)
-	}
-
-	// Candy expansion
-	candyPath := "assets/Candy expansion/Tiles"
-	candyFiles, _ := filepath.Glob(filepath.Join(candyPath, "*.png"))
-	for _, file := range candyFiles {
-		name := "candy_" + strings.TrimSuffix(filepath.Base(file), ".png")
-		ss.tileSprites[name] = ss.loadImage(file)
-	}
-
-	// Buildings expansion
-	buildPath := "assets/Buildings expansion/Tiles"
-	buildFiles, _ := filepath.Glob(filepath.Join(buildPath, "*.png"))
-	for _, file := range buildFiles {
-		name := "build_" + strings.TrimSuffix(filepath.Base(file), ".png")
-		ss.tileSprites[name] = ss.loadImage(file)
-	}
+	return nil
 }
 
-// loadHUDSprites - ВСЕ спрайты HUD
-func (ss *SpriteSheet) loadHUDSprites() {
-	hudPath := "assets/Base pack/HUD"
+// loadItems загружает предметы
+func (ss *SpriteSheet) loadItems(basePath string) error {
+	itemsPath := filepath.Join(basePath, "items")
 
-	// Все HUD элементы
-	hudFiles := []string{
-		"hud_0", "hud_1", "hud_2", "hud_3", "hud_4",
-		"hud_5", "hud_6", "hud_7", "hud_8", "hud_9",
-		"hud_x", "hud_coins",
-		"hud_heartEmpty", "hud_heartFull", "hud_heartHalf",
-		"hud_gem_blue", "hud_gem_green", "hud_gem_red", "hud_gem_yellow",
-		"hud_keyBlue", "hud_keyBlue_disabled",
-		"hud_keyGreen", "hud_keyGreem_disabled",
-		"hud_keyRed", "hud_keyRed_disabled",
-		"hud_keyYellow", "hud_keyYellow_disabled",
-		"hud_p1", "hud_p1Alt",
-		"hud_p2", "hud_p2Alt",
-		"hud_p3", "hud_p3Alt",
+	itemFiles := []string{
+		"coinGold.png", "coinSilver.png", "coinBronze.png",
+		"gemRed.png", "gemBlue.png", "gemGreen.png", "gemYellow.png",
+		"star.png", "mushroomRed.png", "mushroomBrown.png",
+		"bomb.png", "keyBlue.png", "keyGreen.png", "keyRed.png",
 	}
-	for _, h := range hudFiles {
-		ss.hudSprites[h] = ss.loadImage(filepath.Join(hudPath, h+".png"))
+
+	for _, file := range itemFiles {
+		path := filepath.Join(itemsPath, file)
+		item, err := loadEbitenImage(path)
+		if err != nil {
+			continue
+		}
+		name := file[:len(file)-4]
+		ss.Items[name] = item
 	}
+
+	return nil
 }
 
-// loadImage загружает изображение
-func (ss *SpriteSheet) loadImage(path string) *ebiten.Image {
+// loadEnemies загружает врагов
+func (ss *SpriteSheet) loadEnemies(basePath string) error {
+	enemiesPath := filepath.Join(basePath, "enemies")
+
+	enemyFiles := []string{
+		"bat_fly.png", "bat_hit.png", "bat_dead.png",
+		"bee_fly.png", "bee_hit.png", "bee_dead.png",
+		"fly_fly.png", "fly_hit.png", "fly_dead.png",
+		"ghost_normal.png", "ghost_hit.png", "ghost_dead.png",
+		"slime_walk.png", "slime_hit.png", "slime_dead.png",
+		"snake_walk.png", "snake_hit.png", "snake_dead.png",
+		"spider_walk1.png", "spider_walk2.png", "spider_hit.png",
+		"ladyBug_walk.png", "ladyBug_hit.png",
+		"frog.png", "frog_hit.png", "frog_leap.png",
+		"snail_walk.png", "snail_hit.png",
+	}
+
+	for _, file := range enemyFiles {
+		path := filepath.Join(enemiesPath, file)
+		enemy, err := loadEbitenImage(path)
+		if err != nil {
+			continue
+		}
+		name := file[:len(file)-4]
+		ss.Enemies[name] = enemy
+	}
+
+	return nil
+}
+
+// loadEbitenImage загружает изображение как ebiten.Image
+func loadEbitenImage(path string) (*ebiten.Image, error) {
 	file, err := os.Open(path)
 	if err != nil {
-		return nil
+		return nil, err
 	}
 	defer file.Close()
 
 	img, _, err := image.Decode(file)
 	if err != nil {
-		return nil
+		return nil, err
 	}
 
-	return ebiten.NewImageFromImage(img)
+	return ebiten.NewImageFromImage(img), nil
 }
 
-// GetPlayerSprite - спрайт игрока
+// cropImage вырезает часть изображения
+func cropImage(src *ebiten.Image, x, y, width, height int) *ebiten.Image {
+	bounds := src.Bounds()
+	if x < 0 {
+		x = 0
+	}
+	if y < 0 {
+		y = 0
+	}
+	if x+width > bounds.Max.X {
+		width = bounds.Max.X - x
+	}
+	if y+height > bounds.Max.Y {
+		height = bounds.Max.Y - y
+	}
+
+	if width <= 0 || height <= 0 {
+		return ebiten.NewImage(1, 1)
+	}
+
+	dst := ebiten.NewImage(width, height)
+	opts := &ebiten.DrawImageOptions{}
+	opts.GeoM.Translate(-float64(x), -float64(y))
+	dst.DrawImage(src, opts)
+
+	return dst
+}
+
+// GetPlayerSprite возвращает спрайт игрока по имени
 func (ss *SpriteSheet) GetPlayerSprite(name string) *ebiten.Image {
-	return ss.playerSprites[name]
-}
-
-// GetPlayerAnim - анимация игрока
-func (ss *SpriteSheet) GetPlayerAnim(name string) *Animation {
-	return ss.playerAnims[name]
-}
-
-// GetEnemySprite - спрайт врага
-func (ss *SpriteSheet) GetEnemySprite(name string) *ebiten.Image {
-	return ss.enemySprites[name]
-}
-
-// GetEnemyAnim - анимация врага
-func (ss *SpriteSheet) GetEnemyAnim(name string) *Animation {
-	return ss.enemyAnims[name]
-}
-
-// GetItemSprite - спрайт предмета
-func (ss *SpriteSheet) GetItemSprite(name string) *ebiten.Image {
-	return ss.itemSprites[name]
-}
-
-// GetTileSprite - спрайт тайла
-func (ss *SpriteSheet) GetTileSprite(name string) *ebiten.Image {
-	return ss.tileSprites[name]
-}
-
-// GetBackground - фон
-func (ss *SpriteSheet) GetBackground() *ebiten.Image {
-	return ss.backgrounds["bg"]
-}
-
-// GetBackgroundByTheme - фон по теме
-func (ss *SpriteSheet) GetBackgroundByTheme(themeName string) *ebiten.Image {
-	if bg, ok := ss.backgrounds[themeName]; ok {
-		return bg
+	switch name {
+	case "stand":
+		return ss.PlayerStand
+	case "jump":
+		return ss.PlayerJump
+	case "hurt":
+		return ss.PlayerHurt
 	}
-	return ss.backgrounds["bg"]
+	return nil
 }
 
-// GetHUDSprite - спрайт HUD
-func (ss *SpriteSheet) GetHUDSprite(name string) *ebiten.Image {
-	return ss.hudSprites[name]
+// GetPlayerWalkFrame возвращает кадр анимации ходьбы
+func (ss *SpriteSheet) GetPlayerWalkFrame(frame int) *ebiten.Image {
+	if frame < 0 || frame >= len(ss.PlayerWalk) {
+		return ss.PlayerStand
+	}
+	return ss.PlayerWalk[frame]
 }
 
-// GetAllTileSprites - ВСЕ спрайты тайлов
-func (ss *SpriteSheet) GetAllTileSprites() map[string]*ebiten.Image {
-	return ss.tileSprites
+// GetTile возвращает тайл по имени
+func (ss *SpriteSheet) GetTile(name string) *ebiten.Image {
+	if tile, ok := ss.Tiles[name]; ok {
+		return tile
+	}
+	return nil
 }
 
-// GetAllEnemySprites - ВСЕ спрайты врагов
-func (ss *SpriteSheet) GetAllEnemySprites() map[string]*ebiten.Image {
-	return ss.enemySprites
+// GetItem возвращает предмет по имени
+func (ss *SpriteSheet) GetItem(name string) *ebiten.Image {
+	if item, ok := ss.Items[name]; ok {
+		return item
+	}
+	return nil
 }
 
-// GetAllItemSprites - ВСЕ спрайты предметов
-func (ss *SpriteSheet) GetAllItemSprites() map[string]*ebiten.Image {
-	return ss.itemSprites
+// GetEnemySprite возвращает спрайт врага по имени
+func (ss *SpriteSheet) GetEnemySprite(name string) *ebiten.Image {
+	if enemy, ok := ss.Enemies[name]; ok {
+		return enemy
+	}
+	return nil
+}
+
+// CreatePlaceholder создаёт изображение-заглушку
+func CreatePlaceholder(width, height int, c color.Color) *ebiten.Image {
+	img := ebiten.NewImage(width, height)
+	fillImage(img, c)
+	return img
+}
+
+// fillImage заполняет изображение цветом
+func fillImage(img *ebiten.Image, c color.Color) {
+	w, h := img.Size()
+	for y := 0; y < h; y++ {
+		for x := 0; x < w; x++ {
+			img.Set(x, y, c)
+		}
+	}
 }
