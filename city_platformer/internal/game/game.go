@@ -672,7 +672,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 }
 
 func (g *Game) drawBackground(screen *ebiten.Image) {
-	// Небо
+	// Небо - градиент
 	for y := 0; y < screenHeight; y++ {
 		percent := float64(y) / float64(screenHeight)
 		r := uint8(135 + percent*30)
@@ -681,16 +681,35 @@ func (g *Game) drawBackground(screen *ebiten.Image) {
 		vector.DrawFilledRect(screen, 0, float32(y), screenWidth, 1, color.RGBA{r, g_, b, 255}, false)
 	}
 
-	// Облака (параллакс)
-	cloudColor := color.RGBA{255, 255, 255, 200}
-	for i := 0; i < 10; i++ {
-		cloudX := float32((i*200 - int(g.cameraX*0.1)) % (screenWidth + 200))
+	// Облака - спрайты!
+	cloudNames := []string{"cloud1", "cloud2", "cloud3"}
+	
+	for i := 0; i < 8; i++ {
+		cloudName := cloudNames[i%3]
+		cloudImg := g.spriteSheet.GetItem(cloudName)
+		
+		if cloudImg == nil {
+			// Запасной вариант - векторы
+			cloudColor := color.RGBA{255, 255, 255, 200}
+			cloudX := float32((i*180 - int(g.cameraX*0.1)) % (screenWidth + 200))
+			if cloudX < 0 {
+				cloudX += screenWidth + 200
+			}
+			cloudY := float32(40 + (i%4)*40)
+			vector.DrawFilledRect(screen, cloudX, cloudY, 70, 25, cloudColor, false)
+			vector.DrawFilledRect(screen, cloudX+15, cloudY-12, 50, 35, cloudColor, false)
+			continue
+		}
+		
+		cloudX := float64((i*200 - int(g.cameraX*0.1)) % (screenWidth + 200))
 		if cloudX < 0 {
 			cloudX += screenWidth + 200
 		}
-		cloudY := float32(40 + (i%5)*30)
-		vector.DrawFilledRect(screen, cloudX, cloudY, 80, 25, cloudColor, false)
-		vector.DrawFilledRect(screen, cloudX+15, cloudY-12, 50, 35, cloudColor, false)
+		cloudY := float64(30 + (i%5)*35)
+		
+		opts := &ebiten.DrawImageOptions{}
+		opts.GeoM.Translate(cloudX-g.cameraX*0.1, cloudY)
+		screen.DrawImage(cloudImg, opts)
 	}
 
 	// Дальние холмы (параллакс)
