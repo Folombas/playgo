@@ -5,6 +5,7 @@ package entity
 import (
 	"image/color"
 	"math"
+	"strings"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/vector"
@@ -597,6 +598,7 @@ func NewItem(x, y float64, itemType string, value int, ss *sprite.SpriteSheet) *
 
 	i.Renderer = NewSpriteRenderer(ss)
 
+	// Загрузка спрайта
 	var spriteName string
 	switch itemType {
 	case ItemCoinGold, ItemCoinSilver, ItemCoinBronze:
@@ -619,13 +621,26 @@ func NewItem(x, y float64, itemType string, value int, ss *sprite.SpriteSheet) *
 		spriteName = "spikes"
 	case ItemRock:
 		spriteName = "rock"
+	default:
+		spriteName = itemType
 	}
 
+	// Пробуем загрузить спрайт
 	if ss != nil {
-		if img := ss.GetItem(spriteName); img != nil {
+		img := ss.GetItem(spriteName)
+		if img != nil {
 			i.Renderer.SetSprite(img)
 			i.Transform.Width = float64(img.Bounds().Dx())
 			i.Transform.Height = float64(img.Bounds().Dy())
+		} else {
+			// Пробуем альтернативное имя
+			altName := strings.ToLower(spriteName[:1]) + spriteName[1:]
+			img = ss.GetItem(altName)
+			if img != nil {
+				i.Renderer.SetSprite(img)
+				i.Transform.Width = float64(img.Bounds().Dx())
+				i.Transform.Height = float64(img.Bounds().Dy())
+			}
 		}
 	}
 

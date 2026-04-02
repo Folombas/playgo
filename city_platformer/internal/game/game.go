@@ -54,15 +54,17 @@ type World struct {
 	ActiveChunks []int
 	Seed         int64
 	Rng          *rand.Rand
+	SpriteSheet  *sprite.SpriteSheet
 }
 
 // NewWorld создаёт новый мир
-func NewWorld(seed int64) *World {
+func NewWorld(seed int64, ss *sprite.SpriteSheet) *World {
 	return &World{
 		Chunks:       make(map[int]*Chunk),
 		ActiveChunks: make([]int, 0),
 		Seed:         seed,
 		Rng:          rand.New(rand.NewSource(seed)),
+		SpriteSheet:  ss,
 	}
 }
 
@@ -78,7 +80,7 @@ func (w *World) GetChunk(chunkX int) *Chunk {
 		Generated: false,
 	}
 	w.Chunks[chunkX] = chunk
-	w.generateChunk(chunk)
+	w.generateChunk(chunk, w.SpriteSheet)
 	w.ActiveChunks = append(w.ActiveChunks, chunkX)
 
 	// Удаляем старые чанки
@@ -88,7 +90,7 @@ func (w *World) GetChunk(chunkX int) *Chunk {
 }
 
 // generateChunk генерирует чанк
-func (w *World) generateChunk(chunk *Chunk) {
+func (w *World) generateChunk(chunk *Chunk, ss *sprite.SpriteSheet) {
 	w.Rng.Seed(w.Seed + int64(chunk.X))
 
 	// Земля (с возможными ямами)
@@ -214,7 +216,7 @@ func (w *World) generateChunk(chunk *Chunk) {
 		} else if r < 0.5 {
 			coinType = entity.ItemCoinBronze
 		}
-		item := entity.NewItem(x, y, coinType, 10, nil)
+		item := entity.NewItem(x, y, coinType, 10, ss)
 		chunk.Items = append(chunk.Items, item)
 	}
 
@@ -231,7 +233,7 @@ func (w *World) generateChunk(chunk *Chunk) {
 		} else if r < 0.75 {
 			gemType = entity.ItemGemYellow
 		}
-		item := entity.NewItem(x, y, gemType, 25, nil)
+		item := entity.NewItem(x, y, gemType, 25, ss)
 		chunk.Items = append(chunk.Items, item)
 	}
 
@@ -240,7 +242,7 @@ func (w *World) generateChunk(chunk *Chunk) {
 		x := float64(chunk.X) + w.Rng.Float64()*float64(chunkWidth-50)
 		y := float64(groundY - 40)
 		mushType := entity.ItemMushroom
-		item := entity.NewItem(x, y, mushType, 15, nil)
+		item := entity.NewItem(x, y, mushType, 15, ss)
 		chunk.Items = append(chunk.Items, item)
 	}
 
@@ -248,7 +250,7 @@ func (w *World) generateChunk(chunk *Chunk) {
 	if w.Rng.Float64() < 0.3 {
 		x := float64(chunk.X) + w.Rng.Float64()*float64(chunkWidth-50)
 		y := groundY - 120 - w.Rng.Float64()*80
-		c := entity.NewCollectible(x, y, entity.ItemStar, 50, nil)
+		c := entity.NewCollectible(x, y, entity.ItemStar, 50, ss)
 		chunk.Collectibles = append(chunk.Collectibles, c)
 	}
 
@@ -263,7 +265,7 @@ func (w *World) generateChunk(chunk *Chunk) {
 		} else if r < 0.66 {
 			keyType = entity.ItemKeyRed
 		}
-		item := entity.NewItem(x, y, keyType, 30, nil)
+		item := entity.NewItem(x, y, keyType, 30, ss)
 		chunk.Items = append(chunk.Items, item)
 	}
 
@@ -413,7 +415,7 @@ func (g *Game) Reset() {
 	g.cameraX = 0
 
 	// Создаём мир с случайным seed
-	g.world = NewWorld(time.Now().UnixNano())
+	g.world = NewWorld(time.Now().UnixNano(), g.spriteSheet)
 
 	// Игрок
 	g.player = entity.NewPlayer(100, groundY-64, g.spriteSheet)
