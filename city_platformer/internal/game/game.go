@@ -98,7 +98,7 @@ func (w *World) generateChunk(chunk *Chunk, ss *sprite.SpriteSheet) {
 		entity.NewPlatform(float64(chunk.X), groundY, chunkWidth, 32, "grass", ss),
 	)
 
-	// Ямы (20% шанс)
+	// Ямы (20% шанс) - убираем среднюю платформу
 	hasPit := w.Rng.Float64() < 0.2
 	if hasPit {
 		// Разрываем землю на две части
@@ -108,14 +108,27 @@ func (w *World) generateChunk(chunk *Chunk, ss *sprite.SpriteSheet) {
 		)
 	}
 
-	// Холмы и платформы
-	numPlatforms := w.Rng.Intn(4) + 2
+	// Холмы и платформы - аккуратно, без наложений!
+	numPlatforms := w.Rng.Intn(3) + 2
+	usedY := make(map[int]bool) // Чтобы платформы не накладывались
+	
 	for i := 0; i < numPlatforms; i++ {
-		px := float64(chunk.X) + w.Rng.Float64()*float64(chunkWidth-100)
-		py := groundY - 80 - w.Rng.Float64()*120
-		width := 80 + w.Rng.Float64()*60
+		px := float64(chunk.X) + 50 + w.Rng.Float64()*float64(chunkWidth-150)
+		
+		// Выбираем высоту из фиксированных уровней (чтобы не накладывались)
+		level := w.Rng.Intn(3) // 0, 1, или 2
+		py := groundY - 80 - float64(level)*70
+		
+		// Проверяем чтобы не было наложения по Y
+		key := int(py)
+		if usedY[key] {
+			py += 35 // Сдвигаем если занято
+		}
+		usedY[int(py)] = true
+		
+		width := 80 + w.Rng.Float64()*40
 		tileType := "stone"
-		if w.Rng.Float64() < 0.3 {
+		if w.Rng.Float64() < 0.4 {
 			tileType = "grassHalf"
 		}
 		chunk.Platforms = append(chunk.Platforms,
@@ -684,6 +697,9 @@ func (g *Game) drawBackground(screen *ebiten.Image) {
 		vector.DrawFilledRect(screen, 0, float32(y), screenWidth, 1, color.RGBA{r, g_, b, 255}, false)
 	}
 
+	// Дальние горы и вулканы
+	g.drawMountainsAndVolcanoes(screen)
+
 	// Облака - спрайты!
 	cloudNames := []string{"cloud1", "cloud2", "cloud3"}
 	
@@ -714,8 +730,64 @@ func (g *Game) drawBackground(screen *ebiten.Image) {
 		opts.GeoM.Translate(cloudX-g.cameraX*0.1, cloudY)
 		screen.DrawImage(cloudImg, opts)
 	}
+}
 
-	// Дальние холмы (параллакс)
+// drawMountainsAndVolcanoes рисует горы и вулканы на фоне
+func (g *Game) drawMountainsAndVolcanoes(screen *ebiten.Image) {
+	// Горы (тёмно-серые треугольники)
+	mountainColor := color.RGBA{80, 80, 100, 200}
+	for i := 0; i < 8; i++ {
+		mountainX := float32(i*180 - int(g.cameraX*0.15)%180)
+		mountainHeight := float32(150 + (i*23)%100)
+		mountainWidth := float32(120 + (i*17)%60)
+		
+		// Рисуем треугольную гору
+		for y := float32(0); y < mountainHeight; y++ {
+			width := mountainWidth * (1 - y/mountainHeight)
+			x := mountainX + (mountainWidth-width)/2
+			vector.DrawFilledRect(screen, x, float32(screenHeight)-y-20, width, 1, mountainColor, false)
+		}
+	}
+	
+	// Вулканы (с лавой!)
+	for i := 0; i < 3; i++ {
+		volcanoX := float32(300 + i*400 - int(g.cameraX*0.15)%400)
+		volcanoHeight := float32(200 + i*20)
+		volcanoWidth := float32(150)
+		
+		// Конус вулкана
+		volcanoColor := color.RGBA{100, 80, 80, 220}
+		for y := float32(0); y < volcanoHeight; y++ {
+			width := volcanoWidth * (1 - y/volcanoHeight)
+			x := volcanoX + (volcanoWidth-width)/2
+			vector.DrawFilledRect(screen, x, float32(screenHeight)-y-20, width, 1, volcanoColor, false)
+		}
+		
+		// Кратер с лавой
+		lavaColor := color.RGBA{255, 100, 50, 255}
+		craterY := float32(screenHeight) - volcanoHeight - 25
+		vector.DrawFilledRect(screen, volcanoX+volcanoWidth/2-20, craterY, 40, 10, lavaColor, false)
+		
+		// Дым от вулкана (частицы)
+		g.drawVolcanoSmoke(screen, volcanoX+volcanoWidth/2, craterY)
+	}
+}
+
+// drawVolcanoSmoke рисует дым от вулкана
+func (g *Game) drawVolcanoSmoke(screen *ebiten.Image, x, y float32) {
+	smokeColor := color.RGBA{150, 150, 150, 150}
+	time := float64(time.Now().UnixMilli()) / 1000.0
+	
+	for i := 0; i < 5; i++ {
+		smokeX := x + float32(math.Sin(time+float64(i))*10)
+		smokeY := y - float32(i)*15 - float32(math.Sin(time*2+float64(i))*5)
+		smokeSize := float32(10 + i*5)
+		vector.DrawFilledRect(screen, smokeX-smokeSize/2, smokeY, smokeSize, smokeSize, smokeColor, false)
+	}
+}
+
+func (g *Game) drawDistantScenery(screen *ebiten.Image) {
+	// Дальние холмы - зелёные (параллакс)
 	hillColor := color.RGBA{100, 160, 100, 180}
 	for i := 0; i < 15; i++ {
 		hillX := float32(i*100 - int(g.cameraX*0.2)%100)
