@@ -207,7 +207,40 @@ func (w *World) generateChunk(chunk *Chunk) {
 	for i := 0; i < numCoins; i++ {
 		x := float64(chunk.X) + w.Rng.Float64()*float64(chunkWidth-50)
 		y := groundY - 50 - w.Rng.Float64()*150
-		item := entity.NewItem(x, y, entity.ItemCoinGold, 10, nil)
+		coinType := entity.ItemCoinGold
+		r := w.Rng.Float64()
+		if r < 0.3 {
+			coinType = entity.ItemCoinSilver
+		} else if r < 0.5 {
+			coinType = entity.ItemCoinBronze
+		}
+		item := entity.NewItem(x, y, coinType, 10, nil)
+		chunk.Items = append(chunk.Items, item)
+	}
+
+	// Кристаллы
+	if w.Rng.Float64() < 0.5 {
+		x := float64(chunk.X) + w.Rng.Float64()*float64(chunkWidth-50)
+		y := groundY - 80 - w.Rng.Float64()*100
+		gemType := entity.ItemGemRed
+		r := w.Rng.Float64()
+		if r < 0.25 {
+			gemType = entity.ItemGemBlue
+		} else if r < 0.5 {
+			gemType = entity.ItemGemGreen
+		} else if r < 0.75 {
+			gemType = entity.ItemGemYellow
+		}
+		item := entity.NewItem(x, y, gemType, 25, nil)
+		chunk.Items = append(chunk.Items, item)
+	}
+
+	// Грибы-предметы
+	if w.Rng.Float64() < 0.3 {
+		x := float64(chunk.X) + w.Rng.Float64()*float64(chunkWidth-50)
+		y := float64(groundY - 40)
+		mushType := entity.ItemMushroom
+		item := entity.NewItem(x, y, mushType, 15, nil)
 		chunk.Items = append(chunk.Items, item)
 	}
 
@@ -217,6 +250,21 @@ func (w *World) generateChunk(chunk *Chunk) {
 		y := groundY - 120 - w.Rng.Float64()*80
 		c := entity.NewCollectible(x, y, entity.ItemStar, 50, nil)
 		chunk.Collectibles = append(chunk.Collectibles, c)
+	}
+
+	// Ключи (очень редко)
+	if w.Rng.Float64() < 0.15 {
+		x := float64(chunk.X) + w.Rng.Float64()*float64(chunkWidth-50)
+		y := groundY - 60 - w.Rng.Float64()*80
+		keyType := entity.ItemKeyBlue
+		r := w.Rng.Float64()
+		if r < 0.33 {
+			keyType = entity.ItemKeyGreen
+		} else if r < 0.66 {
+			keyType = entity.ItemKeyRed
+		}
+		item := entity.NewItem(x, y, keyType, 30, nil)
+		chunk.Items = append(chunk.Items, item)
 	}
 
 	chunk.Generated = true

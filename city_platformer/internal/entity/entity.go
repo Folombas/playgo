@@ -569,7 +569,22 @@ type Item struct {
 const (
 	ItemCoinGold   = "coinGold"
 	ItemCoinSilver = "coinSilver"
+	ItemCoinBronze = "coinBronze"
+	ItemGemRed     = "gemRed"
+	ItemGemBlue    = "gemBlue"
+	ItemGemGreen   = "gemGreen"
+	ItemGemYellow  = "gemYellow"
 	ItemStar       = "star"
+	ItemMushroom   = "mushroomRed"
+	ItemKeyBlue    = "keyBlue"
+	ItemKeyGreen   = "keyGreen"
+	ItemKeyRed     = "keyRed"
+	ItemKeyYellow  = "keyYellow"
+	ItemBomb       = "bomb"
+	ItemFlag       = "flagBlue"
+	ItemPlant      = "plant"
+	ItemSpikes     = "spikes"
+	ItemRock       = "rock"
 )
 
 // NewItem создаёт предмет
@@ -582,8 +597,32 @@ func NewItem(x, y float64, itemType string, value int, ss *sprite.SpriteSheet) *
 
 	i.Renderer = NewSpriteRenderer(ss)
 
+	var spriteName string
+	switch itemType {
+	case ItemCoinGold, ItemCoinSilver, ItemCoinBronze:
+		spriteName = itemType
+	case ItemGemRed, ItemGemBlue, ItemGemGreen, ItemGemYellow:
+		spriteName = itemType
+	case ItemStar:
+		spriteName = "star"
+	case ItemMushroom:
+		spriteName = "mushroomRed"
+	case ItemKeyBlue, ItemKeyGreen, ItemKeyRed, ItemKeyYellow:
+		spriteName = itemType
+	case ItemBomb:
+		spriteName = "bomb"
+	case ItemFlag:
+		spriteName = "flagBlue"
+	case ItemPlant:
+		spriteName = "plant"
+	case ItemSpikes:
+		spriteName = "spikes"
+	case ItemRock:
+		spriteName = "rock"
+	}
+
 	if ss != nil {
-		if img := ss.GetItem(itemType); img != nil {
+		if img := ss.GetItem(spriteName); img != nil {
 			i.Renderer.SetSprite(img)
 			i.Transform.Width = float64(img.Bounds().Dx())
 			i.Transform.Height = float64(img.Bounds().Dy())

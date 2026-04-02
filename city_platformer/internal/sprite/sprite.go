@@ -203,11 +203,31 @@ func (ss *SpriteSheet) loadItems(basePath string) error {
 		// Бонусы
 		"star.png", "mushroomRed.png", "mushroomBrown.png",
 		// Ключи
-		"keyBlue.png", "keyGreen.png", "keyRed.png",
+		"keyBlue.png", "keyGreen.png", "keyRed.png", "keyYellow.png",
 		// Облака
 		"cloud1.png", "cloud2.png", "cloud3.png",
 		// Кактусы
 		"cactus.png",
+		// Бомбы
+		"bomb.png", "bombFlash.png",
+		// Флаги
+		"flagBlue.png", "flagGreen.png", "flagRed.png", "flagYellow.png",
+		// Растения
+		"plant.png", "plantPurple.png", "bush.png",
+		// Препятствия
+		"spikes.png", "rock.png",
+		// Пружины
+		"springboardUp.png", "springboardDown.png",
+		// Кнопки
+		"buttonBlue.png", "buttonGreen.png", "buttonRed.png", "buttonYellow.png",
+		// Переключатели
+		"switchLeft.png", "switchMid.png", "switchRight.png",
+		// Огонь
+		"fireball.png",
+		// Цепи
+		"chain.png",
+		// Гири
+		"weight.png", "weightChained.png",
 	}
 
 	for _, file := range itemFiles {
