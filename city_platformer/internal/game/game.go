@@ -1,6 +1,5 @@
-// Package game - основная игровая логика Village Platformer
-// Go365 Day 93 - Деревенский платформер: Прогулка по деревне
-// Философия: Спокойная прогулка по живописной деревне с домиками и деревьями
+// Package game - пиксельная игра Platformer
+// Go365 Day 93 - Полностью пиксельная игра!
 package game
 
 import (
@@ -21,7 +20,6 @@ const (
 	screenHeight = 720
 )
 
-// GameState - состояние игры
 type GameState int
 
 const (
@@ -32,18 +30,16 @@ const (
 	StateVictory
 )
 
-// Game - основная игровая структура
 type Game struct {
-	state       GameState
-	player      *entity.Player
-	platforms   []*entity.Platform
-	houses      []*entity.House
-	trees       []*entity.Tree
-	enemies     []*entity.Enemy
-	items       []*entity.Item
+	state        GameState
+	player       *entity.Player
+	platforms    []*entity.Platform
+	houses       []*entity.House
+	trees        []*entity.Tree
+	enemies      []*entity.Enemy
+	items        []*entity.Item
 	collectibles []*entity.Collectible
-	projectiles []*entity.Projectile
-	particles   []Particle
+	particles    []Particle
 
 	cameraX float64
 	cameraY float64
@@ -54,14 +50,18 @@ type Game struct {
 	rng         *rand.Rand
 	spriteSheet *sprite.SpriteSheet
 
-	jumpPressed  bool
-	shootPressed bool
+	jumpPressed bool
 }
 
-// NewGame создаёт новую игру
+type Particle struct {
+	X, Y, VX, VY float64
+	Life         float64
+	Color        color.Color
+	Size         float64
+}
+
 func NewGame() *Game {
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
-
 	g := &Game{
 		state: StateMenu,
 		rng:   rng,
@@ -76,7 +76,6 @@ func NewGame() *Game {
 	return g
 }
 
-// Reset сбрасывает игру
 func (g *Game) Reset() {
 	g.level = 1
 	g.score = 0
@@ -84,30 +83,23 @@ func (g *Game) Reset() {
 	g.startLevel()
 }
 
-// startLevel запускает уровень
 func (g *Game) startLevel() {
 	g.generateLevel(g.level)
 }
 
-// generateLevel генерирует уровень с домиками и деревьями
 func (g *Game) generateLevel(levelNum int) {
 	levelWidth := 2500 + levelNum*500
-	levelHeight := 600
 	groundY := float64(levelHeight) - 32
 
-	// Игрок - путник
+	// Игрок
 	g.player = entity.NewPlayer(100, groundY-64, g.spriteSheet)
 	g.player.Physics.OnGround = true
 
 	// Платформы (земля)
 	g.platforms = make([]*entity.Platform, 0)
+	g.platforms = append(g.platforms, entity.NewPlatform(0, groundY, float64(levelWidth), 32, "grass", g.spriteSheet))
 
-	// Пол - трава с землёй
-	g.platforms = append(g.platforms, entity.NewPlatform(
-		0, groundY, float64(levelWidth), 32, "grass", g.spriteSheet,
-	))
-
-	// Холмы (декоративные платформы)
+	// Холмы
 	numHills := 5 + levelNum
 	for i := 0; i < numHills; i++ {
 		hillX := float64(300 + i*400)
@@ -116,55 +108,49 @@ func (g *Game) generateLevel(levelNum int) {
 		g.platforms = append(g.platforms, entity.NewPlatform(hillX, hillY, hillWidth, 32, "grassHalf", g.spriteSheet))
 	}
 
-	// Домики! 🏡
+	// Домики
 	g.houses = make([]*entity.House, 0)
 	numHouses := 2 + levelNum
 	for i := 0; i < numHouses; i++ {
 		houseX := 500.0 + float64(i)*600 + g.rng.Float64()*100
-		houseY := groundY
-		houseType := "beige"
+		houseType := "houseBeige"
 		if i%3 == 1 {
-			houseType = "dark"
+			houseType = "houseDark"
 		} else if i%3 == 2 {
-			houseType = "gray"
+			houseType = "houseGray"
 		}
-		house := entity.NewHouse(houseX, houseY, houseType, g.spriteSheet)
+		house := entity.NewHouse(houseX, groundY, houseType, g.spriteSheet)
 		g.houses = append(g.houses, house)
 	}
 
-	// Деревья и ёлки 🌲🌳
+	// Деревья
 	g.trees = make([]*entity.Tree, 0)
 	numTrees := 8 + levelNum*2
 	for i := 0; i < numTrees; i++ {
 		treeX := 200.0 + float64(i)*250 + g.rng.Float64()*50
-		treeY := groundY
 		treeType := "pine"
 		if i%2 == 0 {
-			treeType = "oak"
+			treeType = "tree"
 		}
-		tree := entity.NewTree(treeX, treeY, treeType, g.spriteSheet)
+		tree := entity.NewTree(treeX, groundY, treeType, g.spriteSheet)
 		g.trees = append(g.trees, tree)
 	}
 
-	// Враги (простые препятствия)
+	// Враги
 	g.enemies = make([]*entity.Enemy, 0)
 	enemyTypes := []string{"slime", "snake", "spider"}
 	numEnemies := 3 + levelNum
 	for i := 0; i < numEnemies; i++ {
 		x := 400.0 + float64(i)*350 + g.rng.Float64()*100
 		y := groundY - 40
-		enemyType := enemyTypes[g.rng.Intn(len(enemyTypes))]
-		enemy := entity.NewEnemy(x, y, enemyType, g.spriteSheet)
+		enemy := entity.NewEnemy(x, y, enemyTypes[g.rng.Intn(len(enemyTypes))], g.spriteSheet)
 		enemy.PatrolStart = x - 60
 		enemy.PatrolEnd = x + 60
 		g.enemies = append(g.enemies, enemy)
 	}
 
-	// Предметы (монетки, собираемые предметы)
+	// Монетки
 	g.items = make([]*entity.Item, 0)
-	g.collectibles = make([]*entity.Collectible, 0)
-	
-	// Монетки на пути
 	numCoins := 15 + levelNum*3
 	for i := 0; i < numCoins; i++ {
 		x := 150.0 + float64(i)*120 + g.rng.Float64()*60
@@ -173,27 +159,22 @@ func (g *Game) generateLevel(levelNum int) {
 		g.items = append(g.items, item)
 	}
 
-	// Собираемые предметы (звёзды, кристаллы)
-	numCollectibles := 5 + levelNum
-	for i := 0; i < numCollectibles; i++ {
+	// Звёзды
+	g.collectibles = make([]*entity.Collectible, 0)
+	numStars := 5 + levelNum
+	for i := 0; i < numStars; i++ {
 		x := 600.0 + float64(i)*400 + g.rng.Float64()*100
 		y := groundY - 100 - g.rng.Float64()*60
-		collectible := entity.NewCollectible(x, y, "star", 50, g.spriteSheet)
-		g.collectibles = append(g.collectibles, collectible)
+		c := entity.NewCollectible(x, y, entity.ItemStar, 50, g.spriteSheet)
+		g.collectibles = append(g.collectibles, c)
 	}
 
-	// Частицы и снаряды
 	g.particles = make([]Particle, 0)
-	g.projectiles = make([]*entity.Projectile, 0)
-
-	// Камера
 	g.cameraX = 0
 	g.cameraY = 0
 }
 
-// Update обновляет игру
 func (g *Game) Update() error {
-	// ESC - пауза/меню
 	if ebiten.IsKeyPressed(ebiten.KeyEscape) {
 		switch g.state {
 		case StatePlaying:
@@ -205,26 +186,22 @@ func (g *Game) Update() error {
 		}
 	}
 
-	// Меню - старт
 	if g.state == StateMenu && ebiten.IsKeyPressed(ebiten.KeySpace) {
 		g.Reset()
 		g.state = StatePlaying
 	}
 
-	// Game Over - рестарт
 	if g.state == StateGameOver && ebiten.IsKeyPressed(ebiten.KeySpace) {
 		g.Reset()
 		g.state = StatePlaying
 	}
 
-	// Victory - следующий уровень
 	if g.state == StateVictory && ebiten.IsKeyPressed(ebiten.KeySpace) {
 		g.level++
 		g.startLevel()
 		g.state = StatePlaying
 	}
 
-	// Игровой процесс
 	if g.state == StatePlaying {
 		g.updateGame()
 	}
@@ -232,7 +209,6 @@ func (g *Game) Update() error {
 	return nil
 }
 
-// updateGame обновляет игровую логику
 func (g *Game) updateGame() {
 	dt := 1.0 / 60.0
 
@@ -244,9 +220,9 @@ func (g *Game) updateGame() {
 	g.collectCollectibles()
 	g.updateEnemies(dt)
 	g.updateParticles(dt)
+	g.updateHouses(dt)
 	g.checkLevelExit()
 
-	// Смерть игрока - респавн
 	if g.player.Health.Dead {
 		g.player.Health.Dead = false
 		g.player.Health.Current = g.player.Health.Max
@@ -258,9 +234,7 @@ func (g *Game) updateGame() {
 	}
 }
 
-// handleInput обрабатывает ввод
 func (g *Game) handleInput() {
-	// Движение
 	if ebiten.IsKeyPressed(ebiten.KeyA) || ebiten.IsKeyPressed(ebiten.KeyLeft) {
 		g.player.MoveLeft()
 	} else if ebiten.IsKeyPressed(ebiten.KeyD) || ebiten.IsKeyPressed(ebiten.KeyRight) {
@@ -269,7 +243,6 @@ func (g *Game) handleInput() {
 		g.player.Stop()
 	}
 
-	// Прыжок
 	jumpKey := ebiten.IsKeyPressed(ebiten.KeyW) || ebiten.IsKeyPressed(ebiten.KeyUp) || ebiten.IsKeyPressed(ebiten.KeySpace)
 	if jumpKey && !g.jumpPressed {
 		g.jumpPressed = true
@@ -280,7 +253,6 @@ func (g *Game) handleInput() {
 	}
 }
 
-// applyPhysics применяет физику
 func (g *Game) applyPhysics(dt float64) {
 	g.player.Physics.VelocityY += g.player.Physics.Gravity * dt
 	if g.player.Physics.VelocityY > 800 {
@@ -288,16 +260,12 @@ func (g *Game) applyPhysics(dt float64) {
 	}
 
 	oldY := g.player.Transform.Y
-
 	g.player.Transform.X += g.player.Physics.VelocityX * dt
 	g.player.Transform.Y += g.player.Physics.VelocityY * dt
-
 	g.player.Physics.OnGround = false
 
-	// Коллизия с платформами
 	for _, p := range g.platforms {
-		platRect := p.Transform
-		if entity.CheckCollision(g.player.Transform, platRect) {
+		if entity.CheckCollision(g.player.Transform, p.Transform) {
 			if g.player.Physics.VelocityY > 0 && oldY+g.player.Transform.Height <= p.Transform.Y+10 {
 				g.player.Transform.Y = p.Transform.Y - g.player.Transform.Height
 				g.player.Physics.VelocityY = 0
@@ -307,28 +275,22 @@ func (g *Game) applyPhysics(dt float64) {
 		}
 	}
 
-	// Границы
 	if g.player.Transform.X < 0 {
 		g.player.Transform.X = 0
 	}
-
-	// Падение
 	if g.player.Transform.Y > 800 {
 		g.player.Health.TakeDamage(100)
 	}
 }
 
-// updateCamera обновляет камеру
 func (g *Game) updateCamera() {
 	targetX := g.player.Transform.X - screenWidth/2
 	g.cameraX += (targetX - g.cameraX) * 0.1
-
 	if g.cameraX < 0 {
 		g.cameraX = 0
 	}
 }
 
-// collectItems собирает монетки
 func (g *Game) collectItems() {
 	for _, item := range g.items {
 		if item.Collected {
@@ -343,7 +305,6 @@ func (g *Game) collectItems() {
 	}
 }
 
-// collectCollectibles собирает звёзды и кристаллы
 func (g *Game) collectCollectibles() {
 	for _, c := range g.collectibles {
 		if c.Collected {
@@ -357,12 +318,9 @@ func (g *Game) collectCollectibles() {
 	}
 }
 
-// updateEnemies обновляет врагов
 func (g *Game) updateEnemies(dt float64) {
 	for _, enemy := range g.enemies {
 		enemy.Update(dt, g.player.Transform.X, g.player.Transform.Y)
-
-		// Коллизия с игроком
 		if !enemy.Health.Dead && entity.CheckCollision(g.player.Transform, enemy.Transform) {
 			if g.player.Health.Invincible <= 0 {
 				g.player.Health.TakeDamage(enemy.Damage)
@@ -372,26 +330,27 @@ func (g *Game) updateEnemies(dt float64) {
 	}
 }
 
-// updateParticles обновляет частицы
+func (g *Game) updateHouses(dt float64) {
+	for _, house := range g.houses {
+		house.Update(dt)
+	}
+}
+
 func (g *Game) updateParticles(dt float64) {
 	active := make([]Particle, 0)
-
 	for i := range g.particles {
 		p := &g.particles[i]
 		p.X += p.VX * dt
 		p.Y += p.VY * dt
 		p.VY += 200 * dt
 		p.Life -= dt * 0.5
-
 		if p.Life > 0 {
 			active = append(active, *p)
 		}
 	}
-
 	g.particles = active
 }
 
-// spawnParticles создаёт частицы
 func (g *Game) spawnParticles(x, y, vx, vy float64, count int, c color.Color) {
 	for i := 0; i < count; i++ {
 		g.particles = append(g.particles, Particle{
@@ -405,9 +364,7 @@ func (g *Game) spawnParticles(x, y, vx, vy float64, count int, c color.Color) {
 	}
 }
 
-// checkLevelExit проверяет выход
 func (g *Game) checkLevelExit() {
-	// Все звёзды собраны и игрок справа
 	allCollected := true
 	for _, c := range g.collectibles {
 		if !c.Collected {
@@ -415,23 +372,12 @@ func (g *Game) checkLevelExit() {
 			break
 		}
 	}
-
 	if allCollected && g.player.Transform.X > 2000 {
 		g.state = StateVictory
 	}
 }
 
-// Particle - частица
-type Particle struct {
-	X, Y, VX, VY float64
-	Life         float64
-	Color        color.Color
-	Size         float64
-}
-
-// Draw отрисовывает игру
 func (g *Game) Draw(screen *ebiten.Image) {
-	// Фон
 	g.drawBackground(screen)
 
 	if g.state == StateMenu {
@@ -439,52 +385,42 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		return
 	}
 
-	// Платформы (земля, холмы)
 	for _, p := range g.platforms {
 		p.Draw(screen, g.cameraX, g.cameraY)
 	}
 
-	// Домики 🏡
 	for _, house := range g.houses {
 		house.Draw(screen, g.cameraX, g.cameraY)
 	}
 
-	// Деревья и ёлки 🌲🌳
 	for _, tree := range g.trees {
 		tree.Draw(screen, g.cameraX, g.cameraY)
 	}
 
-	// Предметы (монетки)
 	for _, item := range g.items {
 		item.Draw(screen, g.cameraX, g.cameraY)
 	}
 
-	// Собираемые предметы (звёзды)
 	for _, c := range g.collectibles {
 		c.Draw(screen, g.cameraX, g.cameraY)
 	}
 
-	// Враги
 	for _, enemy := range g.enemies {
 		enemy.Draw(screen, g.cameraX, g.cameraY)
 	}
 
-	// Игрок
 	if g.player != nil {
 		g.player.Draw(screen, g.cameraX, g.cameraY)
 	}
 
-	// Частицы
 	for _, p := range g.particles {
 		vector.DrawFilledRect(screen, float32(p.X-g.cameraX), float32(p.Y-g.cameraY), float32(p.Size), float32(p.Size), p.Color, false)
 	}
 
-	// HUD
 	if g.state == StatePlaying || g.state == StatePaused {
 		g.drawHUD(screen)
 	}
 
-	// Меню/пауза/конец
 	if g.state == StatePaused {
 		g.drawPause(screen)
 	}
@@ -496,9 +432,8 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	}
 }
 
-// drawBackground отрисовывает фон (деревенский пейзаж)
 func (g *Game) drawBackground(screen *ebiten.Image) {
-	// Градиент неба (голубой с облачками)
+	// Пиксельное небо - градиент
 	for y := 0; y < screenHeight; y++ {
 		percent := float64(y) / float64(screenHeight)
 		r := uint8(135 + percent*30)
@@ -507,14 +442,13 @@ func (g *Game) drawBackground(screen *ebiten.Image) {
 		vector.DrawFilledRect(screen, 0, float32(y), screenWidth, 1, color.RGBA{r, g_, b, 255}, false)
 	}
 
-	// Облака на фоне ☁️
+	// Пиксельные облака
 	g.drawClouds(screen)
 
-	// Дальние холмы и деревья (параллакс)
+	// Дальний план с параллаксом
 	g.drawDistantScenery(screen)
 }
 
-// drawClouds рисует облака
 func (g *Game) drawClouds(screen *ebiten.Image) {
 	cloudColor := color.RGBA{255, 255, 255, 200}
 	for i := 0; i < 8; i++ {
@@ -523,58 +457,52 @@ func (g *Game) drawClouds(screen *ebiten.Image) {
 		if cloudX < 0 {
 			cloudX += screenWidth + 200
 		}
-		// Основное облако
 		vector.DrawFilledRect(screen, cloudX, cloudY, 70, 25, cloudColor, false)
 		vector.DrawFilledRect(screen, cloudX+15, cloudY-12, 45, 35, cloudColor, false)
 		vector.DrawFilledRect(screen, cloudX+35, cloudY-10, 35, 30, cloudColor, false)
 	}
 }
 
-// drawDistantScenery рисует дальний план (холмы, деревья)
 func (g *Game) drawDistantScenery(screen *ebiten.Image) {
-	// Дальние холмы (зелёные)
+	// Дальние холмы
 	hillColor := color.RGBA{100, 160, 100, 180}
 	for i := 0; i < 12; i++ {
 		hillX := float32(i*120 - int(g.cameraX*0.3)%120)
 		hillHeight := float32(80 + (i*13)%60)
-		// Рисуем холм (полукруг)
 		for x := 0.0; x < 100.0; x++ {
 			y := float32(math.Sqrt(100*100 - (x-50)*(x-50))) * (hillHeight / 50)
 			vector.DrawFilledRect(screen, hillX+float32(x), float32(screenHeight)-float32(y)-20, 1, float32(y), hillColor, false)
 		}
 	}
 
-	// Дальние деревья (тёмно-зелёные ёлки)
+	// Дальние деревья (пиксельные ёлки)
 	treeColor := color.RGBA{34, 100, 34, 200}
 	for i := 0; i < 15; i++ {
 		treeX := float32(i*100 - int(g.cameraX*0.4)%100)
 		treeY := float32(screenHeight) - 35
-		// Ёлка (треугольник)
 		vector.DrawFilledRect(screen, treeX+35, treeY-60, 30, 60, treeColor, false)
 		vector.DrawFilledRect(screen, treeX+42, treeY-90, 16, 35, treeColor, false)
-		// Ствол
 		vector.DrawFilledRect(screen, treeX+47, treeY, 6, 15, color.RGBA{101, 67, 33, 200}, false)
 	}
 }
 
-// drawMenu отрисовывает меню
 func (g *Game) drawMenu(screen *ebiten.Image) {
-	title := "🏡 Деревенский Платформер"
-	ebitenutil.DebugPrintAt(screen, title, screenWidth/2-140, 150)
+	title := "🎮 PIXEL PLATFORMER"
+	ebitenutil.DebugPrintAt(screen, title, screenWidth/2-120, 150)
 
-	subtitle := "Прогулка по деревне с домиками и деревьями"
-	ebitenutil.DebugPrintAt(screen, subtitle, screenWidth/2-160, 200)
+	subtitle := "Пиксельная прогулка по деревне"
+	ebitenutil.DebugPrintAt(screen, subtitle, screenWidth/2-130, 200)
 
 	instructions := []string{
 		"",
-		"[SPACE] Начать прогулку",
+		"[SPACE] Начать игру",
 		"",
 		"Управление:",
-		"A/D - Ходить влево/вправо",
-		"W/Пробел - Прыжок",
+		"A/D - Ходить",
+		"W/Пробел - Прыжок (двойной!)",
 		"",
-		"Цель: Собрать все звёзды и добраться до выхода!",
-		"Наслаждайтесь видом на деревню! 🏡🌲",
+		"Цель: Собрать все звёзды!",
+		"Наслаждайтесь пиксель-артом! 🎨",
 	}
 
 	for i, line := range instructions {
@@ -582,7 +510,6 @@ func (g *Game) drawMenu(screen *ebiten.Image) {
 	}
 }
 
-// drawHUD отрисовывает интерфейс
 func (g *Game) drawHUD(screen *ebiten.Image) {
 	y := 10
 
@@ -593,16 +520,11 @@ func (g *Game) drawHUD(screen *ebiten.Image) {
 	ebitenutil.DebugPrintAt(screen, "HP", 220, y)
 
 	y += 25
-
-	// Счёт
 	ebitenutil.DebugPrintAt(screen, "SCORE: "+string(rune(g.score)), 10, y)
 	y += 20
-
-	// Монетки
 	ebitenutil.DebugPrintAt(screen, "COINS: "+string(rune(g.coins)), 10, y)
 	y += 20
 
-	// Звёзды
 	collected := 0
 	for _, c := range g.collectibles {
 		if c.Collected {
@@ -611,38 +533,33 @@ func (g *Game) drawHUD(screen *ebiten.Image) {
 	}
 	ebitenutil.DebugPrintAt(screen, "STARS: "+string(rune(collected))+"/"+string(rune(len(g.collectibles))), 10, y)
 	y += 20
-
-	// Уровень
 	ebitenutil.DebugPrintAt(screen, "LEVEL: "+string(rune(g.level)), screenWidth-100, 10)
 
-	// Подсказки
-	ebitenutil.DebugPrintAt(screen, "[ESC] Пауза  [W] Прыжок  [A/D] Ходить", 10, screenHeight-30)
+	ebitenutil.DebugPrintAt(screen, "[ESC] Пауза  [W] Прыжок", 10, screenHeight-30)
 }
 
-// drawPause отрисовывает паузу
 func (g *Game) drawPause(screen *ebiten.Image) {
 	vector.DrawFilledRect(screen, 0, 0, screenWidth, screenHeight, color.RGBA{0, 0, 0, 150}, false)
 	ebitenutil.DebugPrintAt(screen, "ПАУЗА", screenWidth/2-50, screenHeight/2-50)
 	ebitenutil.DebugPrintAt(screen, "[ESC] Продолжить", screenWidth/2-80, screenHeight/2)
 }
 
-// drawGameOver отрисовывает Game Over
 func (g *Game) drawGameOver(screen *ebiten.Image) {
 	vector.DrawFilledRect(screen, 0, 0, screenWidth, screenHeight, color.RGBA{150, 50, 50, 200}, false)
-	ebitenutil.DebugPrintAt(screen, "ОЙ! УПАЛИ!", screenWidth/2-80, screenHeight/2-50)
+	ebitenutil.DebugPrintAt(screen, "GAME OVER", screenWidth/2-80, screenHeight/2-50)
 	ebitenutil.DebugPrintAt(screen, "SCORE: "+string(rune(g.score)), screenWidth/2-60, screenHeight/2)
-	ebitenutil.DebugPrintAt(screen, "[SPACE] Попробовать снова", screenWidth/2-100, screenHeight/2+50)
+	ebitenutil.DebugPrintAt(screen, "[SPACE] Заново", screenWidth/2-80, screenHeight/2+50)
 }
 
-// drawVictory отрисовывает победу
 func (g *Game) drawVictory(screen *ebiten.Image) {
 	vector.DrawFilledRect(screen, 0, 0, screenWidth, screenHeight, color.RGBA{50, 150, 50, 200}, false)
-	ebitenutil.DebugPrintAt(screen, "УРА! ПРОЙДЕНО!", screenWidth/2-90, screenHeight/2-50)
+	ebitenutil.DebugPrintAt(screen, "УРОВЕНЬ ПРОЙДЕН!", screenWidth/2-100, screenHeight/2-50)
 	ebitenutil.DebugPrintAt(screen, "SCORE: "+string(rune(g.score)), screenWidth/2-60, screenHeight/2)
 	ebitenutil.DebugPrintAt(screen, "[SPACE] Следующий уровень", screenWidth/2-120, screenHeight/2+50)
 }
 
-// Layout возвращает размер экрана
 func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
 	return screenWidth, screenHeight
 }
+
+const levelHeight = 600

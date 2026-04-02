@@ -1,6 +1,5 @@
-// Village Platformer: Деревенский платформер - Прогулка по деревне
+// Pixel Platformer - Полностью пиксельная игра!
 // Go365 Challenge - День 93 (2 апреля 2026)
-// Философия: Спокойная прогулка по живописной деревне с домиками и деревьями
 package main
 
 import (
@@ -17,7 +16,7 @@ const (
 
 func init() {
 	ebiten.SetWindowSize(screenWidth, screenHeight)
-	ebiten.SetWindowTitle("🏡 Деревенский Платформер - Go365 Day 93")
+	ebiten.SetWindowTitle("🎮 Pixel Platformer - Go365 Day 93")
 	ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
 }
 

@@ -1,5 +1,5 @@
-// Package entity - игровые сущности для Village Platformer
-// Go365 Day 93 - Деревенский платформер: Домики, деревья, холмы
+// Package entity - пиксельные сущности для Pixel Platformer
+// Go365 Day 93 - Полностью пиксельная игра!
 package entity
 
 import (
@@ -11,36 +11,24 @@ import (
 	"city_platformer/internal/sprite"
 )
 
-// Transform - компонент позиции и размера
+// Transform - компонент позиции
 type Transform struct {
 	X, Y     float64
 	Width    float64
 	Height   float64
 	VX, VY   float64
-	ScaleX   float64
-	ScaleY   float64
 	Facing   int // 1 = вправо, -1 = влево
 }
 
-// NewTransform создаёт новый компонент Transform
+// NewTransform создаёт Transform
 func NewTransform(x, y, w, h float64) *Transform {
 	return &Transform{
-		X:      x,
-		Y:      y,
-		Width:  w,
-		Height: h,
-		ScaleX: 1,
-		ScaleY: 1,
+		X: x, Y: y, Width: w, Height: h,
 		Facing: 1,
 	}
 }
 
-// Center возвращает центр сущности
-func (t *Transform) Center() (float64, float64) {
-	return t.X+t.Width/2, t.Y+t.Height/2
-}
-
-// SpriteRenderer - компонент отрисовки спрайта
+// SpriteRenderer - рендерер пиксельных спрайтов
 type SpriteRenderer struct {
 	SpriteSheet *sprite.SpriteSheet
 	CurrentImg  *ebiten.Image
@@ -50,11 +38,9 @@ type SpriteRenderer struct {
 	AnimFPS     float64
 	AnimPlaying bool
 	AnimLoop    bool
-	UseSprite   bool
-	SpriteColor color.Color
 }
 
-// NewSpriteRenderer создаёт рендерер спрайтов
+// NewSpriteRenderer создаёт рендерер
 func NewSpriteRenderer(ss *sprite.SpriteSheet) *SpriteRenderer {
 	return &SpriteRenderer{
 		SpriteSheet: ss,
@@ -63,22 +49,28 @@ func NewSpriteRenderer(ss *sprite.SpriteSheet) *SpriteRenderer {
 	}
 }
 
-// SetSprite устанавливает статичный спрайт
+// SetSprite устанавливает спрайт
 func (sr *SpriteRenderer) SetSprite(img *ebiten.Image) {
 	sr.CurrentImg = img
-	sr.UseSprite = img != nil
 	sr.AnimPlaying = false
 }
 
 // SetAnim устанавливает анимацию
 func (sr *SpriteRenderer) SetAnim(frames []*ebiten.Image) {
 	if len(frames) > 0 {
-		sr.AnimFrames = frames
-		sr.CurrentImg = frames[0]
-		sr.AnimFrame = 0
-		sr.AnimTimer = 0
-		sr.AnimPlaying = true
-		sr.UseSprite = true
+		validFrames := make([]*ebiten.Image, 0)
+		for _, f := range frames {
+			if f != nil {
+				validFrames = append(validFrames, f)
+			}
+		}
+		if len(validFrames) > 0 {
+			sr.AnimFrames = validFrames
+			sr.CurrentImg = validFrames[0]
+			sr.AnimFrame = 0
+			sr.AnimTimer = 0
+			sr.AnimPlaying = true
+		}
 	}
 }
 
@@ -106,64 +98,47 @@ func (sr *SpriteRenderer) Update(dt float64) {
 	}
 }
 
-// Draw отрисовывает спрайт
+// Draw отрисовывает пиксельный спрайт
 func (sr *SpriteRenderer) Draw(screen *ebiten.Image, transform *Transform, cameraX, cameraY float64) {
-	if sr.UseSprite && sr.CurrentImg != nil {
-		sr.drawSprite(screen, transform, cameraX, cameraY)
-	} else if sr.SpriteColor != nil {
-		sr.drawVector(screen, transform, cameraX, cameraY)
-	}
-}
-
-// drawSprite отрисовывает спрайт
-func (sr *SpriteRenderer) drawSprite(screen *ebiten.Image, transform *Transform, cameraX, cameraY float64) {
 	if sr.CurrentImg == nil {
+		// Пиксельная заглушка вместо векторов
+		x := transform.X - cameraX
+		y := transform.Y - cameraY
+		vector.DrawFilledRect(screen, float32(x), float32(y), float32(transform.Width), float32(transform.Height), color.RGBA{255, 0, 255, 255}, false)
 		return
 	}
 
 	opts := &ebiten.DrawImageOptions{}
-	opts.GeoM.Scale(transform.ScaleX, transform.ScaleY)
+	// Масштабирование для пиксель-арта (без сглаживания)
+	opts.GeoM.Scale(transform.Width/float64(sr.CurrentImg.Bounds().Dx()), transform.Height/float64(sr.CurrentImg.Bounds().Dy()))
 
 	if transform.Facing == -1 {
 		opts.GeoM.Scale(-1, 1)
 		opts.GeoM.Translate(float64(transform.Width), 0)
 	}
 
-	screenX := transform.X - cameraX
-	screenY := transform.Y - cameraY
-	opts.GeoM.Translate(screenX, screenY)
-
+	opts.GeoM.Translate(transform.X-cameraX, transform.Y-cameraY)
 	screen.DrawImage(sr.CurrentImg, opts)
 }
 
-// drawVector отрисовывает векторную графику
-func (sr *SpriteRenderer) drawVector(screen *ebiten.Image, transform *Transform, cameraX, cameraY float64) {
-	x := transform.X - cameraX
-	y := transform.Y - cameraY
-	vector.DrawFilledRect(screen, float32(x), float32(y), float32(transform.Width), float32(transform.Height), sr.SpriteColor, false)
-}
-
-// Physics - компонент физики
+// Physics - физика
 type Physics struct {
 	VelocityX    float64
 	VelocityY    float64
-	Acceleration float64
-	Friction     float64
 	Gravity      float64
+	Friction     float64
 	OnGround     bool
-	IsMoving     bool
 }
 
-// NewPhysics создаёт компонент физики
+// NewPhysics создаёт физику
 func NewPhysics() *Physics {
 	return &Physics{
-		Acceleration: 600,
-		Friction:     0.85,
-		Gravity:      1000,
+		Gravity:  1000,
+		Friction: 0.85,
 	}
 }
 
-// Health - компонент здоровья
+// Health - здоровье
 type Health struct {
 	Current    int
 	Max        int
@@ -171,12 +146,9 @@ type Health struct {
 	Dead       bool
 }
 
-// NewHealth создаёт компонент здоровья
+// NewHealth создаёт здоровье
 func NewHealth(max int) *Health {
-	return &Health{
-		Current: max,
-		Max:     max,
-	}
+	return &Health{Current: max, Max: max}
 }
 
 // TakeDamage получает урон
@@ -192,66 +164,44 @@ func (h *Health) TakeDamage(amount int) {
 	h.Invincible = 2.0
 }
 
-// Heal лечит
-func (h *Health) Heal(amount int) {
-	h.Current += amount
-	if h.Current > h.Max {
-		h.Current = h.Max
-	}
-}
-
-// Player - главный герой (путник)
+// Player - игрок
 type Player struct {
 	Transform *Transform
 	Renderer  *SpriteRenderer
 	Physics   *Physics
 	Health    *Health
-
 	State     PlayerState
 	JumpCount int
 	MaxJumps  int
-
-	Score      int
-	ShootTimer float64
-	AnimTimer  float64
+	AnimTimer float64
 }
 
-// PlayerState - состояние игрока
 type PlayerState int
 
 const (
 	PlayerIdle PlayerState = iota
 	PlayerRunning
 	PlayerJumping
-	PlayerHurt
 )
 
-// NewPlayer создаёт нового игрока
+// NewPlayer создаёт игрока
 func NewPlayer(x, y float64, ss *sprite.SpriteSheet) *Player {
 	p := &Player{
-		Transform: NewTransform(x, y, 32, 48),
+		Transform: NewTransform(x, y, 32, 32),
 		Physics:   NewPhysics(),
 		Health:    NewHealth(100),
-		State:     PlayerIdle,
 		MaxJumps:  2,
 	}
 
 	p.Renderer = NewSpriteRenderer(ss)
 
-	// Загрузка спрайтов
+	// Загрузка пиксельных спрайтов
 	if ss != nil {
-		if standSprite := ss.GetPlayerSprite("stand"); standSprite != nil {
-			p.Renderer.SetSprite(standSprite)
-			p.Transform.Width = float64(standSprite.Bounds().Dx())
-			p.Transform.Height = float64(standSprite.Bounds().Dy())
+		if stand := ss.GetPlayerSprite("stand"); stand != nil {
+			p.Renderer.SetSprite(stand)
+			p.Transform.Width = float64(stand.Bounds().Dx())
+			p.Transform.Height = float64(stand.Bounds().Dy())
 		}
-		if walkAnim := ss.PlayerWalk; len(walkAnim) > 0 {
-			// Анимация ходьбы
-		}
-	}
-
-	if !p.Renderer.UseSprite {
-		p.Renderer.SpriteColor = color.RGBA{100, 149, 237, 255} // Васильковый
 	}
 
 	return p
@@ -261,7 +211,6 @@ func NewPlayer(x, y float64, ss *sprite.SpriteSheet) *Player {
 func (p *Player) Update(dt float64) {
 	p.Physics.VelocityX *= p.Physics.Friction
 	p.Physics.VelocityY += p.Physics.Gravity * dt
-
 	if p.Physics.VelocityY > 800 {
 		p.Physics.VelocityY = 800
 	}
@@ -269,30 +218,18 @@ func (p *Player) Update(dt float64) {
 	p.Transform.X += p.Physics.VelocityX * dt
 	p.Transform.Y += p.Physics.VelocityY * dt
 
-	p.Physics.IsMoving = math.Abs(p.Physics.VelocityX) > 10
-
 	if p.Health.Invincible > 0 {
 		p.Health.Invincible -= dt
 	}
 
-	if p.ShootTimer > 0 {
-		p.ShootTimer -= dt
-	}
-
-	p.AnimTimer += dt
 	p.Renderer.Update(dt)
 	p.updateState()
 }
 
-// updateState обновляет состояние
 func (p *Player) updateState() {
-	if p.Health.Dead {
-		return
-	}
-
 	if !p.Physics.OnGround {
 		p.State = PlayerJumping
-	} else if p.Physics.IsMoving {
+	} else if p.Physics.VelocityX != 0 {
 		p.State = PlayerRunning
 	} else {
 		p.State = PlayerIdle
@@ -311,7 +248,7 @@ func (p *Player) MoveRight() {
 	p.Transform.Facing = 1
 }
 
-// Stop останавливает движение
+// Stop останавливается
 func (p *Player) Stop() {
 	p.Physics.VelocityX = 0
 }
@@ -331,7 +268,7 @@ func (p *Player) Jump() bool {
 	return false
 }
 
-// ResetJump сбрасывает счётчик прыжков
+// ResetJump сбрасывает прыжок
 func (p *Player) ResetJump() {
 	p.JumpCount = 0
 }
@@ -342,12 +279,12 @@ func (p *Player) Draw(screen *ebiten.Image, cameraX, cameraY float64) {
 		return
 	}
 
-	// Мигание при получении урона
+	// Мигание при уроне
 	if p.Health.Invincible > 0 && int(p.Health.Invincible*10)%2 == 0 {
 		return
 	}
 
-	// Установка правильного спрайта
+	// Выбор спрайта
 	if p.Renderer.SpriteSheet != nil {
 		switch p.State {
 		case PlayerRunning:
@@ -355,16 +292,12 @@ func (p *Player) Draw(screen *ebiten.Image, cameraX, cameraY float64) {
 				p.Renderer.SetAnim(p.Renderer.SpriteSheet.PlayerWalk)
 			}
 		case PlayerJumping:
-			if jumpSprite := p.Renderer.SpriteSheet.GetPlayerSprite("jump"); jumpSprite != nil {
-				p.Renderer.SetSprite(jumpSprite)
+			if jump := p.Renderer.SpriteSheet.GetPlayerSprite("jump"); jump != nil {
+				p.Renderer.SetSprite(jump)
 			}
 		case PlayerIdle:
-			if standSprite := p.Renderer.SpriteSheet.GetPlayerSprite("stand"); standSprite != nil {
-				p.Renderer.SetSprite(standSprite)
-			}
-		case PlayerHurt:
-			if hurtSprite := p.Renderer.SpriteSheet.GetPlayerSprite("jump"); hurtSprite != nil {
-				p.Renderer.SetSprite(hurtSprite)
+			if stand := p.Renderer.SpriteSheet.GetPlayerSprite("stand"); stand != nil {
+				p.Renderer.SetSprite(stand)
 			}
 		}
 	}
@@ -372,89 +305,62 @@ func (p *Player) Draw(screen *ebiten.Image, cameraX, cameraY float64) {
 	p.Renderer.Draw(screen, p.Transform, cameraX, cameraY)
 }
 
-// House - деревенский домик с двускатной крышей и трубой 🏡
+// House - пиксельный домик
 type House struct {
-	Transform   *Transform
-	HouseType   string // beige, dark, gray
+	Transform  *Transform
+	HouseType  string
 	SpriteParts map[string]*ebiten.Image
-	SmokeTimer  float64
-	SmokeParts  []SmokeParticle
-	Color       color.Color
+	SmokeTimer float64
+	SmokeParts []SmokeParticle
 }
 
-// SmokeParticle - частица дыма из трубы
 type SmokeParticle struct {
-	X, Y   float64
-	VY     float64
-	Life   float64
-	Size   float64
+	X, Y float64
+	VY   float64
+	Life float64
+	Size float64
 }
 
-// NewHouse создаёт новый домик
+// NewHouse создаёт домик
 func NewHouse(x, y float64, houseType string, ss *sprite.SpriteSheet) *House {
 	h := &House{
-		Transform:   NewTransform(x, y-96, 96, 96), // Домик 96x96
+		Transform:   NewTransform(x, y-96, 96, 96),
 		HouseType:   houseType,
 		SpriteParts: make(map[string]*ebiten.Image),
-		SmokeParts:  make([]SmokeParticle, 0),
 	}
 
 	// Загрузка частей домика
 	if ss != nil {
-		prefix := "house" + houseType
-		// Стены
-		h.SpriteParts["bottomLeft"] = ss.GetTile(prefix + "BottomLeft")
-		h.SpriteParts["bottomMid"] = ss.GetTile(prefix + "BottomMid")
-		h.SpriteParts["bottomRight"] = ss.GetTile(prefix + "BottomRight")
-		h.SpriteParts["midLeft"] = ss.GetTile(prefix + "MidLeft")
-		h.SpriteParts["midRight"] = ss.GetTile(prefix + "MidRight")
-		// Крыша
-		h.SpriteParts["topLeft"] = ss.GetTile(prefix + "TopLeft")
-		h.SpriteParts["topMid"] = ss.GetTile(prefix + "TopMid")
-		h.SpriteParts["topRight"] = ss.GetTile(prefix + "TopRight")
-	}
-
-	// Если нет спрайтов - используем цвет
-	if h.SpriteParts["bottomLeft"] == nil {
-		switch houseType {
-		case "beige":
-			h.Color = color.RGBA{210, 180, 140, 255}
-		case "dark":
-			h.Color = color.RGBA{101, 67, 33, 255}
-		case "gray":
-			h.Color = color.RGBA{128, 128, 128, 255}
+		parts := []string{"TopLeft", "TopMid", "TopRight", "MidLeft", "MidRight", "BottomLeft", "BottomMid", "BottomRight"}
+		for _, part := range parts {
+			h.SpriteParts[part] = ss.GetHousePart(houseType, part)
 		}
 	}
 
 	return h
 }
 
-// Update обновляет домик (дым из трубы)
+// Update обновляет домик (дым)
 func (h *House) Update(dt float64) {
 	h.SmokeTimer += dt
-
-	// Создаём новые частицы дыма каждые 0.5 сек
 	if h.SmokeTimer >= 0.5 {
 		h.SmokeTimer = 0
-		// Дым идёт из трубы (середина крыши)
 		h.SmokeParts = append(h.SmokeParts, SmokeParticle{
-			X:    h.Transform.X + h.Transform.Width/2 - 5,
-			Y:    h.Transform.Y - 10,
-			VY:   -20,
+			X: h.Transform.X + h.Transform.Width/2 - 5,
+			Y: h.Transform.Y - 10,
+			VY: -20,
 			Life: 2.0,
 			Size: 8,
 		})
 	}
 
-	// Обновляем частицы дыма
 	active := make([]SmokeParticle, 0)
 	for i := range h.SmokeParts {
 		s := &h.SmokeParts[i]
 		s.Y += s.VY * dt
-		s.X += math.Sin(s.Life*2) * 5 * dt // Дым колеблется
+		s.X += math.Sin(s.Life*2) * 5 * dt
 		s.Life -= dt
-		s.Size += 2 * dt // Дым расширяется
-
+		s.Size += 2 * dt
 		if s.Life > 0 {
 			active = append(active, *s)
 		}
@@ -464,113 +370,63 @@ func (h *House) Update(dt float64) {
 
 // Draw отрисовывает домик
 func (h *House) Draw(screen *ebiten.Image, cameraX, cameraY float64) {
-	// Рисуем частицы дыма
+	// Дым
 	for _, s := range h.SmokeParts {
-		alpha := uint8(s.Life * 100)
-		smokeColor := color.RGBA{200, 200, 200, alpha}
-		vector.DrawFilledRect(screen, float32(s.X-cameraX), float32(s.Y-cameraY), float32(s.Size), float32(s.Size), smokeColor, false)
+		alpha := uint8(s.Life * 150)
+		c := color.RGBA{200, 200, 200, alpha}
+		vector.DrawFilledRect(screen, float32(s.X-cameraX), float32(s.Y-cameraY), float32(s.Size), float32(s.Size), c, false)
 	}
 
-	// Рисуем домик по частям
-	if h.SpriteParts["bottomLeft"] != nil {
-		// Нижний ряд (стены)
-		opts := &ebiten.DrawImageOptions{}
-		opts.GeoM.Translate(h.Transform.X-cameraX, h.Transform.Y-cameraY+64)
-		screen.DrawImage(h.SpriteParts["bottomLeft"], opts)
+	// Домик по частям
+	if h.SpriteParts["BottomLeft"] != nil {
+		tileSize := 32.0
+		parts := [][3]string{
+			{"BottomLeft", "BottomMid", "BottomRight"},
+			{"MidLeft", "", "MidRight"},
+			{"TopLeft", "TopMid", "TopRight"},
+		}
 
-		opts = &ebiten.DrawImageOptions{}
-		opts.GeoM.Translate(h.Transform.X-cameraX+32, h.Transform.Y-cameraY+64)
-		screen.DrawImage(h.SpriteParts["bottomMid"], opts)
-
-		opts = &ebiten.DrawImageOptions{}
-		opts.GeoM.Translate(h.Transform.X-cameraX+64, h.Transform.Y-cameraY+64)
-		screen.DrawImage(h.SpriteParts["bottomRight"], opts)
-
-		// Средний ряд (стены)
-		opts = &ebiten.DrawImageOptions{}
-		opts.GeoM.Translate(h.Transform.X-cameraX, h.Transform.Y-cameraY+32)
-		screen.DrawImage(h.SpriteParts["midLeft"], opts)
-
-		opts = &ebiten.DrawImageOptions{}
-		opts.GeoM.Translate(h.Transform.X-cameraX+64, h.Transform.Y-cameraY+32)
-		screen.DrawImage(h.SpriteParts["midRight"], opts)
-
-		// Верхний ряд (крыша с трубой)
-		opts = &ebiten.DrawImageOptions{}
-		opts.GeoM.Translate(h.Transform.X-cameraX, h.Transform.Y-cameraY)
-		screen.DrawImage(h.SpriteParts["topLeft"], opts)
-
-		opts = &ebiten.DrawImageOptions{}
-		opts.GeoM.Translate(h.Transform.X-cameraX+32, h.Transform.Y-cameraY)
-		screen.DrawImage(h.SpriteParts["topMid"], opts)
-
-		opts = &ebiten.DrawImageOptions{}
-		opts.GeoM.Translate(h.Transform.X-cameraX+64, h.Transform.Y-cameraY)
-		screen.DrawImage(h.SpriteParts["topRight"], opts)
-	} else {
-		// Векторный домик
-		baseX := float32(h.Transform.X - cameraX)
-		baseY := float32(h.Transform.Y - cameraY)
-
-		// Стены
-		vector.DrawFilledRect(screen, baseX, baseY+32, 96, 64, h.Color, false)
-		// Крыша (треугольник)
-		roofColor := color.RGBA{139, 69, 19, 255} // Коричневая крыша
-		vector.DrawFilledRect(screen, baseX, baseY+32, 96, 30, roofColor, false)
-		vector.DrawFilledRect(screen, baseX+10, baseY+15, 76, 20, roofColor, false)
-		vector.DrawFilledRect(screen, baseX+25, baseY+5, 46, 15, roofColor, false)
-		// Труба
-		chimneyColor := color.RGBA{178, 34, 34, 255}
-		vector.DrawFilledRect(screen, baseX+42, baseY-10, 12, 25, chimneyColor, false)
-		// Окно
-		windowColor := color.RGBA{100, 149, 237, 200}
-		vector.DrawFilledRect(screen, baseX+20, baseY+45, 20, 20, windowColor, false)
-		vector.DrawFilledRect(screen, baseX+56, baseY+45, 20, 20, windowColor, false)
-		// Дверь
-		doorColor := color.RGBA{101, 67, 33, 255}
-		vector.DrawFilledRect(screen, baseX+38, baseY+55, 20, 41, doorColor, false)
+		for row, partRow := range parts {
+			for col, part := range partRow {
+				if part != "" && h.SpriteParts[part] != nil {
+					opts := &ebiten.DrawImageOptions{}
+					opts.GeoM.Translate(h.Transform.X-cameraX+float64(col)*tileSize, h.Transform.Y-cameraY+float64(row)*tileSize)
+					screen.DrawImage(h.SpriteParts[part], opts)
+				}
+			}
+		}
 	}
 }
 
-// Tree - дерево или ёлка 🌳🌲
+// Tree - пиксельное дерево
 type Tree struct {
 	Transform *Transform
-	TreeType  string // pine (ёлка), oak (дуб)
+	TreeType  string
 	Sprite    *ebiten.Image
-	Color     color.Color
 }
 
-// NewTree создаёт новое дерево
+// NewTree создаёт дерево
 func NewTree(x, y float64, treeType string, ss *sprite.SpriteSheet) *Tree {
 	t := &Tree{
-		Transform: NewTransform(x, y-120, 64, 120), // Дерево 64x120
+		Transform: NewTransform(x, y-120, 64, 120),
 		TreeType:  treeType,
 	}
 
-	// Загрузка спрайта
 	if ss != nil {
 		if treeType == "pine" {
-			// Ёлка - используем сосну
-			t.Sprite = ss.GetTree("pine0")
-			if t.Sprite == nil {
-				t.Sprite = ss.GetTree("pine1")
+			// Сосна
+			t.Sprite = ss.GetTree("pine_0")
+			if t.Sprite != nil {
+				t.Transform.Width = float64(t.Sprite.Bounds().Dx())
+				t.Transform.Height = float64(t.Sprite.Bounds().Dy())
 			}
 		} else {
-			// Дуб - используем обычное дерево
+			// Дуб
 			t.Sprite = ss.GetTree("tree")
-		}
-	}
-
-	if t.Sprite != nil {
-		t.Transform.Width = float64(t.Sprite.Bounds().Dx())
-		t.Transform.Height = float64(t.Sprite.Bounds().Dy())
-	}
-
-	if t.Sprite == nil {
-		if treeType == "pine" {
-			t.Color = color.RGBA{34, 139, 34, 255} // Тёмно-зелёная ёлка
-		} else {
-			t.Color = color.RGBA{60, 179, 113, 255} // Светло-зелёный дуб
+			if t.Sprite != nil {
+				t.Transform.Width = float64(t.Sprite.Bounds().Dx())
+				t.Transform.Height = float64(t.Sprite.Bounds().Dy())
+			}
 		}
 	}
 
@@ -583,54 +439,23 @@ func (t *Tree) Draw(screen *ebiten.Image, cameraX, cameraY float64) {
 		opts := &ebiten.DrawImageOptions{}
 		opts.GeoM.Translate(t.Transform.X-cameraX, t.Transform.Y-cameraY)
 		screen.DrawImage(t.Sprite, opts)
-	} else {
-		// Векторное дерево
-		baseX := float32(t.Transform.X - cameraX)
-		baseY := float32(t.Transform.Y - cameraY)
-
-		if t.TreeType == "pine" {
-			// Ёлка (треугольники)
-			firColor := color.RGBA{34, 139, 34, 255}
-			// Нижний ярус
-			vector.DrawFilledRect(screen, baseX, baseY+60, 64, 60, firColor, false)
-			// Средний ярус
-			vector.DrawFilledRect(screen, baseX+8, baseY+35, 48, 40, firColor, false)
-			// Верхний ярус
-			vector.DrawFilledRect(screen, baseX+16, baseY+15, 32, 30, firColor, false)
-			// Ствол
-			trunkColor := color.RGBA{101, 67, 33, 255}
-			vector.DrawFilledRect(screen, baseX+27, baseY+115, 10, 25, trunkColor, false)
-		} else {
-			// Дуб (крона + ствол)
-			leafColor := color.RGBA{60, 179, 113, 255}
-			// Крона (круг/овал)
-			vector.DrawFilledRect(screen, baseX+10, baseY+20, 44, 50, leafColor, false)
-			vector.DrawFilledRect(screen, baseX, baseY+35, 64, 40, leafColor, false)
-			vector.DrawFilledRect(screen, baseX+5, baseY+10, 54, 35, leafColor, false)
-			// Ствол
-			trunkColor := color.RGBA{101, 67, 33, 255}
-			vector.DrawFilledRect(screen, baseX+24, baseY+65, 16, 55, trunkColor, false)
-		}
 	}
 }
 
-// Enemy - враг (простое существо)
+// Enemy - пиксельный враг
 type Enemy struct {
-	Transform *Transform
-	Renderer  *SpriteRenderer
-	Physics   *Physics
-	Health    *Health
-
-	EnemyType string
-	Damage    int
-	Speed     float64
-
+	Transform   *Transform
+	Renderer    *SpriteRenderer
+	Physics     *Physics
+	Health      *Health
+	EnemyType   string
+	Damage      int
+	Speed       float64
 	PatrolStart float64
 	PatrolEnd   float64
-	AnimTimer   float64
 }
 
-// NewEnemy создаёт нового врага
+// NewEnemy создаёт врага
 func NewEnemy(x, y float64, enemyType string, ss *sprite.SpriteSheet) *Enemy {
 	e := &Enemy{
 		Transform: NewTransform(x, y, 32, 32),
@@ -653,6 +478,8 @@ func NewEnemy(x, y float64, enemyType string, ss *sprite.SpriteSheet) *Enemy {
 			spriteName = "snakeWalk"
 		case "spider":
 			spriteName = "spider_walk1"
+		case "bat":
+			spriteName = "bat_fly"
 		}
 		if img := ss.GetEnemySprite(spriteName); img != nil {
 			e.Renderer.SetSprite(img)
@@ -661,44 +488,27 @@ func NewEnemy(x, y float64, enemyType string, ss *sprite.SpriteSheet) *Enemy {
 		}
 	}
 
-	if !e.Renderer.UseSprite {
-		e.Renderer.SpriteColor = color.RGBA{255, 68, 68, 255}
-	}
-
 	e.Health.Current = e.Health.Max
-	if e.PatrolStart == 0 {
-		e.PatrolStart = x - 60
-		e.PatrolEnd = x + 60
-	}
+	e.PatrolStart = x - 60
+	e.PatrolEnd = x + 60
 
 	return e
 }
 
 // Update обновляет врага
 func (e *Enemy) Update(dt float64, playerX, playerY float64) {
-	e.AnimTimer += dt
-
-	if !e.Health.Dead {
-		e.Renderer.Update(dt)
-		e.updateAI(dt)
-	}
-
-	if e.Health.Invincible > 0 {
-		e.Health.Invincible -= dt
-	}
-}
-
-// updateAI обновляет ИИ врага
-func (e *Enemy) updateAI(dt float64) {
 	if e.Transform.X <= e.PatrolStart {
 		e.Physics.VelocityX = e.Speed
 	} else if e.Transform.X >= e.PatrolEnd {
 		e.Physics.VelocityX = -e.Speed
-	} else {
-		e.Physics.VelocityX = e.Speed
 	}
 
 	e.Transform.X += e.Physics.VelocityX * dt
+	e.Renderer.Update(dt)
+
+	if e.Health.Invincible > 0 {
+		e.Health.Invincible -= dt
+	}
 }
 
 // Draw отрисовывает врага
@@ -706,11 +516,9 @@ func (e *Enemy) Draw(screen *ebiten.Image, cameraX, cameraY float64) {
 	if e.Health.Dead {
 		return
 	}
-
 	if e.Health.Invincible > 0 && int(e.Health.Invincible*10)%2 == 0 {
 		return
 	}
-
 	e.Renderer.Draw(screen, e.Transform, cameraX, cameraY)
 }
 
@@ -719,10 +527,9 @@ type Platform struct {
 	Transform *Transform
 	TileType  string
 	Sprite    *ebiten.Image
-	Color     color.Color
 }
 
-// NewPlatform создаёт новую платформу
+// NewPlatform создаёт платформу
 func NewPlatform(x, y, width, height float64, tileType string, ss *sprite.SpriteSheet) *Platform {
 	p := &Platform{
 		Transform: NewTransform(x, y, width, height),
@@ -731,19 +538,6 @@ func NewPlatform(x, y, width, height float64, tileType string, ss *sprite.Sprite
 
 	if ss != nil {
 		p.Sprite = ss.GetTile(tileType)
-	}
-
-	if p.Sprite == nil {
-		switch tileType {
-		case "grass":
-			p.Color = color.RGBA{100, 180, 80, 255}
-		case "grassHalf":
-			p.Color = color.RGBA{120, 200, 100, 255}
-		case "dirt":
-			p.Color = color.RGBA{139, 90, 43, 255}
-		default:
-			p.Color = color.RGBA{100, 100, 100, 255}
-		}
 	}
 
 	return p
@@ -758,12 +552,10 @@ func (p *Platform) Draw(screen *ebiten.Image, cameraX, cameraY float64) {
 			opts.GeoM.Translate(x-cameraX, p.Transform.Y-cameraY)
 			screen.DrawImage(p.Sprite, opts)
 		}
-	} else if p.Color != nil {
-		vector.DrawFilledRect(screen, float32(p.Transform.X-cameraX), float32(p.Transform.Y-cameraY), float32(p.Transform.Width), float32(p.Transform.Height), p.Color, false)
 	}
 }
 
-// Item - предмет (монетка)
+// Item - предмет
 type Item struct {
 	Transform   *Transform
 	Renderer    *SpriteRenderer
@@ -780,45 +572,21 @@ const (
 	ItemStar       = "star"
 )
 
-// NewItem создаёт новый предмет
+// NewItem создаёт предмет
 func NewItem(x, y float64, itemType string, value int, ss *sprite.SpriteSheet) *Item {
 	i := &Item{
-		Transform: &Transform{
-			X: x, Y: y, Width: 32, Height: 32,
-			ScaleX: 1, ScaleY: 1, Facing: 1,
-		},
+		Transform: NewTransform(x, y, 32, 32),
 		ItemType:  itemType,
 		Value:     value,
 	}
 
 	i.Renderer = NewSpriteRenderer(ss)
 
-	var spriteName string
-	switch itemType {
-	case ItemCoinGold:
-		spriteName = "coinGold"
-	case ItemCoinSilver:
-		spriteName = "coinSilver"
-	case ItemStar:
-		spriteName = "star"
-	}
-
 	if ss != nil {
-		if img := ss.GetItem(spriteName); img != nil {
+		if img := ss.GetItem(itemType); img != nil {
 			i.Renderer.SetSprite(img)
 			i.Transform.Width = float64(img.Bounds().Dx())
 			i.Transform.Height = float64(img.Bounds().Dy())
-		}
-	}
-
-	if !i.Renderer.UseSprite {
-		switch itemType {
-		case ItemCoinGold:
-			i.Renderer.SpriteColor = color.RGBA{255, 215, 0, 255}
-		case ItemCoinSilver:
-			i.Renderer.SpriteColor = color.RGBA{192, 192, 192, 255}
-		case ItemStar:
-			i.Renderer.SpriteColor = color.RGBA{255, 255, 255, 255}
 		}
 	}
 
@@ -837,14 +605,13 @@ func (i *Item) Draw(screen *ebiten.Image, cameraX, cameraY float64) {
 	if i.Collected {
 		return
 	}
-
 	origY := i.Transform.Y
 	i.Transform.Y += i.FloatOffset
 	i.Renderer.Draw(screen, i.Transform, cameraX, cameraY)
 	i.Transform.Y = origY
 }
 
-// Collectible - собираемый предмет (звезда, кристалл)
+// Collectible - собираемый предмет
 type Collectible struct {
 	Transform   *Transform
 	Renderer    *SpriteRenderer
@@ -855,13 +622,10 @@ type Collectible struct {
 	FloatOffset float64
 }
 
-// NewCollectible создаёт новый собираемый предмет
+// NewCollectible создаёт предмет
 func NewCollectible(x, y float64, itemType string, value int, ss *sprite.SpriteSheet) *Collectible {
 	c := &Collectible{
-		Transform: &Transform{
-			X: x, Y: y, Width: 32, Height: 32,
-			ScaleX: 1, ScaleY: 1, Facing: 1,
-		},
+		Transform: NewTransform(x, y, 32, 32),
 		ItemType:  itemType,
 		Value:     value,
 	}
@@ -874,10 +638,6 @@ func NewCollectible(x, y float64, itemType string, value int, ss *sprite.SpriteS
 			c.Transform.Width = float64(img.Bounds().Dx())
 			c.Transform.Height = float64(img.Bounds().Dy())
 		}
-	}
-
-	if !c.Renderer.UseSprite {
-		c.Renderer.SpriteColor = color.RGBA{255, 255, 255, 255}
 	}
 
 	return c
@@ -895,75 +655,13 @@ func (c *Collectible) Draw(screen *ebiten.Image, cameraX, cameraY float64) {
 	if c.Collected {
 		return
 	}
-
 	origY := c.Transform.Y
 	c.Transform.Y += c.FloatOffset
 	c.Renderer.Draw(screen, c.Transform, cameraX, cameraY)
 	c.Transform.Y = origY
 }
 
-// Projectile - снаряд
-type Projectile struct {
-	Transform *Transform
-	Renderer  *SpriteRenderer
-	VelocityX float64
-	VelocityY float64
-	LifeTime  float64
-	Damage    int
-	Active    bool
-}
-
-// NewProjectile создаёт новый снаряд
-func NewProjectile(x, y, vx, vy float64, damage int, ss *sprite.SpriteSheet) *Projectile {
-	p := &Projectile{
-		Transform: NewTransform(x, y, 16, 8),
-		VelocityX: vx,
-		VelocityY: vy,
-		LifeTime:  1.5,
-		Damage:    damage,
-		Active:    true,
-	}
-
-	p.Renderer = NewSpriteRenderer(ss)
-
-	if !p.Renderer.UseSprite {
-		p.Renderer.SpriteColor = color.RGBA{255, 255, 100, 255}
-	}
-
-	return p
-}
-
-// Update обновляет снаряд
-func (p *Projectile) Update(dt float64) {
-	p.Transform.X += p.VelocityX * dt
-	p.Transform.Y += p.VelocityY * dt
-	p.LifeTime -= dt
-
-	if p.LifeTime <= 0 {
-		p.Active = false
-	}
-}
-
-// Draw отрисовывает снаряд
-func (p *Projectile) Draw(screen *ebiten.Image, cameraX, cameraY float64) {
-	if !p.Active {
-		return
-	}
-	p.Renderer.Draw(screen, p.Transform, cameraX, cameraY)
-}
-
-// Particle - частица
-type Particle struct {
-	X, Y, VX, VY float64
-	Life         float64
-	Color        color.Color
-	Size         float64
-}
-
-// CheckCollision проверяет коллизию AABB
+// CheckCollision проверяет коллизию
 func CheckCollision(a, b *Transform) bool {
-	return a.X < b.X+b.Width &&
-		a.X+a.Width > b.X &&
-		a.Y < b.Y+b.Height &&
-		a.Y+a.Height > b.Y
+	return a.X < b.X+b.Width && a.X+a.Width > b.X && a.Y < b.Y+b.Height && a.Y+a.Height > b.Y
 }
