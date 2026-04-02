@@ -102,10 +102,7 @@ func (sr *SpriteRenderer) Update(dt float64) {
 // Draw отрисовывает пиксельный спрайт
 func (sr *SpriteRenderer) Draw(screen *ebiten.Image, transform *Transform, cameraX, cameraY float64) {
 	if sr.CurrentImg == nil {
-		// Пиксельная заглушка вместо векторов
-		x := transform.X - cameraX
-		y := transform.Y - cameraY
-		vector.DrawFilledRect(screen, float32(x), float32(y), float32(transform.Width), float32(transform.Height), color.RGBA{255, 0, 255, 255}, false)
+		// Ничего не рисуем если нет спрайта
 		return
 	}
 

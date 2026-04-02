@@ -93,17 +93,18 @@ func (w *World) GetChunk(chunkX int) *Chunk {
 func (w *World) generateChunk(chunk *Chunk, ss *sprite.SpriteSheet) {
 	w.Rng.Seed(w.Seed + int64(chunk.X))
 
-	// Земля (с возможными ямами)
-	hasPit := w.Rng.Float64() < 0.2 // 20% шанс ямы
-	if !hasPit {
+	// Твёрдая земля с газоном - всегда!
+	chunk.Platforms = append(chunk.Platforms,
+		entity.NewPlatform(float64(chunk.X), groundY, chunkWidth, 32, "grass", ss),
+	)
+
+	// Ямы (20% шанс)
+	hasPit := w.Rng.Float64() < 0.2
+	if hasPit {
+		// Разрываем землю на две части
 		chunk.Platforms = append(chunk.Platforms,
-			entity.NewPlatform(float64(chunk.X), groundY, chunkWidth, 32, "grass", nil),
-		)
-	} else {
-		// Земля с ямой посередине
-		chunk.Platforms = append(chunk.Platforms,
-			entity.NewPlatform(float64(chunk.X), groundY, chunkWidth*0.4, 32, "grass", nil),
-			entity.NewPlatform(float64(chunk.X)+chunkWidth*0.6, groundY, chunkWidth*0.4, 32, "grass", nil),
+			entity.NewPlatform(float64(chunk.X), groundY, chunkWidth*0.4, 32, "grass", ss),
+			entity.NewPlatform(float64(chunk.X)+chunkWidth*0.6, groundY, chunkWidth*0.4, 32, "grass", ss),
 		)
 	}
 
@@ -118,7 +119,7 @@ func (w *World) generateChunk(chunk *Chunk, ss *sprite.SpriteSheet) {
 			tileType = "grassHalf"
 		}
 		chunk.Platforms = append(chunk.Platforms,
-			entity.NewPlatform(px, py, width, 32, tileType, nil),
+			entity.NewPlatform(px, py, width, 32, tileType, ss),
 		)
 	}
 
@@ -144,7 +145,7 @@ func (w *World) generateChunk(chunk *Chunk, ss *sprite.SpriteSheet) {
 		if w.Rng.Float64() < 0.5 {
 			treeType = "tree"
 		}
-		tree := entity.NewTree(treeX, groundY, treeType, nil)
+		tree := entity.NewTree(treeX, groundY, treeType, ss)
 		chunk.Trees = append(chunk.Trees, tree)
 	}
 
@@ -160,7 +161,7 @@ func (w *World) generateChunk(chunk *Chunk, ss *sprite.SpriteSheet) {
 		} else if r < 0.66 {
 			mushType = "tan"
 		}
-		mush := entity.NewMushroom(mushX, mushY, mushType, nil)
+		mush := entity.NewMushroom(mushX, mushY, mushType, ss)
 		chunk.Mushrooms = append(chunk.Mushrooms, mush)
 	}
 
@@ -168,7 +169,7 @@ func (w *World) generateChunk(chunk *Chunk, ss *sprite.SpriteSheet) {
 	if w.Rng.Float64() < 0.4 {
 		frogX := float64(chunk.X) + w.Rng.Float64()*float64(chunkWidth-50)
 		frogY := float64(groundY - 16)
-		frog := entity.NewFrog(frogX, frogY, nil)
+		frog := entity.NewFrog(frogX, frogY, ss)
 		chunk.Frogs = append(chunk.Frogs, frog)
 	}
 
@@ -177,14 +178,14 @@ func (w *World) generateChunk(chunk *Chunk, ss *sprite.SpriteSheet) {
 	for i := 0; i < numButterflies; i++ {
 		bflyX := float64(chunk.X) + w.Rng.Float64()*float64(chunkWidth-50)
 		bflyY := groundY - 60 - w.Rng.Float64()*40
-		bfly := entity.NewButterfly(bflyX, bflyY, nil)
+		bfly := entity.NewButterfly(bflyX, bflyY, ss)
 		chunk.Butterflies = append(chunk.Butterflies, bfly)
 	}
 
 	// Кактусы (редко, 20% шанс)
 	if w.Rng.Float64() < 0.2 {
 		cactusX := float64(chunk.X) + w.Rng.Float64()*float64(chunkWidth-50)
-		cactus := entity.NewCactus(cactusX, groundY, nil)
+		cactus := entity.NewCactus(cactusX, groundY, ss)
 		chunk.Cacti = append(chunk.Cacti, cactus)
 	}
 
@@ -198,7 +199,7 @@ func (w *World) generateChunk(chunk *Chunk, ss *sprite.SpriteSheet) {
 		} else if r < 0.66 {
 			enemyType = "spider"
 		}
-		enemy := entity.NewEnemy(enemyX, groundY-40, enemyType, nil)
+		enemy := entity.NewEnemy(enemyX, groundY-40, enemyType, ss)
 		enemy.PatrolStart = enemyX - 60
 		enemy.PatrolEnd = enemyX + 60
 		chunk.Enemies = append(chunk.Enemies, enemy)
