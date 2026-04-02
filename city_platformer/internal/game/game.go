@@ -93,26 +93,35 @@ func (w *World) GetChunk(chunkX int) *Chunk {
 func (w *World) generateChunk(chunk *Chunk, ss *sprite.SpriteSheet) {
 	w.Rng.Seed(w.Seed + int64(chunk.X))
 
-	// Твёрдая земля с газоном - всегда! Без воздуха внизу!
+	// Твёрдая земля с газоном - несколько слоёв чтобы не было просвета!
 	chunk.Platforms = append(chunk.Platforms,
+		// Слой 1: Трава
 		entity.NewPlatform(float64(chunk.X), groundY, chunkWidth, 32, "grass", ss),
-	)
-	
-	// Добавляем слой земли под травой для красоты
-	chunk.Platforms = append(chunk.Platforms,
+		// Слой 2: Земля
 		entity.NewPlatform(float64(chunk.X), groundY+32, chunkWidth, 32, "dirt", ss),
+		// Слой 3: Ещё земля
+		entity.NewPlatform(float64(chunk.X), groundY+64, chunkWidth, 32, "dirt", ss),
+		// Слой 4: Камень внизу
+		entity.NewPlatform(float64(chunk.X), groundY+96, chunkWidth, 32, "stone", ss),
 	)
 
 	// Ямы (20% шанс) - убираем среднюю платформу
 	hasPit := w.Rng.Float64() < 0.2
 	if hasPit {
-		// Разрываем землю на две части
+		// Разрываем землю на две части (все слои)
+		pitStart := float64(chunk.X) + chunkWidth*0.4
+		
 		chunk.Platforms = append(chunk.Platforms,
+			// Левая сторона
 			entity.NewPlatform(float64(chunk.X), groundY, chunkWidth*0.4, 32, "grass", ss),
-			entity.NewPlatform(float64(chunk.X)+chunkWidth*0.6, groundY, chunkWidth*0.4, 32, "grass", ss),
-			// Земля под травой для ямы
 			entity.NewPlatform(float64(chunk.X), groundY+32, chunkWidth*0.4, 32, "dirt", ss),
-			entity.NewPlatform(float64(chunk.X)+chunkWidth*0.6, groundY+32, chunkWidth*0.4, 32, "dirt", ss),
+			entity.NewPlatform(float64(chunk.X), groundY+64, chunkWidth*0.4, 32, "dirt", ss),
+			entity.NewPlatform(float64(chunk.X), groundY+96, chunkWidth*0.4, 32, "stone", ss),
+			// Правая сторона
+			entity.NewPlatform(pitStart, groundY, chunkWidth*0.4, 32, "grass", ss),
+			entity.NewPlatform(pitStart, groundY+32, chunkWidth*0.4, 32, "dirt", ss),
+			entity.NewPlatform(pitStart, groundY+64, chunkWidth*0.4, 32, "dirt", ss),
+			entity.NewPlatform(pitStart, groundY+96, chunkWidth*0.4, 32, "stone", ss),
 		)
 	}
 
@@ -696,17 +705,19 @@ func (g *Game) Draw(screen *ebiten.Image) {
 }
 
 func (g *Game) drawBackground(screen *ebiten.Image) {
-	// Красивое небо (sky.png)
+	// Красивое небо (sky.png) - заполняем весь экран
 	skyImg := g.spriteSheet.GetBackground("sky")
 	if skyImg != nil {
-		opts := &ebiten.DrawImageOptions{}
-		// Рисуем два раза для бесшовности
-		for i := 0; i < 2; i++ {
-			x := float64(i)*float64(skyImg.Bounds().Dx()) - math.Mod(g.cameraX*0.02, float64(skyImg.Bounds().Dx()))
-			if x < -float64(skyImg.Bounds().Dx()) {
-				x += float64(skyImg.Bounds().Dx()) * 2
+		skyWidth := float64(skyImg.Bounds().Dx())
+		
+		// Рисуем небо с повторением по горизонтали
+		for i := 0; i < 3; i++ {
+			x := float64(i)*skyWidth - math.Mod(g.cameraX*0.02, skyWidth)
+			if x < -skyWidth {
+				x += skyWidth * 3
 			}
-			opts.GeoM.Reset()
+			
+			opts := &ebiten.DrawImageOptions{}
 			opts.GeoM.Translate(x, 0)
 			screen.DrawImage(skyImg, opts)
 		}
