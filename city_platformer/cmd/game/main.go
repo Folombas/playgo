@@ -1,4 +1,4 @@
-// Pixel Platformer - Полностью пиксельная игра!
+// Infinite Pixel Platformer - Бесконечный пиксельный платформер
 // Go365 Challenge - День 93 (2 апреля 2026)
 package main
 
@@ -16,7 +16,7 @@ const (
 
 func init() {
 	ebiten.SetWindowSize(screenWidth, screenHeight)
-	ebiten.SetWindowTitle("🎮 Pixel Platformer - Go365 Day 93")
+	ebiten.SetWindowTitle("🎮 Infinite Pixel Platformer - Go365 Day 93")
 	ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
 }
 
