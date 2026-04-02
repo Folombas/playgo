@@ -622,6 +622,37 @@ type Collectible struct {
 	FloatOffset float64
 }
 
+// Mushroom - гриб (декорация или предмет)
+type Mushroom struct {
+	Transform *Transform
+	Renderer  *SpriteRenderer
+	MushType  string // red, brown, tan, tall
+	AnimTimer float64
+}
+
+// Frog - лягушка (декорация)
+type Frog struct {
+	Transform *Transform
+	Renderer  *SpriteRenderer
+	AnimTimer float64
+	JumpY     float64
+}
+
+// Butterfly - бабочка (декорация, летает)
+type Butterfly struct {
+	Transform *Transform
+	Renderer  *SpriteRenderer
+	AnimTimer float64
+	FloatY    float64
+	FloatX    float64
+}
+
+// Cactus - кактус (декорация, препятствие)
+type Cactus struct {
+	Transform *Transform
+	Renderer  *SpriteRenderer
+}
+
 // NewCollectible создаёт предмет
 func NewCollectible(x, y float64, itemType string, value int, ss *sprite.SpriteSheet) *Collectible {
 	c := &Collectible{
@@ -659,6 +690,141 @@ func (c *Collectible) Draw(screen *ebiten.Image, cameraX, cameraY float64) {
 	c.Transform.Y += c.FloatOffset
 	c.Renderer.Draw(screen, c.Transform, cameraX, cameraY)
 	c.Transform.Y = origY
+}
+
+// NewMushroom создаёт гриб
+func NewMushroom(x, y float64, mushType string, ss *sprite.SpriteSheet) *Mushroom {
+	m := &Mushroom{
+		Transform: NewTransform(x, y, 32, 32),
+		MushType:  mushType,
+	}
+
+	m.Renderer = NewSpriteRenderer(ss)
+
+	if ss != nil {
+		var spriteName string
+		switch mushType {
+		case "red":
+			spriteName = "shroomRedMid"
+		case "brown":
+			spriteName = "shroomBrownMid"
+		case "tan":
+			spriteName = "shroomTanMid"
+		case "tall_red":
+			spriteName = "tallShroom_red"
+		case "tall_brown":
+			spriteName = "tallShroom_brown"
+		case "tiny_red":
+			spriteName = "tinyShroom_red"
+		}
+		if img := ss.GetMushroom(spriteName); img != nil {
+			m.Renderer.SetSprite(img)
+			m.Transform.Width = float64(img.Bounds().Dx())
+			m.Transform.Height = float64(img.Bounds().Dy())
+		}
+	}
+
+	return m
+}
+
+// Update обновляет гриб
+func (m *Mushroom) Update(dt float64) {
+	m.AnimTimer += dt
+}
+
+// Draw отрисовывает гриб
+func (m *Mushroom) Draw(screen *ebiten.Image, cameraX, cameraY float64) {
+	m.Renderer.Draw(screen, m.Transform, cameraX, cameraY)
+}
+
+// NewFrog создаёт лягушку
+func NewFrog(x, y float64, ss *sprite.SpriteSheet) *Frog {
+	f := &Frog{
+		Transform: NewTransform(x, y, 32, 32),
+	}
+
+	f.Renderer = NewSpriteRenderer(ss)
+
+	if ss != nil {
+		if img := ss.GetDetail("GrassLand_Frog.png"); img != nil {
+			f.Renderer.SetSprite(img)
+			f.Transform.Width = float64(img.Bounds().Dx())
+			f.Transform.Height = float64(img.Bounds().Dy())
+		}
+	}
+
+	return f
+}
+
+// Update обновляет лягушку
+func (f *Frog) Update(dt float64) {
+	f.AnimTimer += dt
+	f.JumpY = math.Sin(f.AnimTimer*2) * 3
+}
+
+// Draw отрисовывает лягушку
+func (f *Frog) Draw(screen *ebiten.Image, cameraX, cameraY float64) {
+	origY := f.Transform.Y
+	f.Transform.Y += f.JumpY
+	f.Renderer.Draw(screen, f.Transform, cameraX, cameraY)
+	f.Transform.Y = origY
+}
+
+// NewButterfly создаёт бабочку
+func NewButterfly(x, y float64, ss *sprite.SpriteSheet) *Butterfly {
+	b := &Butterfly{
+		Transform: NewTransform(x, y, 24, 24),
+	}
+
+	b.Renderer = NewSpriteRenderer(ss)
+
+	if ss != nil {
+		if img := ss.GetDetail("GrassLand_Butterfly.png"); img != nil {
+			b.Renderer.SetSprite(img)
+			b.Transform.Width = float64(img.Bounds().Dx())
+			b.Transform.Height = float64(img.Bounds().Dy())
+		}
+	}
+
+	return b
+}
+
+// Update обновляет бабочку
+func (b *Butterfly) Update(dt float64) {
+	b.AnimTimer += dt
+	b.FloatY = math.Sin(b.AnimTimer*3) * 20
+	b.FloatX = math.Cos(b.AnimTimer*2) * 10
+	b.Transform.X += b.FloatX * dt
+	b.Transform.Y += b.FloatY * dt
+}
+
+// Draw отрисовывает бабочку
+func (b *Butterfly) Draw(screen *ebiten.Image, cameraX, cameraY float64) {
+	b.Renderer.Draw(screen, b.Transform, cameraX, cameraY)
+}
+
+// NewCactus создаёт кактус
+func NewCactus(x, y float64, ss *sprite.SpriteSheet) *Cactus {
+	c := &Cactus{
+		Transform: NewTransform(x, y-40, 24, 40),
+	}
+
+	c.Renderer = NewSpriteRenderer(ss)
+
+	if ss != nil {
+		if img := ss.GetItem("cactus"); img != nil {
+			c.Renderer.SetSprite(img)
+			c.Transform.Width = float64(img.Bounds().Dx())
+			c.Transform.Height = float64(img.Bounds().Dy())
+		}
+	}
+
+	return c
+}
+
+// Draw отрисовывает кактус
+func (c *Cactus) Draw(screen *ebiten.Image, cameraX, cameraY float64) {
+	c.Renderer.Draw(screen, c.Transform, cameraX, cameraY)
 }
 
 // CheckCollision проверяет коллизию

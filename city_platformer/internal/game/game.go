@@ -38,6 +38,10 @@ type Chunk struct {
 	Platforms    []*entity.Platform
 	Houses       []*entity.House
 	Trees        []*entity.Tree
+	Mushrooms    []*entity.Mushroom
+	Frogs        []*entity.Frog
+	Butterflies  []*entity.Butterfly
+	Cacti        []*entity.Cactus
 	Enemies      []*entity.Enemy
 	Items        []*entity.Item
 	Collectibles []*entity.Collectible
@@ -142,6 +146,46 @@ func (w *World) generateChunk(chunk *Chunk) {
 		chunk.Trees = append(chunk.Trees, tree)
 	}
 
+	// Грибы
+	numMushrooms := w.Rng.Intn(4) + 2
+	for i := 0; i < numMushrooms; i++ {
+		mushX := float64(chunk.X) + w.Rng.Float64()*float64(chunkWidth-50)
+		mushY := float64(groundY - 16)
+		mushType := "red"
+		r := w.Rng.Float64()
+		if r < 0.33 {
+			mushType = "brown"
+		} else if r < 0.66 {
+			mushType = "tan"
+		}
+		mush := entity.NewMushroom(mushX, mushY, mushType, nil)
+		chunk.Mushrooms = append(chunk.Mushrooms, mush)
+	}
+
+	// Лягушки
+	if w.Rng.Float64() < 0.4 {
+		frogX := float64(chunk.X) + w.Rng.Float64()*float64(chunkWidth-50)
+		frogY := float64(groundY - 16)
+		frog := entity.NewFrog(frogX, frogY, nil)
+		chunk.Frogs = append(chunk.Frogs, frog)
+	}
+
+	// Бабочки
+	numButterflies := w.Rng.Intn(3) + 1
+	for i := 0; i < numButterflies; i++ {
+		bflyX := float64(chunk.X) + w.Rng.Float64()*float64(chunkWidth-50)
+		bflyY := groundY - 60 - w.Rng.Float64()*40
+		bfly := entity.NewButterfly(bflyX, bflyY, nil)
+		chunk.Butterflies = append(chunk.Butterflies, bfly)
+	}
+
+	// Кактусы (редко, 20% шанс)
+	if w.Rng.Float64() < 0.2 {
+		cactusX := float64(chunk.X) + w.Rng.Float64()*float64(chunkWidth-50)
+		cactus := entity.NewCactus(cactusX, groundY, nil)
+		chunk.Cacti = append(chunk.Cacti, cactus)
+	}
+
 	// Враги
 	if w.Rng.Float64() < 0.6 && !hasPit {
 		enemyX := float64(chunk.X) + w.Rng.Float64()*float64(chunkWidth-100)
@@ -213,6 +257,15 @@ func (w *World) Update(dt float64) {
 		for _, house := range chunk.Houses {
 			house.Update(dt)
 		}
+		for _, mush := range chunk.Mushrooms {
+			mush.Update(dt)
+		}
+		for _, frog := range chunk.Frogs {
+			frog.Update(dt)
+		}
+		for _, bfly := range chunk.Butterflies {
+			bfly.Update(dt)
+		}
 		for _, enemy := range chunk.Enemies {
 			enemy.Update(dt, 0, 0) // Упрощённо
 		}
@@ -236,6 +289,18 @@ func (w *World) Draw(screen *ebiten.Image, cameraX, cameraY float64) {
 		}
 		for _, tree := range chunk.Trees {
 			tree.Draw(screen, cameraX, cameraY)
+		}
+		for _, mush := range chunk.Mushrooms {
+			mush.Draw(screen, cameraX, cameraY)
+		}
+		for _, frog := range chunk.Frogs {
+			frog.Draw(screen, cameraX, cameraY)
+		}
+		for _, bfly := range chunk.Butterflies {
+			bfly.Draw(screen, cameraX, cameraY)
+		}
+		for _, cactus := range chunk.Cacti {
+			cactus.Draw(screen, cameraX, cameraY)
 		}
 		for _, item := range chunk.Items {
 			item.Draw(screen, cameraX, cameraY)

@@ -28,6 +28,12 @@ type SpriteSheet struct {
 	// Предметы
 	Items map[string]*ebiten.Image
 
+	// Грибы
+	Mushrooms map[string]*ebiten.Image
+
+	// Детали (бабочки, лягушки, кактусы)
+	Details map[string]*ebiten.Image
+
 	// Враги
 	Enemies map[string]*ebiten.Image
 
@@ -45,6 +51,8 @@ type SpriteSheet struct {
 func LoadSpriteSheet() (*SpriteSheet, error) {
 	ss := &SpriteSheet{
 		Tiles:       make(map[string]*ebiten.Image),
+		Mushrooms:   make(map[string]*ebiten.Image),
+		Details:     make(map[string]*ebiten.Image),
 		Items:       make(map[string]*ebiten.Image),
 		Enemies:     make(map[string]*ebiten.Image),
 		Trees:       make(map[string]*ebiten.Image),
@@ -67,6 +75,16 @@ func LoadSpriteSheet() (*SpriteSheet, error) {
 	// Загрузка предметов
 	if err := ss.loadItems(basePath); err != nil {
 		fmt.Println("Warning: items error:", err)
+	}
+
+	// Загрузка грибов
+	if err := ss.loadMushrooms(basePath); err != nil {
+		fmt.Println("Warning: mushrooms error:", err)
+	}
+
+	// Загрузка деталей
+	if err := ss.loadDetails(basePath); err != nil {
+		fmt.Println("Warning: details error:", err)
 	}
 
 	// Загрузка врагов
@@ -188,6 +206,8 @@ func (ss *SpriteSheet) loadItems(basePath string) error {
 		"keyBlue.png", "keyGreen.png", "keyRed.png",
 		// Облака
 		"cloud1.png", "cloud2.png", "cloud3.png",
+		// Кактусы
+		"cactus.png",
 	}
 
 	for _, file := range itemFiles {
@@ -195,6 +215,58 @@ func (ss *SpriteSheet) loadItems(basePath string) error {
 		if item := ss.loadImage(path); item != nil {
 			name := strings.TrimSuffix(file, ".png")
 			ss.Items[name] = item
+		}
+	}
+
+	return nil
+}
+
+// loadMushrooms загружает грибы
+func (ss *SpriteSheet) loadMushrooms(basePath string) error {
+	mushroomsPath := filepath.Join(basePath, "Mushrooms")
+
+	mushroomFiles := []string{
+		// Грибы красные
+		"shroomRedLeft.png", "shroomRedMid.png", "shroomRedRight.png",
+		// Грибы коричневые
+		"shroomBrownLeft.png", "shroomBrownMid.png", "shroomBrownRight.png",
+		// Грибы бежевые
+		"shroomTanLeft.png", "shroomTanMid.png", "shroomTanRight.png",
+		// Высокие грибы
+		"tallShroom_red.png", "tallShroom_brown.png", "tallShroom_tan.png",
+		// Маленькие грибы
+		"tinyShroom_red.png", "tinyShroom_brown.png", "tinyShroom_tan.png",
+		// Стебли
+		"stem.png", "stemTop.png", "stemBase.png",
+	}
+
+	for _, file := range mushroomFiles {
+		path := filepath.Join(mushroomsPath, file)
+		if mushroom := ss.loadImage(path); mushroom != nil {
+			name := strings.TrimSuffix(file, ".png")
+			ss.Mushrooms[name] = mushroom
+		}
+	}
+
+	return nil
+}
+
+// loadDetails загружает детали (бабочки, лягушки)
+func (ss *SpriteSheet) loadDetails(basePath string) error {
+	detailsPath := filepath.Join(basePath, "Details")
+
+	detailFiles := []string{
+		"GrassLand_Butterfly.png",
+		"GrassLand_Frog.png",
+		"GrassLand_Flower.png",
+		"GrassLand_Bush.png",
+	}
+
+	for _, file := range detailFiles {
+		path := filepath.Join(detailsPath, file)
+		if detail := ss.loadImage(path); detail != nil {
+			name := strings.TrimSuffix(file, ".png")
+			ss.Details[name] = detail
 		}
 	}
 
@@ -388,6 +460,22 @@ func (ss *SpriteSheet) GetTile(name string) *ebiten.Image {
 func (ss *SpriteSheet) GetItem(name string) *ebiten.Image {
 	if item, ok := ss.Items[name]; ok {
 		return item
+	}
+	return nil
+}
+
+// GetMushroom возвращает гриб
+func (ss *SpriteSheet) GetMushroom(name string) *ebiten.Image {
+	if mushroom, ok := ss.Mushrooms[name]; ok {
+		return mushroom
+	}
+	return nil
+}
+
+// GetDetail возвращает деталь
+func (ss *SpriteSheet) GetDetail(name string) *ebiten.Image {
+	if detail, ok := ss.Details[name]; ok {
+		return detail
 	}
 	return nil
 }
