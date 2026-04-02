@@ -1,5 +1,6 @@
-// City Platformer: Neon Runner - Cyber Escape
+// Sunny Adventure: Приключения Солнышка в Волшебном Лесу
 // Go365 Challenge - День 93 (2 апреля 2026)
+// Философия: Дружба и свет побеждают тьму!
 package main
 
 import (
@@ -16,7 +17,7 @@ const (
 
 func init() {
 	ebiten.SetWindowSize(screenWidth, screenHeight)
-	ebiten.SetWindowTitle("Neon Runner: Cyber Escape - Go365 Day 93")
+	ebiten.SetWindowTitle("🌈 Sunny Adventure - Go365 Day 93")
 	ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
 }
 

@@ -1,5 +1,5 @@
-// Package sprite - загрузка и управление спрайтами для City Platformer
-// Go365 Day 93 - Neon Runner: Cyber Escape
+// Package sprite - загрузка и управление спрайтами для Fairy Tale Platformer
+// Go365 Day 93 - Sunny Adventure: Приключения Солнышка
 package sprite
 
 import (
@@ -9,51 +9,55 @@ import (
 	_ "image/png"
 	"os"
 	"path/filepath"
-	"sort"
-	"strings"
 
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
 // SpriteSheet хранит все загруженные спрайты
 type SpriteSheet struct {
-	// Игрок
+	// Игрок - Солнышко
 	PlayerStand  *ebiten.Image
 	PlayerWalk   []*ebiten.Image
 	PlayerJump   *ebiten.Image
-	PlayerHurt   *ebiten.Image
-	PlayerDuck   *ebiten.Image
-	PlayerFront  *ebiten.Image
+	PlayerHappy  *ebiten.Image
 
-	// Тайлы
+	// Тайлы - природа
 	Tiles map[string]*ebiten.Image
+
+	// Тайлы - грибы
+	Mushrooms map[string]*ebiten.Image
+
+	// Тайлы - конфеты
+	Candy map[string]*ebiten.Image
 
 	// Предметы
 	Items map[string]*ebiten.Image
 
+	// Друзья - милые существа
+	Friends map[string]*ebiten.Image
+
 	// Враги
 	Enemies map[string]*ebiten.Image
 
-	// HUD
-	HUD map[string]*ebiten.Image
-
 	// Фон
-	Background      *ebiten.Image
-	BackgroundCastle *ebiten.Image
+	Backgrounds map[string]*ebiten.Image
 }
 
 // LoadSpriteSheet загружает все спрайты из папки assets/sprites
 func LoadSpriteSheet() (*SpriteSheet, error) {
 	ss := &SpriteSheet{
-		Tiles:   make(map[string]*ebiten.Image),
-		Items:   make(map[string]*ebiten.Image),
-		Enemies: make(map[string]*ebiten.Image),
-		HUD:     make(map[string]*ebiten.Image),
+		Tiles:       make(map[string]*ebiten.Image),
+		Mushrooms:   make(map[string]*ebiten.Image),
+		Candy:       make(map[string]*ebiten.Image),
+		Items:       make(map[string]*ebiten.Image),
+		Friends:     make(map[string]*ebiten.Image),
+		Enemies:     make(map[string]*ebiten.Image),
+		Backgrounds: make(map[string]*ebiten.Image),
 	}
 
 	basePath := "assets/sprites"
 
-	// Загрузка спрайтов игрока
+	// Загрузка спрайтов игрока (Солнышко)
 	if err := ss.loadPlayerSprites(basePath); err != nil {
 		fmt.Println("Warning: player sprite error:", err)
 	}
@@ -63,9 +67,24 @@ func LoadSpriteSheet() (*SpriteSheet, error) {
 		fmt.Println("Warning: tiles error:", err)
 	}
 
+	// Загрузка грибов
+	if err := ss.loadMushrooms(basePath); err != nil {
+		fmt.Println("Warning: mushrooms error:", err)
+	}
+
+	// Загрузка конфет
+	if err := ss.loadCandy(basePath); err != nil {
+		fmt.Println("Warning: candy error:", err)
+	}
+
 	// Загрузка предметов
 	if err := ss.loadItems(basePath); err != nil {
 		fmt.Println("Warning: items error:", err)
+	}
+
+	// Загрузка друзей
+	if err := ss.loadFriends(basePath); err != nil {
+		fmt.Println("Warning: friends error:", err)
 	}
 
 	// Загрузка врагов
@@ -73,14 +92,9 @@ func LoadSpriteSheet() (*SpriteSheet, error) {
 		fmt.Println("Warning: enemies error:", err)
 	}
 
-	// Загрузка HUD
-	if err := ss.loadHUD(basePath); err != nil {
-		fmt.Println("Warning: HUD error:", err)
-	}
-
-	// Загрузка фона
-	if err := ss.loadBackground(basePath); err != nil {
-		fmt.Println("Warning: background error:", err)
+	// Загрузка фонов
+	if err := ss.loadBackgrounds(basePath); err != nil {
+		fmt.Println("Warning: backgrounds error:", err)
 	}
 
 	return ss, nil
@@ -93,9 +107,7 @@ func (ss *SpriteSheet) loadPlayerSprites(basePath string) error {
 	// Загрузка отдельных спрайтов
 	ss.PlayerStand = ss.loadImage(filepath.Join(playerPath, "p1_stand.png"))
 	ss.PlayerJump = ss.loadImage(filepath.Join(playerPath, "p1_jump.png"))
-	ss.PlayerHurt = ss.loadImage(filepath.Join(playerPath, "p1_hurt.png"))
-	ss.PlayerDuck = ss.loadImage(filepath.Join(playerPath, "p1_duck.png"))
-	ss.PlayerFront = ss.loadImage(filepath.Join(playerPath, "p1_front.png"))
+	ss.PlayerHappy = ss.loadImage(filepath.Join(playerPath, "p1_front.png"))
 
 	// Загрузка анимации ходьбы (11 кадров)
 	walkPath := filepath.Join(playerPath, "p1_walk", "PNG")
@@ -109,27 +121,20 @@ func (ss *SpriteSheet) loadPlayerSprites(basePath string) error {
 		}
 	}
 
-	// Сортировка кадров по имени файла
-	if len(ss.PlayerWalk) > 0 {
-		sort.Slice(ss.PlayerWalk, func(i, j int) bool {
-			boundsI := ss.PlayerWalk[i].Bounds()
-			boundsJ := ss.PlayerWalk[j].Bounds()
-			return boundsI.Dx() < boundsJ.Dx() || (boundsI.Dx() == boundsJ.Dx() && boundsI.Dy() < boundsJ.Dy())
-		})
-	}
-
 	return nil
 }
 
-// loadTiles загружает тайлы
+// loadTiles загружает тайлы (трава, земля, камень, кирпичи, замок)
 func (ss *SpriteSheet) loadTiles(basePath string) error {
 	tilesPath := filepath.Join(basePath, "Tiles")
 
-	// Основные тайлы
+	// Основные тайлы - природа
 	tileFiles := []string{
-		// Земля
+		// Трава
 		"grass.png", "grassMid.png", "grassLeft.png", "grassRight.png",
 		"grassHalf.png", "grassHalfLeft.png", "grassHalfRight.png",
+		"grassHillLeft.png", "grassHillLeft2.png", "grassHillRight.png", "grassHillRight2.png",
+		// Земля
 		"dirt.png", "dirtMid.png", "dirtLeft.png", "dirtRight.png",
 		"dirtHalf.png", "dirtHalfLeft.png", "dirtHalfRight.png",
 		// Камень
@@ -146,15 +151,78 @@ func (ss *SpriteSheet) loadTiles(basePath string) error {
 		"door_closedMid.png", "door_openMid.png",
 		// Выход
 		"signExit.png",
-		// Опасности
-		"spikes.png",
+		// Декор
+		"bush.png", "plant.png", "plantPurple.png", "flower.png",
+		// Конфетные тайлы
+		"cake.png", "cakeMid.png", "cakeLeft.png", "cakeRight.png",
+		"choco.png", "chocoMid.png", "chocoLeft.png", "chocoRight.png",
+		// Сладости
+		"candyRed.png", "candyBlue.png", "candyGreen.png", "candyYellow.png",
+		"canePink.png", "lollipopRed.png", "lollipopGreen.png",
+		"cherry.png", "heart.png", "cupCake.png",
 	}
 
 	for _, file := range tileFiles {
 		path := filepath.Join(tilesPath, file)
 		if tile := ss.loadImage(path); tile != nil {
-			name := strings.TrimSuffix(file, ".png")
+			name := file[:len(file)-4] // без .png
 			ss.Tiles[name] = tile
+		}
+	}
+
+	return nil
+}
+
+// loadMushrooms загружает грибы
+func (ss *SpriteSheet) loadMushrooms(basePath string) error {
+	itemsPath := filepath.Join(basePath, "Items")
+
+	mushroomFiles := []string{
+		// Грибы красные
+		"shroomRedLeft.png", "shroomRedMid.png", "shroomRedRight.png",
+		"shroomRedAltLeft.png", "shroomRedAltMid.png", "shroomRedAltRight.png",
+		// Грибы коричневые
+		"shroomBrownLeft.png", "shroomBrownMid.png", "shroomBrownRight.png",
+		"shroomBrownAltLeft.png", "shroomBrownAltMid.png", "shroomBrownAltRight.png",
+		// Грибы бежевые
+		"shroomTanLeft.png", "shroomTanMid.png", "shroomTanRight.png",
+		"shroomTanAltLeft.png", "shroomTanAltMid.png", "shroomTanAltRight.png",
+		// Высокие грибы
+		"tallShroom_red.png", "tallShroom_brown.png", "tallShroom_tan.png",
+		// Маленькие грибы
+		"tinyShroom_red.png", "tinyShroom_brown.png", "tinyShroom_tan.png",
+		// Стебли
+		"stem.png", "stemTop.png", "stemBase.png", "stemCrown.png",
+	}
+
+	for _, file := range mushroomFiles {
+		path := filepath.Join(itemsPath, file)
+		if mushroom := ss.loadImage(path); mushroom != nil {
+			name := file[:len(file)-4]
+			ss.Mushrooms[name] = mushroom
+		}
+	}
+
+	return nil
+}
+
+// loadCandy загружает конфеты
+func (ss *SpriteSheet) loadCandy(basePath string) error {
+	tilesPath := filepath.Join(basePath, "Tiles")
+
+	candyFiles := []string{
+		"cookieBrown.png", "cookiePink.png", "cookieChoco.png",
+		"creamPink.png", "creamVanilla.png", "creamChoco.png",
+		"wafflePink.png", "waffleWhite.png",
+		"gummyWormRedHead.png", "gummyWormRedMid.png", "gummyWormRedEnd.png",
+		"gummyWormGreenHead.png", "gummyWormGreenMid.png", "gummyWormGreenEnd.png",
+	}
+
+	for _, file := range candyFiles {
+		path := filepath.Join(tilesPath, file)
+		if candy := ss.loadImage(path); candy != nil {
+			name := file[:len(file)-4]
+			ss.Candy[name] = candy
 		}
 	}
 
@@ -183,8 +251,36 @@ func (ss *SpriteSheet) loadItems(basePath string) error {
 	for _, file := range itemFiles {
 		path := filepath.Join(itemsPath, file)
 		if item := ss.loadImage(path); item != nil {
-			name := strings.TrimSuffix(file, ".png")
+			name := file[:len(file)-4]
 			ss.Items[name] = item
+		}
+	}
+
+	return nil
+}
+
+// loadFriends загружает друзей (милые существа)
+func (ss *SpriteSheet) loadFriends(basePath string) error {
+	enemiesPath := filepath.Join(basePath, "Enemies")
+
+	friendFiles := []string{
+		// Пчёлка
+		"bee_fly.png", "bee.png",
+		// Божья коровка
+		"ladyBug_walk.png", "ladyBug.png",
+		// Лягушка
+		"frog.png", "frog_leap.png",
+		// Улитка
+		"snailWalk1.png", "snailWalk2.png", "snail_walk.png",
+		// Рыбки
+		"fishSwim1.png", "fishSwim2.png",
+	}
+
+	for _, file := range friendFiles {
+		path := filepath.Join(enemiesPath, file)
+		if friend := ss.loadImage(path); friend != nil {
+			name := file[:len(file)-4]
+			ss.Friends[name] = friend
 		}
 	}
 
@@ -197,31 +293,23 @@ func (ss *SpriteSheet) loadEnemies(basePath string) error {
 
 	enemyFiles := []string{
 		// Муха
-		"flyFly1.png", "flyFly2.png",
+		"flyFly1.png", "flyFly2.png", "fly.png",
 		// Летучая мышь
 		"bat_fly.png", "bat.png", "bat_hit.png", "bat_dead.png",
 		// Слайм
 		"slimeWalk1.png", "slimeWalk2.png", "slime.png",
 		// Змея
-		"snakeWalk.png", "snake.png", "snake_hit.png", "snake_dead.png",
+		"snakeWalk.png", "snake.png",
 		// Паук
-		"spider_walk1.png", "spider_walk2.png", "spider.png", "spider_hit.png",
+		"spider_walk1.png", "spider_walk2.png", "spider.png",
 		// Призрак
-		"ghost_normal.png", "ghost.png", "ghost_hit.png", "ghost_dead.png",
-		// Пчела
-		"bee_fly.png", "bee.png", "bee_hit.png", "bee_dead.png",
-		// Божья коровка
-		"ladyBug_walk.png", "ladyBug.png", "ladyBug_hit.png",
-		// Лягушка
-		"frog.png", "frog_hit.png", "frog_leap.png", "frog_dead.png",
-		// Улитка
-		"snailWalk1.png", "snailWalk2.png", "snail_walk.png", "snail_hit.png",
+		"ghost_normal.png", "ghost.png",
 	}
 
 	for _, file := range enemyFiles {
 		path := filepath.Join(enemiesPath, file)
 		if enemy := ss.loadImage(path); enemy != nil {
-			name := strings.TrimSuffix(file, ".png")
+			name := file[:len(file)-4]
 			ss.Enemies[name] = enemy
 		}
 	}
@@ -229,35 +317,25 @@ func (ss *SpriteSheet) loadEnemies(basePath string) error {
 	return nil
 }
 
-// loadHUD загружает элементы интерфейса
-func (ss *SpriteSheet) loadHUD(basePath string) error {
-	hudPath := filepath.Join(basePath, "HUD")
-
-	hudFiles := []string{
-		"hud_heartFull.png", "hud_heartHalf.png", "hud_heartEmpty.png",
-		"hud_gem_red.png", "hud_gem_blue.png", "hud_gem_green.png", "hud_gem_yellow.png",
-		"hud_coins.png", "hud_x.png",
-		"hud_0.png", "hud_1.png", "hud_2.png", "hud_3.png",
-		"hud_4.png", "hud_5.png", "hud_6.png", "hud_7.png", "hud_8.png", "hud_9.png",
-	}
-
-	for _, file := range hudFiles {
-		path := filepath.Join(hudPath, file)
-		if hud := ss.loadImage(path); hud != nil {
-			name := strings.TrimSuffix(file, ".png")
-			ss.HUD[name] = hud
-		}
-	}
-
-	return nil
-}
-
-// loadBackground загружает фоны
-func (ss *SpriteSheet) loadBackground(basePath string) error {
+// loadBackgrounds загружает фоны
+func (ss *SpriteSheet) loadBackgrounds(basePath string) error {
 	bgPath := filepath.Join(basePath, "Background")
 
-	ss.Background = ss.loadImage(filepath.Join(bgPath, "bg.png"))
-	ss.BackgroundCastle = ss.loadImage(filepath.Join(bgPath, "bg_castle.png"))
+	bgFiles := []string{
+		"bg.png",
+		"bg_castle.png",
+		"bg_grasslands.png",
+		"bg_desert.png",
+		"bg_shroom.png",
+	}
+
+	for _, file := range bgFiles {
+		path := filepath.Join(bgPath, file)
+		if bg := ss.loadImage(path); bg != nil {
+			name := file[:len(file)-4]
+			ss.Backgrounds[name] = bg
+		}
+	}
 
 	return nil
 }
@@ -285,12 +363,8 @@ func (ss *SpriteSheet) GetPlayerSprite(name string) *ebiten.Image {
 		return ss.PlayerStand
 	case "jump":
 		return ss.PlayerJump
-	case "hurt":
-		return ss.PlayerHurt
-	case "duck":
-		return ss.PlayerDuck
-	case "front":
-		return ss.PlayerFront
+	case "happy":
+		return ss.PlayerHappy
 	}
 	return nil
 }
@@ -311,10 +385,34 @@ func (ss *SpriteSheet) GetTile(name string) *ebiten.Image {
 	return nil
 }
 
+// GetMushroom возвращает гриб по имени
+func (ss *SpriteSheet) GetMushroom(name string) *ebiten.Image {
+	if mushroom, ok := ss.Mushrooms[name]; ok {
+		return mushroom
+	}
+	return nil
+}
+
+// GetCandy возвращает конфету по имени
+func (ss *SpriteSheet) GetCandy(name string) *ebiten.Image {
+	if candy, ok := ss.Candy[name]; ok {
+		return candy
+	}
+	return nil
+}
+
 // GetItem возвращает предмет по имени
 func (ss *SpriteSheet) GetItem(name string) *ebiten.Image {
 	if item, ok := ss.Items[name]; ok {
 		return item
+	}
+	return nil
+}
+
+// GetFriend возвращает друга по имени
+func (ss *SpriteSheet) GetFriend(name string) *ebiten.Image {
+	if friend, ok := ss.Friends[name]; ok {
+		return friend
 	}
 	return nil
 }
@@ -327,29 +425,17 @@ func (ss *SpriteSheet) GetEnemySprite(name string) *ebiten.Image {
 	return nil
 }
 
-// GetHUD возвращает элемент HUD по имени
-func (ss *SpriteSheet) GetHUD(name string) *ebiten.Image {
-	if hud, ok := ss.HUD[name]; ok {
-		return hud
+// GetBackground возвращает фон по имени
+func (ss *SpriteSheet) GetBackground(name string) *ebiten.Image {
+	if bg, ok := ss.Backgrounds[name]; ok {
+		return bg
 	}
 	return nil
-}
-
-// GetBackground возвращает фон
-func (ss *SpriteSheet) GetBackground(castle bool) *ebiten.Image {
-	if castle && ss.BackgroundCastle != nil {
-		return ss.BackgroundCastle
-	}
-	return ss.Background
 }
 
 // CreatePlaceholder создаёт изображение-заглушку
 func CreatePlaceholder(width, height int, r, g, b uint8) *ebiten.Image {
 	img := ebiten.NewImage(width, height)
-	img.Fill(colorRGBA(r, g, b, 255))
+	img.Fill(color.RGBA{r, g, b, 255})
 	return img
-}
-
-func colorRGBA(r, g, b, a uint8) color.Color {
-	return color.NRGBA{r, g, b, a}
 }

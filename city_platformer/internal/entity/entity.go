@@ -1,5 +1,6 @@
-// Package entity - игровые сущности для City Platformer
-// Go365 Day 93 - Neon Runner: Cyber Escape
+// Package entity - игровые сущности для Fairy Tale Platformer
+// Go365 Day 93 - Sunny Adventure: Приключения Солнышка
+// Философия: Дружба, свет и добро побеждают тьму!
 package entity
 
 import (
@@ -200,57 +201,59 @@ func (h *Health) Heal(amount int) {
 	}
 }
 
-// Energy - энергия для способностей
-type Energy struct {
+// Light - солнечная энергия (доброта)
+type Light struct {
 	Current float64
 	Max     float64
 	Regen   float64
 }
 
-// NewEnergy создаёт компонент энергии
-func NewEnergy(max float64) *Energy {
-	return &Energy{
+// NewLight создаёт компонент света
+func NewLight(max float64) *Light {
+	return &Light{
 		Current: max,
 		Max:     max,
-		Regen:   10,
+		Regen:   15, // Регенерация доброты
 	}
 }
 
-// UseEnergy тратит энергию
-func (e *Energy) UseEnergy(amount float64) bool {
-	if e.Current >= amount {
-		e.Current -= amount
+// UseLight тратит свет
+func (l *Light) UseLight(amount float64) bool {
+	if l.Current >= amount {
+		l.Current -= amount
 		return true
 	}
 	return false
 }
 
 // Update обновляет регенерацию
-func (e *Energy) Update(dt float64) {
-	if e.Current < e.Max {
-		e.Current += e.Regen * dt
-		if e.Current > e.Max {
-			e.Current = e.Max
+func (l *Light) Update(dt float64) {
+	if l.Current < l.Max {
+		l.Current += l.Regen * dt
+		if l.Current > l.Max {
+			l.Current = l.Max
 		}
 	}
 }
 
-// Player - главный герой (KAI - хакер-беглец)
+// Player - главный герой (Солнышко ☀️)
 type Player struct {
 	Transform *Transform
 	Renderer  *SpriteRenderer
 	Physics   *Physics
 	Health    *Health
-	Energy    *Energy
+	Light     *Light
 
 	State     PlayerState
 	JumpCount int
 	MaxJumps  int
 
+	FriendCount int // Собранные друзья
 	Score       int
-	DataCollected int
+	CloudCount  int // Собранные облачка
 	ShootTimer  float64
 	AnimTimer   float64
+	Happy       bool // Счастливое состояние
 }
 
 // PlayerState - состояние игрока
@@ -260,24 +263,25 @@ const (
 	PlayerIdle PlayerState = iota
 	PlayerRunning
 	PlayerJumping
+	PlayerHappy
 	PlayerHurt
-	PlayerDead
 )
 
-// NewPlayer создаёт нового игрока
+// NewPlayer создаёт нового игрока - Солнышко
 func NewPlayer(x, y float64, ss *sprite.SpriteSheet) *Player {
 	p := &Player{
-		Transform: NewTransform(x, y, 32, 48),
+		Transform: NewTransform(x, y, 48, 48),
 		Physics:   NewPhysics(),
 		Health:    NewHealth(100),
-		Energy:    NewEnergy(100),
+		Light:     NewLight(100),
 		State:     PlayerIdle,
-		MaxJumps:  2, // Двойной прыжок
+		MaxJumps:  2, // Двойной прыжок!
+		Happy:     true,
 	}
 
 	p.Renderer = NewSpriteRenderer(ss)
 
-	// Загрузка спрайтов
+	// Загрузка спрайтов Солнышка
 	if ss != nil {
 		if standSprite := ss.GetPlayerSprite("stand"); standSprite != nil {
 			p.Renderer.SetSprite(standSprite)
@@ -285,15 +289,13 @@ func NewPlayer(x, y float64, ss *sprite.SpriteSheet) *Player {
 			p.Transform.Height = float64(standSprite.Bounds().Dy())
 		}
 		if walkAnim := ss.PlayerWalk; len(walkAnim) > 0 {
-			// Анимация будет установлена при движении
-		}
-		if jumpSprite := ss.GetPlayerSprite("jump"); jumpSprite != nil {
-			// Спрайт прыжка
+			// Анимация ходьбы будет установлена при движении
 		}
 	}
 
 	if !p.Renderer.UseSprite {
-		p.Renderer.SpriteColor = color.RGBA{0, 240, 255, 255} // Неоновый голубой
+		// Векторная заглушка - жёлтое солнышко
+		p.Renderer.SpriteColor = color.RGBA{255, 220, 50, 255}
 	}
 
 	return p
@@ -313,10 +315,13 @@ func (p *Player) Update(dt float64) {
 
 	p.Physics.IsMoving = math.Abs(p.Physics.VelocityX) > 10
 
-	p.Energy.Update(dt)
+	p.Light.Update(dt)
 
 	if p.Health.Invincible > 0 {
 		p.Health.Invincible -= dt
+		p.State = PlayerHurt
+	} else {
+		p.updateState()
 	}
 
 	if p.ShootTimer > 0 {
@@ -325,18 +330,11 @@ func (p *Player) Update(dt float64) {
 
 	p.AnimTimer += dt
 	p.Renderer.Update(dt)
-	p.updateState()
 }
 
 // updateState обновляет состояние
 func (p *Player) updateState() {
 	if p.Health.Dead {
-		p.State = PlayerDead
-		return
-	}
-
-	if p.Health.Invincible > 0 {
-		p.State = PlayerHurt
 		return
 	}
 
@@ -376,6 +374,7 @@ func (p *Player) Jump() bool {
 		p.Physics.VelocityY = -jumpForce
 		p.JumpCount++
 		p.Physics.OnGround = false
+		p.Happy = true // Прыжок = радость!
 		return true
 	}
 	return false
@@ -386,14 +385,15 @@ func (p *Player) ResetJump() {
 	p.JumpCount = 0
 }
 
-// CanShoot может ли стрелять
+// CanShoot может ли стрелять лучиком добра
 func (p *Player) CanShoot() bool {
-	return p.ShootTimer <= 0
+	return p.ShootTimer <= 0 && p.Light.Current >= 10
 }
 
-// Shoot стреляет
+// Shoot стреляет лучиком добра
 func (p *Player) Shoot() {
 	p.ShootTimer = 0.3
+	p.Light.UseLight(10)
 }
 
 // Draw отрисовывает игрока
@@ -402,7 +402,7 @@ func (p *Player) Draw(screen *ebiten.Image, cameraX, cameraY float64) {
 		return
 	}
 
-	// Мигание при неуязвимости
+	// Мигание при получении урона
 	if p.Health.Invincible > 0 && int(p.Health.Invincible*10)%2 == 0 {
 		return
 	}
@@ -418,21 +418,129 @@ func (p *Player) Draw(screen *ebiten.Image, cameraX, cameraY float64) {
 			if jumpSprite := p.Renderer.SpriteSheet.GetPlayerSprite("jump"); jumpSprite != nil {
 				p.Renderer.SetSprite(jumpSprite)
 			}
-		case PlayerIdle:
+		case PlayerIdle, PlayerHappy:
 			if standSprite := p.Renderer.SpriteSheet.GetPlayerSprite("stand"); standSprite != nil {
 				p.Renderer.SetSprite(standSprite)
 			}
 		case PlayerHurt:
-			if hurtSprite := p.Renderer.SpriteSheet.GetPlayerSprite("hurt"); hurtSprite != nil {
+			if hurtSprite := p.Renderer.SpriteSheet.GetPlayerSprite("jump"); hurtSprite != nil {
 				p.Renderer.SetSprite(hurtSprite)
 			}
 		}
 	}
 
 	p.Renderer.Draw(screen, p.Transform, cameraX, cameraY)
+
+	// Если нет спрайта - рисуем солнышко с лучиками
+	if !p.Renderer.UseSprite {
+		p.drawSunRays(screen, cameraX, cameraY)
+		p.drawHappyFace(screen, cameraX, cameraY)
+	}
 }
 
-// Enemy - враг
+// drawSunRays рисует лучики вокруг солнышка
+func (p *Player) drawSunRays(screen *ebiten.Image, cameraX, cameraY float64) {
+	centerX := float32(p.Transform.X - cameraX + p.Transform.Width/2)
+	centerY := float32(p.Transform.Y - cameraY + p.Transform.Height/2)
+
+	rayColor := color.RGBA{255, 200, 0, 200}
+	rayLength := float32(15)
+	rayWidth := float32(3)
+
+	for i := 0; i < 8; i++ {
+		angle := float64(i)*math.Pi/4 + p.AnimTimer*0.5
+		endX := centerX + rayLength*float32(math.Cos(angle))
+		endY := centerY + rayLength*float32(math.Sin(angle))
+		vector.StrokeLine(screen, centerX, centerY, endX, endY, rayWidth, rayColor, false)
+	}
+}
+
+// drawHappyFace рисует счастливое лицо
+func (p *Player) drawHappyFace(screen *ebiten.Image, cameraX, cameraY float64) {
+	x := p.Transform.X - cameraX
+	y := p.Transform.Y - cameraY
+
+	// Глазки
+	eyeColor := color.RGBA{50, 50, 50, 255}
+	vector.DrawFilledRect(screen, float32(x+14), float32(y+18), 6, 6, eyeColor, false)
+	vector.DrawFilledRect(screen, float32(x+28), float32(y+18), 6, 6, eyeColor, false)
+
+	// Улыбка
+	mouthColor := color.RGBA{200, 50, 50, 255}
+	vector.StrokeLine(screen, float32(x+16), float32(y+32), float32(x+22), float32(y+36), 2, mouthColor, false)
+	vector.StrokeLine(screen, float32(x+22), float32(y+36), float32(x+28), float32(y+36), 2, mouthColor, false)
+	vector.StrokeLine(screen, float32(x+28), float32(y+36), float32(x+34), float32(y+32), 2, mouthColor, false)
+}
+
+// Friend - друг (милое существо: пчёлка, божья коровка, лягушонок, улитка)
+type Friend struct {
+	Transform *Transform
+	Renderer  *SpriteRenderer
+	FriendType string
+	Collected  bool
+	AnimTimer  float64
+	FloatY     float64
+}
+
+// NewFriend создаёт нового друга
+func NewFriend(x, y float64, friendType string, ss *sprite.SpriteSheet) *Friend {
+	f := &Friend{
+		Transform:  NewTransform(x, y, 32, 32),
+		FriendType: friendType,
+	}
+
+	f.Renderer = NewSpriteRenderer(ss)
+
+	// Загрузка спрайта по типу друга
+	var spriteName string
+	switch friendType {
+	case "bee":
+		spriteName = "bee_fly"
+	case "ladybug":
+		spriteName = "ladyBug_walk"
+	case "frog":
+		spriteName = "frog"
+	case "snail":
+		spriteName = "snail_walk"
+	case "fish":
+		spriteName = "fishSwim1"
+	}
+
+	if ss != nil {
+		if img := ss.GetFriend(spriteName); img != nil {
+			f.Renderer.SetSprite(img)
+			f.Transform.Width = float64(img.Bounds().Dx())
+			f.Transform.Height = float64(img.Bounds().Dy())
+		}
+	}
+
+	if !f.Renderer.UseSprite {
+		// Векторная заглушка - розовое сердечко
+		f.Renderer.SpriteColor = color.RGBA{255, 150, 200, 255}
+	}
+
+	return f
+}
+
+// Update обновляет друга
+func (f *Friend) Update(dt float64) {
+	f.AnimTimer += dt
+	f.FloatY = math.Sin(f.AnimTimer*2) * 3 // Парение в воздухе
+}
+
+// Draw отрисовывает друга
+func (f *Friend) Draw(screen *ebiten.Image, cameraX, cameraY float64) {
+	if f.Collected {
+		return
+	}
+
+	origY := f.Transform.Y
+	f.Transform.Y += f.FloatY
+	f.Renderer.Draw(screen, f.Transform, cameraX, cameraY)
+	f.Transform.Y = origY
+}
+
+// Enemy - враг (злой ветер, тучка, летучая мышь, паук, змейка)
 type Enemy struct {
 	Transform *Transform
 	Renderer  *SpriteRenderer
@@ -447,6 +555,7 @@ type Enemy struct {
 	PatrolEnd   float64
 	Behavior    int
 
+	Converted bool // Превращён в друга
 	AnimTimer float64
 }
 
@@ -454,13 +563,12 @@ const (
 	EnemyPatrol = iota
 	EnemyChase
 	EnemyFlying
-	EnemyStationary
 )
 
 // NewEnemy создаёт нового врага
 func NewEnemy(x, y float64, enemyType string, ss *sprite.SpriteSheet) *Enemy {
 	e := &Enemy{
-		Transform: NewTransform(x, y, 32, 32),
+		Transform: NewTransform(x, y, 40, 40),
 		Physics:   NewPhysics(),
 		Health:    NewHealth(30),
 		EnemyType: enemyType,
@@ -473,29 +581,25 @@ func NewEnemy(x, y float64, enemyType string, ss *sprite.SpriteSheet) *Enemy {
 
 	// Настройка по типу врага
 	switch enemyType {
-	case "fly":
+	case "wind": // Злой ветерок
 		e.Behavior = EnemyFlying
 		e.Health.Max = 20
 		e.Speed = 80
-		e.Transform.Height = 24
-	case "bat":
+	case "storm": // Грозовая тучка
+		e.Behavior = EnemyFlying
+		e.Health.Max = 40
+		e.Damage = 20
+		e.Speed = 50
+	case "bat": // Летучая мышь
 		e.Behavior = EnemyChase
 		e.Health.Max = 25
 		e.Speed = 100
-		e.Transform.Height = 24
-	case "slime":
-		e.Health.Max = 30
-		e.Speed = 40
-	case "snake":
-		e.Health.Max = 30
-		e.Speed = 70
-	case "spider":
+	case "spider": // Паучок
 		e.Health.Max = 20
-		e.Speed = 50
-	case "ghost":
-		e.Behavior = EnemyChase
-		e.Health.Max = 40
-		e.Speed = 60
+		e.Damage = 15
+	case "snake": // Змейка
+		e.Health.Max = 30
+		e.Speed = 90
 	}
 
 	// Загрузка спрайта
@@ -504,26 +608,21 @@ func NewEnemy(x, y float64, enemyType string, ss *sprite.SpriteSheet) *Enemy {
 		var animFrames []*ebiten.Image
 
 		switch enemyType {
-		case "fly":
+		case "wind", "fly":
 			animFrames = []*ebiten.Image{
 				ss.GetEnemySprite("flyFly1"),
 				ss.GetEnemySprite("flyFly2"),
 			}
 		case "bat":
 			spriteName = "bat_fly"
-		case "slime":
-			animFrames = []*ebiten.Image{
-				ss.GetEnemySprite("slimeWalk1"),
-				ss.GetEnemySprite("slimeWalk2"),
-			}
-		case "snake":
-			spriteName = "snakeWalk"
 		case "spider":
 			animFrames = []*ebiten.Image{
 				ss.GetEnemySprite("spider_walk1"),
 				ss.GetEnemySprite("spider_walk2"),
 			}
-		case "ghost":
+		case "snake":
+			spriteName = "snakeWalk"
+		case "storm":
 			spriteName = "ghost_normal"
 		}
 
@@ -549,7 +648,7 @@ func NewEnemy(x, y float64, enemyType string, ss *sprite.SpriteSheet) *Enemy {
 	}
 
 	if !e.Renderer.UseSprite {
-		e.Renderer.SpriteColor = color.RGBA{255, 68, 68, 255} // Красный
+		e.Renderer.SpriteColor = color.RGBA{150, 150, 200, 255} // Серо-голубой
 	}
 
 	e.Health.Current = e.Health.Max
@@ -565,7 +664,7 @@ func NewEnemy(x, y float64, enemyType string, ss *sprite.SpriteSheet) *Enemy {
 func (e *Enemy) Update(dt float64, playerX, playerY float64) {
 	e.AnimTimer += dt
 
-	if !e.Health.Dead {
+	if !e.Health.Dead && !e.Converted {
 		e.Renderer.Update(dt)
 		e.updateAI(dt, playerX, playerY)
 	}
@@ -609,8 +708,6 @@ func (e *Enemy) updateAI(dt float64, playerX, playerY float64) {
 				e.Physics.VelocityX = e.Speed
 			} else if e.Transform.X >= e.PatrolEnd {
 				e.Physics.VelocityX = -e.Speed
-			} else {
-				e.Physics.VelocityX = e.Speed * float64(e.Transform.Facing) * 0.5
 			}
 		}
 
@@ -627,14 +724,18 @@ func (e *Enemy) updateAI(dt float64, playerX, playerY float64) {
 	e.Transform.X += e.Physics.VelocityX * dt
 }
 
+// Convert превращает врага в друга (лучик добра!)
+func (e *Enemy) Convert() {
+	e.Converted = true
+	e.Health.Current = e.Health.Max
+	e.Behavior = EnemyPatrol
+	e.Damage = 0
+	e.Renderer.SpriteColor = color.RGBA{255, 150, 200, 255} // Розовый = добрый!
+}
+
 // Draw отрисовывает врага
 func (e *Enemy) Draw(screen *ebiten.Image, cameraX, cameraY float64) {
 	if e.Health.Dead {
-		// Крест вместо мёртвого врага
-		x := e.Transform.X - cameraX
-		y := e.Transform.Y - cameraY
-		vector.StrokeLine(screen, float32(x), float32(y), float32(x+e.Transform.Width), float32(y+e.Transform.Height), 2, color.RGBA{255, 0, 0, 255}, false)
-		vector.StrokeLine(screen, float32(x+e.Transform.Width), float32(y), float32(x), float32(y+e.Transform.Height), 2, color.RGBA{255, 0, 0, 255}, false)
 		return
 	}
 
@@ -645,11 +746,79 @@ func (e *Enemy) Draw(screen *ebiten.Image, cameraX, cameraY float64) {
 	e.Renderer.Draw(screen, e.Transform, cameraX, cameraY)
 
 	// Полоска здоровья
-	if e.Health.Current < e.Health.Max {
+	if e.Health.Current < e.Health.Max && !e.Converted {
 		hpPercent := float32(e.Health.Current) / float32(e.Health.Max)
-		vector.DrawFilledRect(screen, float32(e.Transform.X-cameraX), float32(e.Transform.Y-cameraY-6), float32(e.Transform.Width), 4, color.RGBA{100, 100, 100, 255}, false)
-		vector.DrawFilledRect(screen, float32(e.Transform.X-cameraX), float32(e.Transform.Y-cameraY-6), float32(e.Transform.Width)*hpPercent, 4, color.RGBA{0, 255, 0, 255}, false)
+		vector.DrawFilledRect(screen, float32(e.Transform.X-cameraX), float32(e.Transform.Y-cameraY-8), float32(e.Transform.Width), 4, color.RGBA{100, 100, 100, 255}, false)
+		vector.DrawFilledRect(screen, float32(e.Transform.X-cameraX), float32(e.Transform.Y-cameraY-8), float32(e.Transform.Width)*hpPercent, 4, color.RGBA{0, 255, 0, 255}, false)
 	}
+
+	// Если превращён - рисуем сердечки
+	if e.Converted {
+		heartColor := color.RGBA{255, 100, 150, 200}
+		vector.DrawFilledRect(screen, float32(e.Transform.X-cameraX+10), float32(e.Transform.Y-cameraY-15), 8, 8, heartColor, false)
+	}
+}
+
+// Cloud - облачко (коллекционный предмет ☁️)
+type Cloud struct {
+	Transform *Transform
+	Renderer  *SpriteRenderer
+	Collected bool
+	AnimTimer float64
+	FloatY    float64
+	CloudNum  int
+}
+
+// NewCloud создаёт новое облачко
+func NewCloud(x, y float64, cloudNum int, ss *sprite.SpriteSheet) *Cloud {
+	c := &Cloud{
+		Transform: NewTransform(x, y, 48, 32),
+		CloudNum:  cloudNum,
+	}
+
+	c.Renderer = NewSpriteRenderer(ss)
+
+	var spriteName string
+	switch cloudNum {
+	case 1:
+		spriteName = "cloud1"
+	case 2:
+		spriteName = "cloud2"
+	case 3:
+		spriteName = "cloud3"
+	}
+
+	if ss != nil {
+		if img := ss.GetItem(spriteName); img != nil {
+			c.Renderer.SetSprite(img)
+			c.Transform.Width = float64(img.Bounds().Dx())
+			c.Transform.Height = float64(img.Bounds().Dy())
+		}
+	}
+
+	if !c.Renderer.UseSprite {
+		c.Renderer.SpriteColor = color.RGBA{220, 220, 255, 255}
+	}
+
+	return c
+}
+
+// Update обновляет облачко
+func (c *Cloud) Update(dt float64) {
+	c.AnimTimer += dt
+	c.FloatY = math.Sin(c.AnimTimer) * 2
+}
+
+// Draw отрисовывает облачко
+func (c *Cloud) Draw(screen *ebiten.Image, cameraX, cameraY float64) {
+	if c.Collected {
+		return
+	}
+
+	origY := c.Transform.Y
+	c.Transform.Y += c.FloatY
+	c.Renderer.Draw(screen, c.Transform, cameraX, cameraY)
+	c.Transform.Y = origY
 }
 
 // Item - предмет
@@ -673,7 +842,7 @@ const (
 	ItemGemYellow  = "gemYellow"
 	ItemStar       = "star"
 	ItemMushroom   = "mushroomRed"
-	ItemData       = "data"
+	ItemCloud      = "cloud1"
 )
 
 // NewItem создаёт новый предмет
@@ -700,8 +869,8 @@ func NewItem(x, y float64, itemType string, value int, ss *sprite.SpriteSheet) *
 		spriteName = "star"
 	case ItemMushroom:
 		spriteName = "mushroomRed"
-	case ItemData:
-		spriteName = "keyBlue" // Временный спрайт для данных
+	case ItemCloud:
+		spriteName = "cloud1"
 	}
 
 	if ss != nil {
@@ -718,22 +887,14 @@ func NewItem(x, y float64, itemType string, value int, ss *sprite.SpriteSheet) *
 			i.Renderer.SpriteColor = color.RGBA{255, 215, 0, 255}
 		case ItemCoinSilver:
 			i.Renderer.SpriteColor = color.RGBA{192, 192, 192, 255}
-		case ItemCoinBronze:
-			i.Renderer.SpriteColor = color.RGBA{205, 127, 50, 255}
 		case ItemGemRed:
 			i.Renderer.SpriteColor = color.RGBA{255, 50, 50, 255}
 		case ItemGemBlue:
 			i.Renderer.SpriteColor = color.RGBA{50, 100, 255, 255}
-		case ItemGemGreen:
-			i.Renderer.SpriteColor = color.RGBA{50, 255, 50, 255}
-		case ItemGemYellow:
-			i.Renderer.SpriteColor = color.RGBA{255, 255, 50, 255}
 		case ItemStar:
 			i.Renderer.SpriteColor = color.RGBA{255, 255, 255, 255}
 		case ItemMushroom:
 			i.Renderer.SpriteColor = color.RGBA{255, 100, 100, 255}
-		case ItemData:
-			i.Renderer.SpriteColor = color.RGBA{0, 240, 255, 255}
 		}
 	}
 
@@ -791,6 +952,10 @@ func NewPlatform(x, y, width, height float64, tileType string, ss *sprite.Sprite
 			p.Color = color.RGBA{178, 34, 34, 255}
 		case "castle":
 			p.Color = color.RGBA{100, 100, 150, 255}
+		case "cake":
+			p.Color = color.RGBA{255, 180, 180, 255}
+		case "choco":
+			p.Color = color.RGBA{139, 69, 19, 255}
 		default:
 			p.Color = color.RGBA{100, 100, 100, 255}
 		}
@@ -806,7 +971,7 @@ func (p *Platform) Draw(screen *ebiten.Image, cameraX, cameraY float64) {
 		tileSize := float64(p.Sprite.Bounds().Dx())
 		for x := p.Transform.X; x < p.Transform.X+p.Transform.Width; x += tileSize {
 			for y := p.Transform.Y; y < p.Transform.Y+p.Transform.Height; y += tileSize {
-				if x >= cameraX && x < cameraX+screenWidth && y >= cameraY && y < cameraY+screenHeight {
+				if x >= cameraX && x < cameraX+1280 && y >= cameraY && y < cameraY+720 {
 					opts := &ebiten.DrawImageOptions{}
 					opts.GeoM.Translate(x-cameraX, y-cameraY)
 					screen.DrawImage(p.Sprite, opts)
@@ -818,7 +983,7 @@ func (p *Platform) Draw(screen *ebiten.Image, cameraX, cameraY float64) {
 	}
 }
 
-// Projectile - снаряд (луч)
+// Projectile - лучик добра
 type Projectile struct {
 	Transform *Transform
 	Renderer  *SpriteRenderer
@@ -829,10 +994,10 @@ type Projectile struct {
 	Active    bool
 }
 
-// NewProjectile создаёт новый снаряд
+// NewProjectile создаёт новый снаряд (лучик добра)
 func NewProjectile(x, y, vx, vy float64, damage int, ss *sprite.SpriteSheet) *Projectile {
 	p := &Projectile{
-		Transform: NewTransform(x, y, 16, 8),
+		Transform: NewTransform(x, y, 24, 8),
 		VelocityX: vx,
 		VelocityY: vy,
 		LifeTime:  1.5,
@@ -842,7 +1007,7 @@ func NewProjectile(x, y, vx, vy float64, damage int, ss *sprite.SpriteSheet) *Pr
 
 	p.Renderer = NewSpriteRenderer(ss)
 
-	// Жёлтый луч
+	// Жёлтый лучик добра
 	if !p.Renderer.UseSprite {
 		p.Renderer.SpriteColor = color.RGBA{255, 255, 100, 255}
 	}
@@ -884,8 +1049,3 @@ func CheckCollision(a, b *Transform) bool {
 		a.Y < b.Y+b.Height &&
 		a.Y+a.Height > b.Y
 }
-
-const (
-	screenWidth  = 1280
-	screenHeight = 720
-)
