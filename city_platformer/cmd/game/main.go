@@ -1,6 +1,6 @@
-// Sunny Adventure: Приключения Солнышка в Волшебном Лесу
+// Village Platformer: Деревенский платформер - Прогулка по деревне
 // Go365 Challenge - День 93 (2 апреля 2026)
-// Философия: Дружба и свет побеждают тьму!
+// Философия: Спокойная прогулка по живописной деревне с домиками и деревьями
 package main
 
 import (
@@ -17,7 +17,7 @@ const (
 
 func init() {
 	ebiten.SetWindowSize(screenWidth, screenHeight)
-	ebiten.SetWindowTitle("🌈 Sunny Adventure - Go365 Day 93")
+	ebiten.SetWindowTitle("🏡 Деревенский Платформер - Go365 Day 93")
 	ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
 }
 

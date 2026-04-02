@@ -1,5 +1,5 @@
-// Package sprite - загрузка и управление спрайтами для Fairy Tale Platformer
-// Go365 Day 93 - Sunny Adventure: Приключения Солнышка
+// Package sprite - загрузка и управление спрайтами для Village Platformer
+// Go365 Day 93 - Деревенский платформер: Домики, деревья, холмы
 package sprite
 
 import (
@@ -429,6 +429,22 @@ func (ss *SpriteSheet) GetEnemySprite(name string) *ebiten.Image {
 func (ss *SpriteSheet) GetBackground(name string) *ebiten.Image {
 	if bg, ok := ss.Backgrounds[name]; ok {
 		return bg
+	}
+	return nil
+}
+
+// GetTree возвращает дерево по имени
+func (ss *SpriteSheet) GetTree(name string) *ebiten.Image {
+	// Деревья из папки Trees
+	if tree, ok := ss.Tiles["tree"+name]; ok {
+		return tree
+	}
+	// Сосны
+	if name == "pine0" || name == "pine1" || name == "pine2" || name == "pine3" || name == "pine4" {
+		pineName := "Tree - Pine " + name[len(name)-1:] + ".png"
+		if tree, ok := ss.Tiles[pineName]; ok {
+			return tree
+		}
 	}
 	return nil
 }
