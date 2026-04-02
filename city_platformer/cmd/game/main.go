@@ -1,12 +1,12 @@
-// Sunny Adventure: Приключения Зайчика в Волшебном Лесу
-// Go365 Challenge - День 92 (1 апреля 2026)
+// City Platformer: Neon Runner - Cyber Escape
+// Go365 Challenge - День 93 (2 апреля 2026)
 package main
 
 import (
 	"log"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"sunny_adventure/internal/game"
+	"city_platformer/internal/game"
 )
 
 const (
@@ -16,7 +16,7 @@ const (
 
 func init() {
 	ebiten.SetWindowSize(screenWidth, screenHeight)
-	ebiten.SetWindowTitle("🌈 Sunny Adventure - Go365 Day 92")
+	ebiten.SetWindowTitle("Neon Runner: Cyber Escape - Go365 Day 93")
 	ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
 }
 

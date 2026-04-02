@@ -1,18 +1,17 @@
-// Package game - основная игровая логика Sunny Adventure
-// Go365 Day 92 - Доброе сказочное приключение
+// Package game - основная игровая логика City Platformer
+// Go365 Day 93 - Neon Runner: Cyber Escape
 package game
 
 import (
 	"image/color"
-	"math"
 	"math/rand"
 	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"github.com/hajimehoshi/ebiten/v2/vector"
-	"sunny_adventure/internal/entity"
-	"sunny_adventure/internal/sprite"
+	"city_platformer/internal/entity"
+	"city_platformer/internal/sprite"
 )
 
 const (
@@ -33,33 +32,26 @@ const (
 
 // Game - основная игровая структура
 type Game struct {
-	state     GameState
-	player    *entity.Player
-	platforms []*Platform
-	enemies   []*entity.Enemy
-	friends   []*entity.Friend
-	clouds    []*entity.Cloud
-	items     []*entity.Item
+	state      GameState
+	player     *entity.Player
+	platforms  []*entity.Platform
+	enemies    []*entity.Enemy
+	items      []*entity.Item
 	projectiles []*entity.Projectile
-	particles []Particle
+	particles  []Particle
 
-	cameraX float64
-	cameraY float64
-	score   int
-	level   int
+	cameraX    float64
+	cameraY    float64
+	score      int
+	level      int
+	dataTotal  int
+	dataCollected int
 
-	rng       *rand.Rand
+	rng         *rand.Rand
 	spriteSheet *sprite.SpriteSheet
 
 	jumpPressed  bool
 	shootPressed bool
-}
-
-// Platform - платформа
-type Platform struct {
-	X, Y, Width, Height float64
-	Type                string
-	Color               color.Color
 }
 
 // NewGame создаёт новую игру
@@ -96,42 +88,44 @@ func (g *Game) startLevel() {
 func (g *Game) generateLevel(levelNum int) {
 	levelWidth := 2000 + levelNum*300
 	levelHeight := 600
-	groundY := float64(levelHeight) - 20
+	groundY := float64(levelHeight) - 32
 
 	// Игрок
 	g.player = entity.NewPlayer(100, groundY-64, g.spriteSheet)
 	g.player.Physics.OnGround = true
 
 	// Платформы
-	g.platforms = make([]*Platform, 0)
+	g.platforms = make([]*entity.Platform, 0)
 
-	// Пол (без ям для простоты)
-	g.platforms = append(g.platforms, &Platform{
-		X: 0, Y: groundY, Width: float64(levelWidth), Height: 20,
-		Type: "ground",
-		Color: color.RGBA{100, 180, 80, 255}, // Зелёная травка
-	})
+	// Пол (земля)
+	g.platforms = append(g.platforms, entity.NewPlatform(
+		0, groundY, float64(levelWidth), 32, "grass", g.spriteSheet,
+	))
 
 	// Платформы
-	numPlatforms := 3 + levelNum
+	numPlatforms := 5 + levelNum*2
 	for i := 0; i < numPlatforms; i++ {
-		px := 200.0 + float64(i)*250 + g.rng.Float64()*100
-		py := groundY - 80.0 - g.rng.Float64()*120
-		width := 100.0 + g.rng.Float64()*80
+		px := 250.0 + float64(i)*200 + g.rng.Float64()*80
+		py := groundY - 80.0 - g.rng.Float64()*100
+		width := 80.0 + g.rng.Float64()*60
 
-		g.platforms = append(g.platforms, &Platform{
-			X: px, Y: py, Width: width, Height: 20,
-			Type: "platform",
-			Color: color.RGBA{120, 160, 100, 255},
-		})
+		tileType := "stone"
+		if levelNum > 3 {
+			tileType = "brickWall"
+		}
+		if levelNum > 6 {
+			tileType = "castle"
+		}
+
+		g.platforms = append(g.platforms, entity.NewPlatform(px, py, width, 32, tileType, g.spriteSheet))
 	}
 
 	// Враги
 	g.enemies = make([]*entity.Enemy, 0)
-	enemyTypes := []string{"wind", "storm", "bat", "spider", "snake"}
-	numEnemies := 2 + levelNum
+	enemyTypes := []string{"slime", "snake", "spider", "fly", "bat", "ghost"}
+	numEnemies := 3 + levelNum
 	for i := 0; i < numEnemies; i++ {
-		x := 400.0 + float64(i)*300 + g.rng.Float64()*100
+		x := 400.0 + float64(i)*250 + g.rng.Float64()*100
 		y := groundY - 40
 		enemyType := enemyTypes[g.rng.Intn(len(enemyTypes))]
 		enemy := entity.NewEnemy(x, y, enemyType, g.spriteSheet)
@@ -140,42 +134,33 @@ func (g *Game) generateLevel(levelNum int) {
 		g.enemies = append(g.enemies, enemy)
 	}
 
-	// Друзья
-	g.friends = make([]*entity.Friend, 0)
-	friendTypes := []string{"bee", "ladybug", "frog", "snail", "ghost"}
-	numFriends := 2 + levelNum/2
-	for i := 0; i < numFriends; i++ {
-		x := 300.0 + float64(i)*350 + g.rng.Float64()*100
-		y := groundY - 100 - g.rng.Float64()*80
-		friendType := friendTypes[g.rng.Intn(len(friendTypes))]
-		friend := entity.NewFriend(x, y, friendType, g.spriteSheet)
-		g.friends = append(g.friends, friend)
-	}
-
-	// Облачка
-	g.clouds = make([]*entity.Cloud, 0)
-	numClouds := 2 + levelNum/2
-	for i := 0; i < numClouds; i++ {
-		x := 500.0 + float64(i)*400 + g.rng.Float64()*100
-		y := groundY - 150 - g.rng.Float64()*100
-		cloudNum := (i % 3) + 1
-		cloud := entity.NewCloud(x, y, cloudNum, g.spriteSheet)
-		g.clouds = append(g.clouds, cloud)
-	}
-
 	// Предметы
 	g.items = make([]*entity.Item, 0)
-	itemTypes := []string{entity.ItemCoinGold, entity.ItemCoinSilver, entity.ItemGemRed, entity.ItemGemBlue, entity.ItemStar, entity.ItemMushroom}
-	numItems := 5 + levelNum*2
+	itemTypes := []string{
+		entity.ItemCoinGold, entity.ItemCoinSilver, entity.ItemCoinBronze,
+		entity.ItemGemRed, entity.ItemGemBlue, entity.ItemGemGreen,
+		entity.ItemStar, entity.ItemMushroom,
+	}
+	numItems := 8 + levelNum*2
 	for i := 0; i < numItems; i++ {
-		x := 150.0 + float64(i)*200 + g.rng.Float64()*100
-		y := groundY - 50 - g.rng.Float64()*150
+		x := 150.0 + float64(i)*180 + g.rng.Float64()*80
+		y := groundY - 50 - g.rng.Float64()*120
 		itemType := itemTypes[g.rng.Intn(len(itemTypes))]
 		value := 10
 		if itemType == entity.ItemStar {
 			value = 50
 		}
 		item := entity.NewItem(x, y, itemType, value, g.spriteSheet)
+		g.items = append(g.items, item)
+	}
+
+	// Данные (цель уровня)
+	g.dataTotal = 3
+	g.dataCollected = 0
+	for i := 0; i < g.dataTotal; i++ {
+		x := 600.0 + float64(i)*400 + g.rng.Float64()*100
+		y := groundY - 100 - g.rng.Float64()*80
+		item := entity.NewItem(x, y, entity.ItemData, 100, g.spriteSheet)
 		g.items = append(g.items, item)
 	}
 
@@ -238,8 +223,6 @@ func (g *Game) updateGame() {
 	g.applyPhysics(dt)
 	g.updateCamera()
 	g.collectItems()
-	g.collectFriends()
-	g.collectClouds()
 	g.updateProjectiles(dt)
 	g.updateEnemies(dt)
 	g.updateParticles(dt)
@@ -262,9 +245,10 @@ func (g *Game) handleInput() {
 	// Движение
 	if ebiten.IsKeyPressed(ebiten.KeyA) || ebiten.IsKeyPressed(ebiten.KeyLeft) {
 		g.player.MoveLeft()
-	}
-	if ebiten.IsKeyPressed(ebiten.KeyD) || ebiten.IsKeyPressed(ebiten.KeyRight) {
+	} else if ebiten.IsKeyPressed(ebiten.KeyD) || ebiten.IsKeyPressed(ebiten.KeyRight) {
 		g.player.MoveRight()
+	} else {
+		g.player.Stop()
 	}
 
 	// Прыжок
@@ -272,7 +256,7 @@ func (g *Game) handleInput() {
 	if jumpKey && !g.jumpPressed {
 		g.jumpPressed = true
 		g.player.Jump()
-		g.spawnParticles(g.player.Transform.X+24, g.player.Transform.Y+g.player.Transform.Height, 0, -50, 8, color.RGBA{255, 255, 100, 255})
+		g.spawnParticles(g.player.Transform.X+16, g.player.Transform.Y+g.player.Transform.Height, 0, -50, 8, color.RGBA{255, 255, 100, 255})
 	} else if !jumpKey {
 		g.jumpPressed = false
 	}
@@ -287,7 +271,7 @@ func (g *Game) handleInput() {
 	}
 }
 
-// shoot стреляет лучиком
+// shoot стреляет лучом
 func (g *Game) shoot() {
 	g.player.Shoot()
 
@@ -298,7 +282,6 @@ func (g *Game) shoot() {
 		dirX*500,
 		0,
 		15,
-		true,
 		g.spriteSheet,
 	)
 	g.projectiles = append(g.projectiles, proj)
@@ -319,13 +302,10 @@ func (g *Game) applyPhysics(dt float64) {
 	g.player.Physics.OnGround = false
 
 	for _, p := range g.platforms {
-		platRect := &entity.Transform{
-			X: p.X, Y: p.Y, Width: p.Width, Height: p.Height,
-		}
-
+		platRect := p.Transform
 		if entity.CheckCollision(g.player.Transform, platRect) {
-			if g.player.Physics.VelocityY > 0 && oldY+g.player.Transform.Height <= p.Y+10 {
-				g.player.Transform.Y = p.Y - g.player.Transform.Height
+			if g.player.Physics.VelocityY > 0 && oldY+g.player.Transform.Height <= p.Transform.Y+10 {
+				g.player.Transform.Y = p.Transform.Y - g.player.Transform.Height
 				g.player.Physics.VelocityY = 0
 				g.player.Physics.OnGround = true
 				g.player.ResetJump()
@@ -364,43 +344,18 @@ func (g *Game) collectItems() {
 			item.Collected = true
 			g.score += item.Value
 
+			if item.ItemType == entity.ItemData {
+				g.dataCollected++
+			}
+
 			switch item.ItemType {
 			case entity.ItemMushroom:
 				g.player.Health.Heal(20)
 			case entity.ItemStar:
-				g.player.Light.Current = g.player.Light.Max
+				g.player.Energy.Current = g.player.Energy.Max
 			}
 
 			g.spawnParticles(item.Transform.X+16, item.Transform.Y+16, 0, -50, 10, color.RGBA{255, 215, 0, 255})
-		}
-	}
-}
-
-// collectFriends собирает друзей
-func (g *Game) collectFriends() {
-	for _, friend := range g.friends {
-		if friend.Collected {
-			continue
-		}
-		if entity.CheckCollision(g.player.Transform, friend.Transform) {
-			friend.Collected = true
-			g.player.FriendCount++
-			g.score += 25
-			g.spawnParticles(friend.Transform.X+16, friend.Transform.Y+16, 0, -50, 15, color.RGBA{255, 150, 200, 255})
-		}
-	}
-}
-
-// collectClouds собирает облачка
-func (g *Game) collectClouds() {
-	for _, cloud := range g.clouds {
-		if cloud.Collected {
-			continue
-		}
-		if entity.CheckCollision(g.player.Transform, cloud.Transform) {
-			cloud.Collected = true
-			g.score += 50
-			g.spawnParticles(cloud.Transform.X+24, cloud.Transform.Y+16, 0, -50, 20, color.RGBA{200, 200, 255, 255})
 		}
 	}
 }
@@ -418,15 +373,10 @@ func (g *Game) updateProjectiles(dt float64) {
 
 		// Коллизия с врагами
 		for _, enemy := range g.enemies {
-			if !enemy.Converted && entity.CheckCollision(p.Transform, enemy.Transform) {
+			if !enemy.Health.Dead && entity.CheckCollision(p.Transform, enemy.Transform) {
 				enemy.Health.TakeDamage(p.Damage)
 				p.Active = false
 				g.spawnParticles(p.Transform.X, p.Transform.Y, 0, -50, 8, color.RGBA{255, 255, 100, 255})
-
-				if enemy.Health.Dead && !enemy.Converted {
-					enemy.Convert()
-					g.score += 30
-				}
 				break
 			}
 		}
@@ -445,10 +395,10 @@ func (g *Game) updateEnemies(dt float64) {
 		enemy.Update(dt, g.player.Transform.X, g.player.Transform.Y)
 
 		// Коллизия с игроком
-		if !enemy.Converted && entity.CheckCollision(g.player.Transform, enemy.Transform) {
+		if !enemy.Health.Dead && entity.CheckCollision(g.player.Transform, enemy.Transform) {
 			if g.player.Health.Invincible <= 0 {
 				g.player.Health.TakeDamage(enemy.Damage)
-				g.spawnParticles(g.player.Transform.X+24, g.player.Transform.Y+24, 0, -50, 10, color.RGBA{255, 50, 50, 255})
+				g.spawnParticles(g.player.Transform.X+16, g.player.Transform.Y+24, 0, -50, 10, color.RGBA{255, 50, 50, 255})
 			}
 		}
 	}
@@ -489,15 +439,8 @@ func (g *Game) spawnParticles(x, y, vx, vy float64, count int, c color.Color) {
 
 // checkLevelExit проверяет выход
 func (g *Game) checkLevelExit() {
-	allCloudsCollected := true
-	for _, c := range g.clouds {
-		if !c.Collected {
-			allCloudsCollected = false
-			break
-		}
-	}
-
-	if allCloudsCollected && g.player.Transform.X > 1500 {
+	// Все данные собраны и игрок справа
+	if g.dataCollected >= g.dataTotal && g.player.Transform.X > 1500 {
 		g.state = StateVictory
 	}
 }
@@ -522,26 +465,12 @@ func (g *Game) Draw(screen *ebiten.Image) {
 
 	// Платформы
 	for _, p := range g.platforms {
-		vector.DrawFilledRect(screen, float32(p.X-g.cameraX), float32(p.Y-g.cameraY), float32(p.Width), float32(p.Height), p.Color, false)
-		// Травка сверху
-		if p.Type == "ground" {
-			vector.DrawFilledRect(screen, float32(p.X-g.cameraX), float32(p.Y-g.cameraY), float32(p.Width), 6, color.RGBA{120, 200, 80, 255}, false)
-		}
+		p.Draw(screen, g.cameraX, g.cameraY)
 	}
 
 	// Предметы
 	for _, item := range g.items {
 		item.Draw(screen, g.cameraX, g.cameraY)
-	}
-
-	// Друзья
-	for _, friend := range g.friends {
-		friend.Draw(screen, g.cameraX, g.cameraY)
-	}
-
-	// Облачка
-	for _, cloud := range g.clouds {
-		cloud.Draw(screen, g.cameraX, g.cameraY)
 	}
 
 	// Враги
@@ -565,7 +494,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	}
 
 	// HUD
-	if g.state == StatePlaying {
+	if g.state == StatePlaying || g.state == StatePaused {
 		g.drawHUD(screen)
 	}
 
@@ -583,52 +512,65 @@ func (g *Game) Draw(screen *ebiten.Image) {
 
 // drawBackground отрисовывает фон
 func (g *Game) drawBackground(screen *ebiten.Image) {
-	// Градиент неба (голубой к розовому)
+	// Градиент неба (тёмно-синий к фиолетовому)
 	for y := 0; y < screenHeight; y++ {
 		percent := float64(y) / float64(screenHeight)
-		r := uint8(135 - percent*50)
-		g_ := uint8(206 - percent*100)
-		b := uint8(235 - percent*100)
+		r := uint8(26 - percent*20)
+		g_ := uint8(30 - percent*30)
+		b := uint8(62 + percent*50)
 		vector.DrawFilledRect(screen, 0, float32(y), screenWidth, 1, color.RGBA{r, g_, b, 255}, false)
 	}
 
-	// Солнышко на фоне
-	sunX := screenWidth - 100
-	sunY := 80
-	sunColor := color.RGBA{255, 220, 50, 255}
-	vector.DrawFilledRect(screen, float32(sunX), float32(sunY), 60, 60, sunColor, false)
-
-	// Лучики
-	for i := 0; i < 8; i++ {
-		angle := float64(i)*math.Pi/4 + float64(time.Now().UnixMilli())/1000.0*0.5
-		rayX := float64(sunX+30) + 50*math.Cos(angle)
-		rayY := float64(sunY+30) + 50*math.Sin(angle)
-		vector.StrokeLine(screen, float32(sunX+30), float32(sunY+30), float32(rayX), float32(rayY), 4, color.RGBA{255, 200, 0, 150}, false)
+	// Звёзды
+	g.rng.Seed(time.Now().UnixNano())
+	for i := 0; i < 50; i++ {
+		starX := float32((i*37 - int(g.cameraX*0.2)) % screenWidth)
+		starY := float32((i*53) % (screenHeight / 2))
+		if starX < 0 {
+			starX += screenWidth
+		}
+		vector.DrawFilledRect(screen, starX, starY, 2, 2, color.RGBA{255, 255, 255, 200}, false)
 	}
 
-	// Облака на фоне
-	for i := 0; i < 5; i++ {
-		cloudX := float32((i*200 - int(g.cameraX*0.3)) % (screenWidth + 200))
-		cloudY := float32(50 + i*30)
-		vector.DrawFilledRect(screen, cloudX, cloudY, 80, 30, color.RGBA{255, 255, 255, 180}, false)
-		vector.DrawFilledRect(screen, cloudX+20, cloudY-15, 50, 40, color.RGBA{255, 255, 255, 180}, false)
-	}
+	// Город на заднем плане (параллакс)
+	g.drawCitySilhouette(screen)
+}
 
-	// Холмы на заднем плане
-	for i := 0; i < 10; i++ {
-		hillX := float32(i*150 - int(g.cameraX*0.5)%150)
-		hillHeight := float32(100 + (i*17)%80)
-		vector.DrawFilledRect(screen, hillX, float32(screenHeight)-hillHeight-20, 140, hillHeight, color.RGBA{80, 160, 80, 200}, false)
+// drawCitySilhouette рисует силуэт города
+func (g *Game) drawCitySilhouette(screen *ebiten.Image) {
+	buildingColor := color.RGBA{20, 25, 50, 255}
+	windowColor := color.RGBA{0, 240, 255, 150}
+
+	g.rng.Seed(int64(42))
+	for i := 0; i < 20; i++ {
+		buildingX := float32((i*80 - int(g.cameraX*0.3)) % (screenWidth + 100))
+		if buildingX < -50 {
+			buildingX += screenWidth + 100
+		}
+		buildingWidth := float32(40 + (i*17)%60)
+		buildingHeight := float32(100 + (i*23)%200)
+		buildingY := float32(screenHeight) - buildingHeight - 20
+
+		vector.DrawFilledRect(screen, buildingX, buildingY, buildingWidth, buildingHeight, buildingColor, false)
+
+		// Окна
+		for wy := buildingY + 10; wy < buildingY+buildingHeight-10; wy += 20 {
+			for wx := buildingX + 5; wx < buildingX+buildingWidth-10; wx += 15 {
+				if g.rng.Float32() > 0.5 {
+					vector.DrawFilledRect(screen, wx, wy, 8, 12, windowColor, false)
+				}
+			}
+		}
 	}
 }
 
 // drawMenu отрисовывает меню
 func (g *Game) drawMenu(screen *ebiten.Image) {
-	title := "🌈 Sunny Adventure"
-	ebitenutil.DebugPrintAt(screen, title, screenWidth/2-120, 150)
+	title := "NEON RUNNER: CYBER ESCAPE"
+	ebitenutil.DebugPrintAt(screen, title, screenWidth/2-140, 150)
 
-	subtitle := "Приключения Зайчика в Волшебном Лесу"
-	ebitenutil.DebugPrintAt(screen, subtitle, screenWidth/2-140, 200)
+	subtitle := "2087. Сбеги из корпоративного ада."
+	ebitenutil.DebugPrintAt(screen, subtitle, screenWidth/2-120, 200)
 
 	instructions := []string{
 		"",
@@ -637,14 +579,14 @@ func (g *Game) drawMenu(screen *ebiten.Image) {
 		"Управление:",
 		"A/D - Бег",
 		"W/Пробел - Прыжок (двойной!)",
-		"J - Лучик света ☀️",
+		"J - Выстрел",
 		"",
-		"Цель: Собрать все облачка и друзей!",
-		"Преврати врагов в друзей лучиками!",
+		"Цель: Собрать все данные (синие) и добраться до выхода!",
+		"Избегай врагов или уничтожай их!",
 	}
 
 	for i, line := range instructions {
-		ebitenutil.DebugPrintAt(screen, line, screenWidth/2-150, 280+i*22)
+		ebitenutil.DebugPrintAt(screen, line, screenWidth/2-150, 260+i*22)
 	}
 }
 
@@ -660,10 +602,10 @@ func (g *Game) drawHUD(screen *ebiten.Image) {
 
 	y += 25
 
-	// Свет
+	// Энергия
 	vector.DrawFilledRect(screen, 10, float32(y), 200, 15, color.RGBA{50, 50, 50, 255}, false)
-	lightPercent := float32(g.player.Light.Current) / float32(g.player.Light.Max)
-	vector.DrawFilledRect(screen, 10, float32(y), 200*lightPercent, 15, color.RGBA{255, 220, 50, 255}, false)
+	energyPercent := float32(g.player.Energy.Current) / float32(g.player.Energy.Max)
+	vector.DrawFilledRect(screen, 10, float32(y), 200*energyPercent, 15, color.RGBA{0, 240, 255, 255}, false)
 	ebitenutil.DebugPrintAt(screen, "NRG", 220, y)
 
 	y += 25
@@ -672,24 +614,15 @@ func (g *Game) drawHUD(screen *ebiten.Image) {
 	ebitenutil.DebugPrintAt(screen, "SCORE: "+string(rune(g.score)), 10, y)
 	y += 20
 
-	// Друзья
-	ebitenutil.DebugPrintAt(screen, "FRIENDS: "+string(rune(g.player.FriendCount)), 10, y)
+	// Данные
+	ebitenutil.DebugPrintAt(screen, "DATA: "+string(rune(g.dataCollected))+"/"+string(rune(g.dataTotal)), 10, y)
 	y += 20
-
-	// Облачка
-	cloudsCollected := 0
-	for _, c := range g.clouds {
-		if c.Collected {
-			cloudsCollected++
-		}
-	}
-	ebitenutil.DebugPrintAt(screen, "CLOUDS: "+string(rune(cloudsCollected))+"/"+string(rune(len(g.clouds))), 10, y)
 
 	// Уровень
 	ebitenutil.DebugPrintAt(screen, "LEVEL: "+string(rune(g.level)), screenWidth-100, 10)
 
 	// Подсказки
-	ebitenutil.DebugPrintAt(screen, "[ESC] Пауза  [J] Лучик  [W] Прыжок", 10, screenHeight-30)
+	ebitenutil.DebugPrintAt(screen, "[ESC] Пауза  [J] Огонь  [W] Прыжок", 10, screenHeight-30)
 }
 
 // drawPause отрисовывает паузу

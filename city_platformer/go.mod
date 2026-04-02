@@ -1,4 +1,4 @@
-module sunny_adventure
+module city_platformer
 
 go 1.25.0
 
