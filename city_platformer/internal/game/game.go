@@ -696,12 +696,20 @@ func (g *Game) Draw(screen *ebiten.Image) {
 }
 
 func (g *Game) drawBackground(screen *ebiten.Image) {
-	// Рисуем спрайт фона (небо)
-	bgImg := g.spriteSheet.GetBackground("parallax-mountain-bg")
-	if bgImg != nil {
+	// Красивое небо (sky.png)
+	skyImg := g.spriteSheet.GetBackground("sky")
+	if skyImg != nil {
 		opts := &ebiten.DrawImageOptions{}
-		opts.GeoM.Translate(0, 0)
-		screen.DrawImage(bgImg, opts)
+		// Рисуем два раза для бесшовности
+		for i := 0; i < 2; i++ {
+			x := float64(i)*float64(skyImg.Bounds().Dx()) - math.Mod(g.cameraX*0.02, float64(skyImg.Bounds().Dx()))
+			if x < -float64(skyImg.Bounds().Dx()) {
+				x += float64(skyImg.Bounds().Dx()) * 2
+			}
+			opts.GeoM.Reset()
+			opts.GeoM.Translate(x, 0)
+			screen.DrawImage(skyImg, opts)
+		}
 	} else {
 		// Запасной вариант - градиент
 		for y := 0; y < screenHeight; y++ {
@@ -713,43 +721,40 @@ func (g *Game) drawBackground(screen *ebiten.Image) {
 		}
 	}
 
-	// Дальние горы (параллакс слой 1)
-	g.drawParallaxLayer(screen, "parallax-mountain-montain-far", 0.05)
+	// Дальние скалы/горы (параллакс слой 1)
+	g.drawParallaxLayer(screen, "rocks_1", 0.03)
 	
-	// Горы (параллакс слой 2)
-	g.drawParallaxLayer(screen, "parallax-mountain-mountains", 0.1)
+	// Ближние скалы (параллакс слой 2)
+	g.drawParallaxLayer(screen, "rocks_2", 0.05)
 	
 	// Деревья на заднем плане (параллакс слой 3)
-	g.drawParallaxLayer(screen, "parallax-mountain-trees", 0.2)
+	g.drawParallaxLayer(screen, "parallax-mountain-trees", 0.1)
 
 	// Облака - спрайты!
-	cloudNames := []string{"clouds_1", "clouds_2", "clouds_3", "cloud1", "cloud2", "cloud3"}
+	cloudNames := []string{"clouds_1", "clouds_2", "clouds_3", "clouds_4"}
 	
-	for i := 0; i < 6; i++ {
+	for i := 0; i < 5; i++ {
 		cloudName := cloudNames[i%len(cloudNames)]
-		cloudImg := g.spriteSheet.GetItem(cloudName)
-		if cloudImg == nil {
-			cloudImg = g.spriteSheet.GetBackground(cloudName)
-		}
+		cloudImg := g.spriteSheet.GetBackground(cloudName)
 		
 		if cloudImg == nil {
 			// Запасной вариант - векторы
 			cloudColor := color.RGBA{255, 255, 255, 200}
-			cloudX := float32((i*180 - int(g.cameraX*0.1)) % (screenWidth + 200))
+			cloudX := float32((i*200 - int(g.cameraX*0.05)) % (screenWidth + 200))
 			if cloudX < 0 {
 				cloudX += screenWidth + 200
 			}
-			cloudY := float32(40 + (i%4)*40)
-			vector.DrawFilledRect(screen, cloudX, cloudY, 70, 25, cloudColor, false)
-			vector.DrawFilledRect(screen, cloudX+15, cloudY-12, 50, 35, cloudColor, false)
+			cloudY := float32(60 + (i%3)*35)
+			vector.DrawFilledRect(screen, cloudX, cloudY, 90, 30, cloudColor, false)
+			vector.DrawFilledRect(screen, cloudX+20, cloudY-15, 60, 40, cloudColor, false)
 			continue
 		}
 		
-		cloudX := float64((i*250 - int(g.cameraX*0.05)) % (screenWidth + 300))
+		cloudX := float64((i*280 - int(g.cameraX*0.02)) % (screenWidth + 300))
 		if cloudX < 0 {
 			cloudX += screenWidth + 300
 		}
-		cloudY := float64(50 + (i%3)*40)
+		cloudY := float64(80 + (i%3)*40)
 		
 		opts := &ebiten.DrawImageOptions{}
 		opts.GeoM.Translate(cloudX, cloudY)
