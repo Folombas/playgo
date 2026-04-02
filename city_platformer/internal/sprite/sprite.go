@@ -401,6 +401,18 @@ func (ss *SpriteSheet) loadBackgrounds(basePath string) error {
 	bgFiles := []string{
 		"bg.png", "bg_castle.png", "bg_grasslands.png",
 		"bg_desert.png", "bg_shroom.png",
+		// Параллакс горы
+		"parallax-mountain-bg.png",
+		"parallax-mountain-mountains.png",
+		"parallax-mountain-montain-far.png",
+		"parallax-mountain-trees.png",
+		"parallax-mountain-foreground-trees.png",
+		// Слои фона
+		"sky.png",
+		"clouds_1.png", "clouds_2.png", "clouds_3.png",
+		"pines.png",
+		"rocks_1.png", "rocks_2.png", "rocks_3.png",
+		"birds.png",
 	}
 
 	for _, file := range bgFiles {
@@ -408,23 +420,6 @@ func (ss *SpriteSheet) loadBackgrounds(basePath string) error {
 		if bg := ss.loadImage(path); bg != nil {
 			name := strings.TrimSuffix(file, ".png")
 			ss.Backgrounds[name] = bg
-		}
-	}
-
-	// Фон из Forest pack
-	forestBgPath := filepath.Join(basePath, "Forest")
-	if bg := ss.loadImage(filepath.Join(forestBgPath, "bg_forest.png")); bg != nil {
-		ss.Backgrounds["bg_forest"] = bg
-	}
-
-	// Слои фона
-	layersPath := filepath.Join(forestBgPath, "bg_forest_layers")
-	layerFiles := []string{"bg_forest_a.png", "bg_forest_b.png", "bg_forest_c.png"}
-	for _, file := range layerFiles {
-		path := filepath.Join(layersPath, file)
-		if layer := ss.loadImage(path); layer != nil {
-			name := strings.TrimSuffix(file, ".png")
-			ss.Backgrounds[name] = layer
 		}
 	}
 
