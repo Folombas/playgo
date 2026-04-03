@@ -10,7 +10,7 @@ import (
 
 func main() {
 	ebiten.SetWindowSize(1280, 720)
-	ebiten.SetWindowTitle("City Platformer - Go365 Day 94")
+	ebiten.SetWindowTitle("City Runner - Go365 Day 94")
 	ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
 
 	game := engine.NewGame()
