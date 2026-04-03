@@ -39,15 +39,20 @@ func NewGenerator(seed int64) *Generator {
 }
 
 // Generate creates a new chunk at the given X position.
-func (g *Generator) Generate(chunkX float64) *Chunk {
+func (g *Generator) Generate(chunkX float64, safeStart bool) *Chunk {
 	chunk := &Chunk{
 		X:       chunkX,
 		Width:   g.chunkWidth,
 		GroundY: g.groundY,
 	}
 
-	// 20% chance of a pit
-	chunk.HasPit = g.rng.Float64() < 0.2
+	// First chunk must be safe
+	if safeStart {
+		chunk.HasPit = false
+	} else {
+		// 20% chance of a pit
+		chunk.HasPit = g.rng.Float64() < 0.2
+	}
 
 	// Generate ground platforms (skip if pit)
 	if !chunk.HasPit {

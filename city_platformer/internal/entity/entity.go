@@ -63,8 +63,10 @@ func NewPlayer(x, y float64) *Player {
 
 // Update updates player physics and animation.
 func (p *Player) Update(gravity, friction float64) {
-	// Apply gravity
-	p.VY += gravity
+	// Apply gravity only when airborne
+	if !p.OnGround {
+		p.VY += gravity
+	}
 
 	// Apply friction to horizontal velocity
 	p.VX *= friction
@@ -348,5 +350,5 @@ func (i *Item) Update(dt float64) {
 
 // CheckAABB checks axis-aligned bounding box collision.
 func CheckAABB(ax, ay, aw, ah, bx, by, bw, bh float64) bool {
-	return ax < bx+bw && ax+aw > bx && ay < by+bh && ay+ah > by
+	return ax < bx+bw && ax+aw > bx && ay < by+bh && ay+ah >= by
 }

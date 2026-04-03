@@ -74,15 +74,17 @@ func NewGame() *Game {
 	// Initialize loader
 	g.loader = sprite.NewLoader("assets/sprites/PlatformerComplete")
 
-	// Create player
-	g.player = entity.NewPlayer(100, 400)
+	// Create player (standing on ground: groundY=500, player height=48, so Y=452)
+	g.player = entity.NewPlayer(200, 452)
+	g.player.OnGround = true
+	g.player.JumpsLeft = g.player.MaxJumps
 
 	// Load essential sprites
 	g.loadSprites()
 
-	// Generate initial chunks
+	// Generate initial chunks (first one is safe)
 	for i := 0; i < 5; i++ {
-		chunk := g.gen.Generate(float64(i) * 800)
+		chunk := g.gen.Generate(float64(i)*800, i == 0)
 		g.chunks = append(g.chunks, chunk)
 	}
 
@@ -170,10 +172,7 @@ func (g *Game) updatePlaying() {
 		g.spawnParticles(g.player.X+g.player.Width/2, g.player.Y+g.player.Height, 5, color.RGBA{200, 200, 200, 255})
 	}
 
-	// Update player
-	g.player.Update(1000, 0.85)
-
-	// Platform collision
+	// Platform collision (BEFORE update to set OnGround)
 	g.player.OnGround = false
 	for _, chunk := range g.chunks {
 		for _, plat := range chunk.Platforms {
@@ -206,8 +205,13 @@ func (g *Game) updatePlaying() {
 				}
 			}
 		}
+	}
 
-		// Enemy collision and update
+	// Update player (uses OnGround from collision check)
+	g.player.Update(1000, 0.85)
+
+	// Enemy collision and update
+	for _, chunk := range g.chunks {
 		for _, enemy := range chunk.Enemies {
 			if !enemy.Alive {
 				continue
@@ -296,7 +300,7 @@ func (g *Game) updatePlaying() {
 	rightmostChunk := g.chunks[len(g.chunks)-1]
 	if g.cameraX+1280 > rightmostChunk.X {
 		newX := rightmostChunk.X + 800
-		chunk := g.gen.Generate(newX)
+		chunk := g.gen.Generate(newX, false)
 		g.chunks = append(g.chunks, chunk)
 
 		// Remove old chunks to save memory
@@ -355,7 +359,7 @@ func (g *Game) resetGame() {
 	g.hud = hud.NewHUD(g.heartFull, g.heartEmpty, g.coinSprite)
 
 	for i := 0; i < 5; i++ {
-		chunk := g.gen.Generate(float64(i) * 800)
+		chunk := g.gen.Generate(float64(i)*800, i == 0)
 		g.chunks = append(g.chunks, chunk)
 	}
 
