@@ -1,29 +1,21 @@
-// Infinite Pixel Platformer - Бесконечный пиксельный платформер
-// Go365 Challenge - День 93 (2 апреля 2026)
 package main
 
 import (
 	"log"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"city_platformer/internal/game"
-)
 
-const (
-	screenWidth  = 1280
-	screenHeight = 720
+	"city_platformer/internal/engine"
 )
-
-func init() {
-	ebiten.SetWindowSize(screenWidth, screenHeight)
-	ebiten.SetWindowTitle("🎮 Infinite Pixel Platformer - Go365 Day 93")
-	ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
-}
 
 func main() {
-	g := game.NewGame()
+	ebiten.SetWindowSize(1280, 720)
+	ebiten.SetWindowTitle("City Platformer - Go365 Day 94")
+	ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
 
-	if err := ebiten.RunGame(g); err != nil {
+	game := engine.NewGame()
+
+	if err := ebiten.RunGame(game); err != nil {
 		log.Fatal(err)
 	}
 }
