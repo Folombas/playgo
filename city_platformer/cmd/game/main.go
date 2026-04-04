@@ -1,21 +1,19 @@
 package main
 
 import (
-	"log"
+	"city_platformer/internal/game"
 
 	"github.com/hajimehoshi/ebiten/v2"
-
-	"city_platformer/internal/engine"
 )
 
 func main() {
-	ebiten.SetWindowSize(1280, 720)
-	ebiten.SetWindowTitle("City Runner - Go365 Day 94")
+	ebiten.SetWindowSize(800, 600)
+	ebiten.SetWindowTitle("Pixel Quest - Go365 Day 93")
 	ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
 
-	game := engine.NewGame()
+	g := game.NewGame()
 
-	if err := ebiten.RunGame(game); err != nil {
-		log.Fatal(err)
+	if err := ebiten.RunGame(g); err != nil {
+		panic(err)
 	}
 }
