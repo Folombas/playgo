@@ -1,4 +1,4 @@
-module github.com/playgo/bomberman_go
+module github.com/playgo/checkers_go
 
 go 1.21
 

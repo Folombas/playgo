@@ -7,9 +7,5 @@
 # Test binary
 *.test
 
-# OS files
-Thumbs.db
-.DS_Store
-
 # Go build cache
 *.out
