@@ -15,13 +15,13 @@ import (
 	"golang.org/x/image/font/basicfont"
 )
 
-// ─── SPRITE LOADER ────────────────────────────────────────────────
+// ─── SPRITES ──────────────────────────────────────────────────────
 
-var sprites = make(map[string]*ebiten.Image)
+var spr = make(map[string]*ebiten.Image)
 
-func loadSprite(path string) *ebiten.Image {
-	if img, ok := sprites[path]; ok {
-		return img
+func load(path string) *ebiten.Image {
+	if s, ok := spr[path]; ok {
+		return s
 	}
 	f, err := os.Open(path)
 	if err != nil {
@@ -32,12 +32,12 @@ func loadSprite(path string) *ebiten.Image {
 	if err != nil {
 		return nil
 	}
-	eimg := ebiten.NewImageFromImage(img)
-	sprites[path] = eimg
-	return eimg
+	e := ebiten.NewImageFromImage(img)
+	spr[path] = e
+	return e
 }
 
-// ─── GAME STATE ───────────────────────────────────────────────────
+// ─── STATE ────────────────────────────────────────────────────────
 
 type State int
 
@@ -48,515 +48,469 @@ const (
 	Win
 )
 
-// ─── ENTITY ───────────────────────────────────────────────────────
+// ─── PLAYER ───────────────────────────────────────────────────────
 
-type Entity struct {
+type Player struct {
 	X, Y       float64
 	W, H       float64
 	VX, VY     float64
+	OnGround   bool
+	Jumps      int
+	MaxJumps   int
 	HP         int
 	MaxHP      int
-	Sprite     *ebiten.Image
-	AnimFrame  int
-	AnimTimer  int
-	Alive      bool
+	Score      int
+	Coins      int
+	Facing     int  // 1=right, -1=left
+	Attacking  bool
+	AttackT    int
+	Invincible int
+	Dead       bool
+	WalkFrame  int
+	WalkTimer  int
 }
 
-func (e *Entity) Draw(screen *ebiten.Image, fallback color.Color) {
-	if e.Sprite != nil {
+func NewPlayer(x, y float64) *Player {
+	return &Player{
+		X: x, Y: y, W: 28, H: 44,
+		Jumps: 2, MaxJumps: 2,
+		HP: 5, MaxHP: 5,
+		Facing: 1,
+	}
+}
+
+func (p *Player) Update(keys map[ebiten.Key]bool, platforms []*Platform, enemies []*Enemy) {
+	if p.Dead {
+		return
+	}
+
+	// Input
+	p.VX = 0
+	if keys[ebiten.KeyA] || keys[ebiten.KeyLeft] {
+		p.VX = -220
+		p.Facing = -1
+	}
+	if keys[ebiten.KeyD] || keys[ebiten.KeyRight] {
+		p.VX = 220
+		p.Facing = 1
+	}
+
+	// Jump
+	if inpututil.IsKeyJustPressed(ebiten.KeySpace) || inpututil.IsKeyJustPressed(ebiten.KeyW) || inpututil.IsKeyJustPressed(ebiten.KeyUp) {
+		if p.Jumps > 0 {
+			p.VY = -460
+			p.Jumps--
+			p.OnGround = false
+		}
+	}
+
+	// Attack
+	if inpututil.IsKeyJustPressed(ebiten.KeyJ) || inpututil.IsKeyJustPressed(ebiten.KeyX) {
+		if !p.Attacking {
+			p.Attacking = true
+			p.AttackT = 12
+		}
+	}
+	if p.AttackT > 0 {
+		p.AttackT--
+		if p.AttackT <= 0 {
+			p.Attacking = false
+		}
+	}
+
+	// Gravity
+	p.VY += 1100
+	if p.VY > 700 {
+		p.VY = 700
+	}
+
+	// Move X
+	p.X += p.VX
+	for _, pl := range platforms {
+		if p.overlaps(pl.X, pl.Y, pl.W, pl.H) {
+			if p.VX > 0 {
+				p.X = pl.X - p.W
+			} else if p.VX < 0 {
+				p.X = pl.X + pl.W
+			}
+			p.VX = 0
+		}
+	}
+
+	// Move Y
+	p.Y += p.VY
+	p.OnGround = false
+	for _, pl := range platforms {
+		if p.overlaps(pl.X, pl.Y, pl.W, pl.H) {
+			if p.VY > 0 {
+				p.Y = pl.Y - p.H
+				p.VY = 0
+				p.OnGround = true
+				p.Jumps = p.MaxJumps
+			} else if p.VY < 0 {
+				p.Y = pl.Y + pl.H
+				p.VY = 0
+			}
+		}
+	}
+
+	// Enemy collision
+	for _, e := range enemies {
+		if !e.Alive {
+			continue
+		}
+		if p.overlaps(e.X, e.Y, e.W, e.H) {
+			// Stomp from above
+			if p.VY > 0 && p.Y+p.H < e.Y+e.H/2+10 {
+				e.TakeDamage(1)
+				p.VY = -350
+				p.Score += 50
+			} else {
+				p.TakeDamage(1)
+			}
+		}
+	}
+
+	// Fall death
+	if p.Y > 900 {
+		p.HP = 0
+		p.Dead = true
+	}
+
+	// Invincibility
+	if p.Invincible > 0 {
+		p.Invincible--
+	}
+
+	// Walk animation
+	if p.OnGround && p.VX != 0 {
+		p.WalkTimer++
+		if p.WalkTimer > 6 {
+			p.WalkTimer = 0
+			p.WalkFrame = (p.WalkFrame + 1) % 11
+		}
+	} else {
+		p.WalkFrame = 0
+	}
+}
+
+func (p *Player) overlaps(ox, oy, ow, oh float64) bool {
+	return p.X < ox+ow && p.X+p.W > ox && p.Y < oy+oh && p.Y+p.H > oy
+}
+
+func (p *Player) TakeDamage(dmg int) {
+	if p.Invincible > 0 || p.Dead {
+		return
+	}
+	p.HP -= dmg
+	p.Invincible = 50
+	if p.HP <= 0 {
+		p.HP = 0
+		p.Dead = true
+	}
+}
+
+func (p *Player) AttackBox() (float64, float64, float64, float64) {
+	if !p.Attacking {
+		return 0, 0, 0, 0
+	}
+	ax := p.X + p.W
+	ay := p.Y + 5
+	aw := 35.0
+	ah := 30.0
+	if p.Facing < 0 {
+		ax = p.X - aw
+	}
+	return ax, ay, aw, ah
+}
+
+func (p *Player) Draw(screen *ebiten.Image) {
+	if p.Dead {
+		return
+	}
+	if p.Invincible > 0 && p.Invincible%4 >= 2 {
+		return
+	}
+
+	// Try walk sprite
+	var s *ebiten.Image
+	if p.OnGround && p.VX != 0 {
+		s = load(fmt.Sprintf("assets/sprites/PlatformerComplete/Base pack/Player/p1_walk/PNG/p1_walk%02d.png", p.WalkFrame+1))
+	} else if !p.OnGround {
+		s = load("assets/sprites/PlatformerComplete/Base pack/Player/p1_jump.png")
+	} else {
+		s = load("assets/sprites/PlatformerComplete/Base pack/Player/p1_stand.png")
+	}
+
+	if s != nil {
 		op := &ebiten.DrawImageOptions{}
-		op.GeoM.Translate(e.X, e.Y)
-		screen.DrawImage(e.Sprite, op)
-	} else if fallback != nil {
+		if p.Facing < 0 {
+			op.GeoM.Scale(-1, 1)
+			op.GeoM.Translate(p.X+p.W, p.Y)
+		} else {
+			op.GeoM.Translate(p.X, p.Y)
+		}
+		screen.DrawImage(s, op)
+	} else {
+		// Fallback
+		img := ebiten.NewImage(int(p.W), int(p.H))
+		img.Fill(color.RGBA{0, 150, 255, 255})
+		op := &ebiten.DrawImageOptions{}
+		op.GeoM.Translate(p.X, p.Y)
+		screen.DrawImage(img, op)
+	}
+
+	// Attack visual
+	if p.Attacking {
+		ax, ay, aw, ah := p.AttackBox()
+		img := ebiten.NewImage(int(aw), int(ah))
+		img.Fill(color.RGBA{255, 255, 200, 180})
+		op := &ebiten.DrawImageOptions{}
+		op.GeoM.Translate(ax, ay)
+		screen.DrawImage(img, op)
+	}
+}
+
+// ─── PLATFORM ─────────────────────────────────────────────────────
+
+type Platform struct {
+	X, Y, W, H float64
+	Sprite     *ebiten.Image
+	Ground     bool
+}
+
+func (p *Platform) Draw(screen *ebiten.Image) {
+	if p.Ground {
+		// Tile grass on top, dirt below
+		tile := load("assets/sprites/PlatformerComplete/Base pack/Tiles/grass.png")
+		if tile != nil {
+			tw := tile.Bounds().Dx()
+			th := tile.Bounds().Dy()
+			for tx := 0; tx < int(p.W); tx += tw {
+				op := &ebiten.DrawImageOptions{}
+				op.GeoM.Translate(p.X+float64(tx), p.Y)
+				screen.DrawImage(tile, op)
+			}
+			// Dirt below
+			dirt := load("assets/sprites/PlatformerComplete/Base pack/Tiles/dirt.png")
+			if dirt != nil {
+				for tx := 0; tx < int(p.W); tx += tw {
+					for ty := th; ty < int(p.H); ty += th {
+						op := &ebiten.DrawImageOptions{}
+						op.GeoM.Translate(p.X+float64(tx), p.Y+float64(ty))
+						screen.DrawImage(dirt, op)
+					}
+				}
+			}
+		} else {
+			img := ebiten.NewImage(int(p.W), int(p.H))
+			img.Fill(color.RGBA{100, 180, 80, 255})
+			op := &ebiten.DrawImageOptions{}
+			op.GeoM.Translate(p.X, p.Y)
+			screen.DrawImage(img, op)
+		}
+	} else {
+		// Floating platform
+		tile := load("assets/sprites/PlatformerComplete/Base pack/Tiles/stone.png")
+		if tile != nil {
+			tw := tile.Bounds().Dx()
+			for tx := 0; tx < int(p.W); tx += tw {
+				op := &ebiten.DrawImageOptions{}
+				op.GeoM.Translate(p.X+float64(tx), p.Y)
+				screen.DrawImage(tile, op)
+			}
+		} else {
+			img := ebiten.NewImage(int(p.W), int(p.H))
+			img.Fill(color.RGBA{120, 120, 140, 255})
+			op := &ebiten.DrawImageOptions{}
+			op.GeoM.Translate(p.X, p.Y)
+			screen.DrawImage(img, op)
+		}
+	}
+}
+
+// ─── ENEMY ────────────────────────────────────────────────────────
+
+type Enemy struct {
+	X, Y, W, H   float64
+	VX, VY       float64
+	HP           int
+	MaxHP        int
+	Alive        bool
+	Type         int // 0=slime, 1=bird, 2=snail
+	StartX       float64
+	PatrolDist   float64
+	AnimFrame    int
+	AnimTimer    int
+}
+
+func NewSlime(x, y float64, dist float64) *Enemy {
+	return &Enemy{
+		X: x, Y: y, W: 32, H: 28,
+		HP: 2, MaxHP: 2, Alive: true,
+		Type: 0, StartX: x, PatrolDist: dist,
+		VX: 50,
+	}
+}
+
+func NewBird(x, y float64, dist float64) *Enemy {
+	return &Enemy{
+		X: x, Y: y, W: 36, H: 28,
+		HP: 1, MaxHP: 1, Alive: true,
+		Type: 1, StartX: x, PatrolDist: dist,
+		VX: 80,
+	}
+}
+
+func NewSnail(x, y float64, dist float64) *Enemy {
+	return &Enemy{
+		X: x, Y: y, W: 32, H: 32,
+		HP: 3, MaxHP: 3, Alive: true,
+		Type: 2, StartX: x, PatrolDist: dist,
+		VX: 30,
+	}
+}
+
+func (e *Enemy) Update(dt float64, platforms []*Platform) {
+	if !e.Alive {
+		return
+	}
+
+	e.VY += 800
+	if e.VY > 600 {
+		e.VY = 600
+	}
+
+	// Patrol
+	e.X += e.VX
+	if e.X > e.StartX+e.PatrolDist {
+		e.VX = -math.Abs(e.VX)
+	}
+	if e.X < e.StartX-e.PatrolDist {
+		e.VX = math.Abs(e.VX)
+	}
+
+	// Bird floats
+	if e.Type == 1 {
+		e.VY = 0
+		e.Y += math.Sin(e.X*0.02) * 0.5
+	} else {
+		e.Y += e.VY * dt
+	}
+
+	// Platform collision
+	for _, p := range platforms {
+		if e.X < p.X+p.W && e.X+e.W > p.X && e.Y < p.Y+p.H && e.Y+e.H > p.Y {
+			if e.VY > 0 {
+				e.Y = p.Y - e.H
+				e.VY = 0
+			}
+		}
+	}
+
+	// Animation
+	e.AnimTimer++
+	if e.AnimTimer > 12 {
+		e.AnimTimer = 0
+		e.AnimFrame = 1 - e.AnimFrame
+	}
+}
+
+func (e *Enemy) TakeDamage(n int) {
+	e.HP -= n
+	if e.HP <= 0 {
+		e.Alive = false
+	}
+}
+
+func (e *Enemy) Draw(screen *ebiten.Image) {
+	if !e.Alive {
+		return
+	}
+
+	var s *ebiten.Image
+	switch e.Type {
+	case 0:
+		if e.AnimFrame == 0 {
+			s = load("assets/sprites/PlatformerComplete/Base pack/Enemies/slimeWalk1.png")
+		} else {
+			s = load("assets/sprites/PlatformerComplete/Base pack/Enemies/slimeWalk2.png")
+		}
+	case 1:
+		if e.AnimFrame == 0 {
+			s = load("assets/sprites/PlatformerComplete/Base pack/Enemies/flyFly1.png")
+		} else {
+			s = load("assets/sprites/PlatformerComplete/Base pack/Enemies/flyFly2.png")
+		}
+	case 2:
+		if e.AnimFrame == 0 {
+			s = load("assets/sprites/PlatformerComplete/Base pack/Enemies/snailWalk1.png")
+		} else {
+			s = load("assets/sprites/PlatformerComplete/Base pack/Enemies/snailWalk2.png")
+		}
+	}
+
+	if s != nil {
+		op := &ebiten.DrawImageOptions{}
+		if e.VX > 0 {
+			op.GeoM.Scale(-1, 1)
+			op.GeoM.Translate(e.X+e.W, e.Y)
+		} else {
+			op.GeoM.Translate(e.X, e.Y)
+		}
+		screen.DrawImage(s, op)
+	} else {
+		c := color.RGBA{100, 200, 100, 255}
+		if e.Type == 1 {
+			c = color.RGBA{150, 100, 200, 255}
+		} else if e.Type == 2 {
+			c = color.RGBA{200, 150, 100, 255}
+		}
 		img := ebiten.NewImage(int(e.W), int(e.H))
-		img.Fill(fallback)
+		img.Fill(c)
 		op := &ebiten.DrawImageOptions{}
 		op.GeoM.Translate(e.X, e.Y)
 		screen.DrawImage(img, op)
 	}
 }
 
-func (a *Entity) Collides(b *Entity) bool {
-	return a.X < b.X+b.W && a.X+a.W > b.X && a.Y < b.Y+b.H && a.Y+a.H > b.Y
-}
+// ─── COIN ─────────────────────────────────────────────────────────
 
-// ─── PLAYER ───────────────────────────────────────────────────────
-
-type Player struct {
-	Entity
-	Speed      float64
-	AttackCD   int
-	Attacking  bool
-	AttackDir  int // 0=right,1=left,2=up,3=down
-	Facing     int // same as AttackDir
-	Keys       int
-	Score      int
-	Invincible int
-}
-
-func NewPlayer(x, y float64) *Player {
-	p := &Player{
-		Entity: Entity{X: x, Y: y, W: 32, H: 32, HP: 5, MaxHP: 5, Alive: true},
-		Speed:  200,
-	}
-	p.Sprite = loadSprite("assets/sprites/PlatformerComplete/Base pack/Player/p1_stand.png")
-	return p
-}
-
-func (p *Player) Update(keys []ebiten.Key, dt float64, room *Room) {
-	p.VX = 0
-	p.VY = 0
-	if p.HP <= 0 {
-		p.Alive = false
-		return
-	}
-
-	for _, k := range keys {
-		switch k {
-		case ebiten.KeyA, ebiten.KeyLeft:
-			p.VX = -p.Speed
-			p.Facing = 1
-		case ebiten.KeyD, ebiten.KeyRight:
-			p.VX = p.Speed
-			p.Facing = 0
-		case ebiten.KeyW, ebiten.KeyUp:
-			p.VY = -p.Speed
-			p.Facing = 2
-		case ebiten.KeyS, ebiten.KeyDown:
-			p.VY = p.Speed
-			p.Facing = 3
-		}
-	}
-
-	// Normalize diagonal
-	if p.VX != 0 && p.VY != 0 {
-		p.VX *= 0.707
-		p.VY *= 0.707
-	}
-
-	p.X += p.VX * dt
-	p.Y += p.VY * dt
-
-	// Room bounds
-	p.X = math.Max(0, math.Min(float64(room.W)-p.W, p.X))
-	p.Y = math.Max(0, math.Min(float64(room.H)-p.H, p.Y))
-
-	// Wall collision
-	for _, w := range room.Walls {
-		if p.Collides(&w.Entity) {
-			// Push back
-			p.X -= p.VX * dt
-			p.Y -= p.VY * dt
-		}
-	}
-
-	// Attack
-	if p.AttackCD > 0 {
-		p.AttackCD--
-	}
-	if inpututil.IsKeyJustPressed(ebiten.KeySpace) || inpututil.IsKeyJustPressed(ebiten.KeyJ) {
-		if p.AttackCD <= 0 {
-			p.Attacking = true
-			p.AttackDir = p.Facing
-			p.AttackCD = 20
-		}
-	}
-	if p.Attacking {
-		p.AttackCD--
-		if p.AttackCD < 10 {
-			p.Attacking = false
-		}
-	}
-
-	if p.Invincible > 0 {
-		p.Invincible--
-	}
-}
-
-func (p *Player) AttackBox() *Entity {
-	if !p.Attacking {
-		return nil
-	}
-	bx, by, bw, bh := p.X, p.Y, p.W, p.H
-	switch p.AttackDir {
-	case 0: // right
-		bx = p.X + p.W
-		bw = 24
-	case 1: // left
-		bx = p.X - 24
-		bw = 24
-	case 2: // up
-		by = p.Y - 24
-		bh = 24
-	case 3: // down
-		by = p.Y + p.H
-		bh = 24
-	}
-	return &Entity{X: bx, Y: by, W: bw, H: bh}
-}
-
-func (p *Player) TakeDamage(dmg int) {
-	if p.Invincible > 0 {
-		return
-	}
-	p.HP -= dmg
-	p.Invincible = 40
-	if p.HP < 0 {
-		p.HP = 0
-	}
-}
-
-// ─── ENEMY ────────────────────────────────────────────────────────
-
-type EnemyType int
-
-const (
-	Slime EnemyType = iota
-	Bat
-	Fish
-	Poker
-)
-
-type Enemy struct {
-	Entity
-	Type     EnemyType
-	Speed    float64
-	Damage   int
-	ChaseRange float64
-}
-
-func NewEnemy(x, y float64, et EnemyType) *Enemy {
-	e := &Enemy{
-		Entity:     Entity{X: x, Y: y, W: 32, H: 32, HP: 2, MaxHP: 2, Alive: true},
-		Type:       et,
-		Speed:      60,
-		Damage:     1,
-		ChaseRange: 250,
-	}
-	switch et {
-	case Slime:
-		e.Sprite = loadSprite("assets/sprites/PlatformerComplete/Base pack/Enemies/slimeWalk1.png")
-		e.Speed = 40
-		e.HP = 2
-	case Bat:
-		e.Sprite = loadSprite("assets/sprites/PlatformerComplete/Base pack/Enemies/flyFly1.png")
-		e.Speed = 80
-		e.HP = 1
-		e.ChaseRange = 350
-	case Fish:
-		e.Sprite = loadSprite("assets/sprites/PlatformerComplete/Base pack/Enemies/fishSwim1.png")
-		e.Speed = 50
-		e.HP = 3
-	case Poker:
-		e.Sprite = loadSprite("assets/sprites/PlatformerComplete/Base pack/Enemies/pokerMad.png")
-		e.Speed = 70
-		e.HP = 4
-		e.Damage = 2
-		e.W, e.H = 40, 40
-	}
-	e.MaxHP = e.HP
-	return e
-}
-
-func (e *Enemy) Update(player *Player, dt float64) {
-	if !e.Alive {
-		return
-	}
-
-	dx := player.X - e.X
-	dy := player.Y - e.Y
-	dist := math.Sqrt(dx*dx + dy*dy)
-
-	if dist < e.ChaseRange {
-		// Chase player
-		nx := dx / dist
-		ny := dy / dist
-		e.X += nx * e.Speed * dt
-		e.Y += ny * e.Speed * dt
-	}
-
-	// Animation
-	e.AnimTimer++
-	if e.AnimTimer > 15 {
-		e.AnimTimer = 0
-		e.AnimFrame = 1 - e.AnimFrame
-	}
-}
-
-func (e *Enemy) TakeDamage(dmg int) {
-	e.HP -= dmg
-	if e.HP <= 0 {
-		e.Alive = false
-	}
-}
-
-// ─── ITEM ─────────────────────────────────────────────────────────
-
-type ItemType int
-
-const (
-	Coin ItemType = iota
-	Heart
-	Key
-	Gem
-)
-
-type Item struct {
+type Coin struct {
 	X, Y     float64
 	W, H     float64
-	Type     ItemType
-	Value    int
 	Collected bool
-	BobTimer float64
+	Bob      float64
 	Sprite   *ebiten.Image
+	Value    int
 }
 
-func NewItem(x, y float64, it ItemType) *Item {
-	i := &Item{X: x, Y: y, W: 16, H: 16, Type: it}
-	switch it {
-	case Coin:
-		i.Sprite = loadSprite("assets/sprites/PlatformerComplete/Base pack/Items/coinGold.png")
-		i.Value = 10
-	case Heart:
-		i.Sprite = loadSprite("assets/sprites/PlatformerComplete/Base pack/Items/heart.png")
-		i.Value = 1
-	case Key:
-		i.Sprite = loadSprite("assets/sprites/PlatformerComplete/Base pack/Items/key.png")
-		i.Value = 1
-	case Gem:
-		i.Sprite = loadSprite("assets/sprites/PlatformerComplete/Base pack/Items/gemBlue.png")
-		i.Value = 50
-		i.W, i.H = 20, 20
-	}
-	return i
-}
-
-func (i *Item) Update(dt float64) {
-	i.BobTimer += dt * 3
-}
-
-// ─── ROOM ─────────────────────────────────────────────────────────
-
-type Wall struct {
-	Entity
-}
-
-type Door struct {
-	X, Y    float64
-	W, H    float64
-	Open    bool
-	Dir     int // 0=right, 1=bottom
-}
-
-type Room struct {
-	X, Y, W, H int
-	Enemies    []*Enemy
-	Items      []*Item
-	Walls      []*Wall
-	Doors      []*Door
-	Cleared    bool
-	BG         *ebiten.Image
-}
-
-func NewRoom(x, y, w, h int, difficulty int) *Room {
-	r := &Room{X: x, Y: y, W: w, H: h}
-	r.BG = loadSprite("assets/sprites/PlatformerComplete/Base pack/bg_castle.png")
-
-	// Generate walls (pillars)
-	numWalls := rand.Intn(3) + difficulty
-	for i := 0; i < numWalls; i++ {
-		wx := 80 + rand.Intn(w-160)
-		wy := 80 + rand.Intn(h-160)
-		r.Walls = append(r.Walls, &Wall{
-			Entity: Entity{X: float64(wx), Y: float64(wy), W: 32, H: 32},
-		})
-	}
-
-	// Generate enemies
-	numEnemies := rand.Intn(2) + difficulty
-	for i := 0; i < numEnemies; i++ {
-		ex := 100 + rand.Intn(w-200)
-		ey := 100 + rand.Intn(h-200)
-		et := EnemyType(rand.Intn(4))
-		r.Enemies = append(r.Enemies, NewEnemy(float64(ex), float64(ey), et))
-	}
-
-	// Generate items
-	numCoins := rand.Intn(4) + 2
-	for i := 0; i < numCoins; i++ {
-		ix := 50 + rand.Intn(w-100)
-		iy := 50 + rand.Intn(h-100)
-		r.Items = append(r.Items, NewItem(float64(ix), float64(iy), Coin))
-	}
-
-	// Gems (rare)
-	if rand.Float64() < 0.3 {
-		gx := 100 + rand.Intn(w-200)
-		gy := 100 + rand.Intn(h-200)
-		r.Items = append(r.Items, NewItem(float64(gx), float64(gy), Gem))
-	}
-
-	// Heart (if low HP chance)
-	if rand.Float64() < 0.25 {
-		hx := 100 + rand.Intn(w-200)
-		hy := 100 + rand.Intn(h-200)
-		r.Items = append(r.Items, NewItem(float64(hx), float64(hy), Heart))
-	}
-
-	// Key (needed for next room)
-	if difficulty > 0 {
-		kx := 100 + rand.Intn(w-200)
-		ky := 100 + rand.Intn(h-200)
-		r.Items = append(r.Items, NewItem(float64(kx), float64(ky), Key))
-	}
-
-	// Doors
-	if difficulty < 5 {
-		r.Doors = append(r.Doors, &Door{X: float64(w - 20), Y: float64(h/2 - 30), W: 20, H: 60, Dir: 0})
-	}
-
-	return r
-}
-
-func (r *Room) Update(dt float64, player *Player) {
-	// Check if room cleared
-	allDead := true
-	for _, e := range r.Enemies {
-		if e.Alive {
-			allDead = false
-			break
-		}
-	}
-	r.Cleared = allDead
-
-	// Update enemies
-	for _, e := range r.Enemies {
-		e.Update(player, dt)
-		// Wall collision
-		for _, w := range r.Walls {
-			if e.Collides(&w.Entity) {
-				// Push back
-				dx := e.X - w.X
-				dy := e.Y - w.Y
-				if math.Abs(dx) > math.Abs(dy) {
-					if dx > 0 {
-						e.X = w.X + w.W
-					} else {
-						e.X = w.X - e.W
-					}
-				} else {
-					if dy > 0 {
-						e.Y = w.Y + w.H
-					} else {
-						e.Y = w.Y - e.H
-					}
-				}
-			}
-		}
-		// Player collision
-		if e.Alive && player.Collides(&e.Entity) {
-			player.TakeDamage(e.Damage)
-		}
-	}
-
-	// Update items
-	for _, item := range r.Items {
-		if item.Collected {
-			continue
-		}
-		item.Update(dt)
-		// Player pickup
-		if player.X < item.X+item.W && player.X+player.W > item.X &&
-			player.Y < item.Y+item.H && player.Y+player.H > item.Y {
-			item.Collected = true
-			player.Score += item.Value
-			switch item.Type {
-			case Heart:
-				if player.HP < player.MaxHP {
-					player.HP += item.Value
-				}
-			case Key:
-				player.Keys += item.Value
-			}
-		}
+func NewCoin(x, y float64) *Coin {
+	return &Coin{
+		X: x, Y: y, W: 16, H: 16,
+		Sprite: load("assets/sprites/PlatformerComplete/Base pack/Items/coinGold.png"),
+		Value:  10,
 	}
 }
 
-func (r *Room) Draw(screen *ebiten.Image) {
-	// Background
-	if r.BG != nil {
-		// Tile the background
-		for bx := 0; bx < r.W; bx += r.BG.Bounds().Dx() {
-			for by := 0; by < r.H; by += r.BG.Bounds().Dy() {
-				op := &ebiten.DrawImageOptions{}
-				op.GeoM.Translate(float64(bx), float64(by))
-				screen.DrawImage(r.BG, op)
-			}
-		}
-	} else {
-		bg := ebiten.NewImage(r.W, r.H)
-		bg.Fill(color.RGBA{40, 40, 60, 255})
-		screen.DrawImage(bg, nil)
-	}
+func (c *Coin) Update(dt float64, camX float64) {
+	c.Bob += dt * 4
+}
 
-	// Walls
-	for _, w := range r.Walls {
-		w.Draw(screen, color.RGBA{100, 100, 120, 255})
+func (c *Coin) Draw(screen *ebiten.Image) {
+	if c.Collected {
+		return
 	}
-
-	// Items
-	for _, item := range r.Items {
-		if item.Collected {
-			continue
-		}
-		bob := math.Sin(item.BobTimer) * 3
-		if item.Sprite != nil {
-			op := &ebiten.DrawImageOptions{}
-			op.GeoM.Translate(item.X, item.Y+bob)
-			screen.DrawImage(item.Sprite, op)
-		} else {
-			c := color.RGBA{255, 215, 0, 255}
-			if item.Type == Heart {
-				c = color.RGBA{255, 50, 50, 255}
-			} else if item.Type == Key {
-				c = color.RGBA{255, 255, 0, 255}
-			} else if item.Type == Gem {
-				c = color.RGBA{0, 150, 255, 255}
-			}
-			img := ebiten.NewImage(int(item.W), int(item.H))
-			img.Fill(c)
-			op := &ebiten.DrawImageOptions{}
-			op.GeoM.Translate(item.X, item.Y+bob)
-			screen.DrawImage(img, op)
-		}
-	}
-
-	// Enemies
-	for _, e := range r.Enemies {
-		if !e.Alive {
-			continue
-		}
-		c := color.RGBA{100, 200, 100, 255}
-		if e.Type == Bat {
-			c = color.RGBA{150, 100, 200, 255}
-		} else if e.Type == Fish {
-			c = color.RGBA{100, 150, 255, 255}
-		} else if e.Type == Poker {
-			c = color.RGBA{255, 100, 50, 255}
-		}
-		e.Draw(screen, c)
-	}
-
-	// Doors
-	for _, d := range r.Doors {
-		c := color.RGBA{150, 100, 50, 255}
-		if d.Open {
-			c = color.RGBA{50, 150, 50, 255}
-		}
-		img := ebiten.NewImage(int(d.W), int(d.H))
-		img.Fill(c)
+	bob := math.Sin(c.Bob) * 4
+	if c.Sprite != nil {
 		op := &ebiten.DrawImageOptions{}
-		op.GeoM.Translate(d.X, d.Y)
+		op.GeoM.Translate(c.X, c.Y+bob)
+		screen.DrawImage(c.Sprite, op)
+	} else {
+		img := ebiten.NewImage(16, 16)
+		img.Fill(color.RGBA{255, 215, 0, 255})
+		op := &ebiten.DrawImageOptions{}
+		op.GeoM.Translate(c.X, c.Y+bob)
 		screen.DrawImage(img, op)
 	}
 }
@@ -565,8 +519,75 @@ func (r *Room) Draw(screen *ebiten.Image) {
 
 type Particle struct {
 	X, Y, VX, VY float64
-	Life, MaxLife int
+	Life, Max    int
 	R, G, B      uint8
+}
+
+// ─── LEVEL ────────────────────────────────────────────────────────
+
+type Level struct {
+	Platforms []*Platform
+	Enemies   []*Enemy
+	Coins     []*Coin
+	FlagX     float64
+	Width     float64
+}
+
+func GenerateLevel(lvl int) *Level {
+	l := &Level{}
+	l.Width = 2000 + float64(lvl)*600
+	groundY := 550.0
+
+	// Ground segments with gaps
+	x := 0.0
+	for x < l.Width {
+		segLen := 200.0 + rand.Float64()*300
+		gap := 80.0 + rand.Float64()*60*float64(lvl)
+
+		l.Platforms = append(l.Platforms, &Platform{
+			X: x, Y: groundY, W: segLen, H: 200, Ground: true,
+		})
+
+		// Floating platforms
+		numFloat := rand.Intn(3) + 1
+		for i := 0; i < numFloat; i++ {
+			fx := x + rand.Float64()*segLen
+			fy := groundY - 80 - rand.Float64()*180
+			fw := 64 + rand.Float64()*100
+			l.Platforms = append(l.Platforms, &Platform{
+				X: fx, Y: fy, W: fw, H: 16,
+			})
+
+			// Coins on floating platforms
+			l.Coins = append(l.Coins, NewCoin(fx+fw/2-8, fy-30))
+		}
+
+		// Enemies
+		if rand.Float64() < 0.4+float64(lvl)*0.1 {
+			et := rand.Intn(3)
+			ex := x + 50 + rand.Float64()*(segLen-100)
+			switch et {
+			case 0:
+				l.Enemies = append(l.Enemies, NewSlime(ex, groundY-28, 80))
+			case 1:
+				l.Enemies = append(l.Enemies, NewBird(ex, groundY-120-rand.Float64()*80, 100))
+			case 2:
+				l.Enemies = append(l.Enemies, NewSnail(ex, groundY-32, 60))
+			}
+		}
+
+		// Ground coins
+		for i := 0; i < 3; i++ {
+			l.Coins = append(l.Coins, NewCoin(x+rand.Float64()*segLen, groundY-30))
+		}
+
+		x += segLen + gap
+	}
+
+	// Flag at end
+	l.FlagX = l.Width - 100
+
+	return l
 }
 
 // ─── GAME ─────────────────────────────────────────────────────────
@@ -574,31 +595,36 @@ type Particle struct {
 type Game struct {
 	State     State
 	Player    *Player
-	Rooms     []*Room
-	CurrentRoom int
+	Level     *Level
+	CamX      float64
 	Particles []Particle
-	ShakeTimer int
+	CurrentLvl int
+	MaxLevels  int
 }
 
 func NewGame() *Game {
-	g := &Game{
-		State: Title,
+	return &Game{
+		State:    Title,
+		CamX:     0,
+		MaxLevels: 3,
 	}
-	return g
 }
 
-func (g *Game) startGame() {
-	g.Player = NewPlayer(64, 340)
-	g.Rooms = nil
-	g.CurrentRoom = 0
+func (g *Game) StartGame() {
+	g.Player = NewPlayer(100, 400)
+	g.CurrentLvl = 0
+	g.CamX = 0
 	g.Particles = nil
-	g.ShakeTimer = 0
+	g.loadLevel(g.CurrentLvl)
+}
 
-	// Generate 5 rooms
-	for i := 0; i < 5; i++ {
-		r := NewRoom(0, 0, 1280, 720, i+1)
-		g.Rooms = append(g.Rooms, r)
-	}
+func (g *Game) loadLevel(n int) {
+	g.Level = GenerateLevel(n + 1)
+	g.Player.X = 100
+	g.Player.Y = 400
+	g.Player.VX = 0
+	g.Player.VY = 0
+	g.CamX = 0
 }
 
 func (g *Game) Update() error {
@@ -606,14 +632,14 @@ func (g *Game) Update() error {
 	case Title:
 		if inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeySpace) {
 			g.State = Playing
-			g.startGame()
+			g.StartGame()
 		}
 	case Playing:
 		g.updatePlaying()
 	case Dead:
 		if inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
 			g.State = Playing
-			g.startGame()
+			g.StartGame()
 		}
 	case Win:
 		if inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
@@ -625,208 +651,196 @@ func (g *Game) Update() error {
 
 func (g *Game) updatePlaying() {
 	dt := 1.0 / 60.0
-	room := g.Rooms[g.CurrentRoom]
 
-	// Get pressed keys
-	var keys []ebiten.Key
-	if ebiten.IsKeyPressed(ebiten.KeyA) || ebiten.IsKeyPressed(ebiten.KeyLeft) {
-		keys = append(keys, ebiten.KeyA)
-	}
-	if ebiten.IsKeyPressed(ebiten.KeyD) || ebiten.IsKeyPressed(ebiten.KeyRight) {
-		keys = append(keys, ebiten.KeyD)
-	}
-	if ebiten.IsKeyPressed(ebiten.KeyW) || ebiten.IsKeyPressed(ebiten.KeyUp) {
-		keys = append(keys, ebiten.KeyW)
-	}
-	if ebiten.IsKeyPressed(ebiten.KeyS) || ebiten.IsKeyPressed(ebiten.KeyDown) {
-		keys = append(keys, ebiten.KeyS)
+	// Keys
+	keys := make(map[ebiten.Key]bool)
+	for _, k := range []ebiten.Key{ebiten.KeyA, ebiten.KeyD, ebiten.KeyW, ebiten.KeyS, ebiten.KeyLeft, ebiten.KeyRight, ebiten.KeyUp, ebiten.KeyDown} {
+		keys[k] = ebiten.IsKeyPressed(k)
 	}
 
-	g.Player.Update(keys, dt, room)
+	g.Player.Update(keys, g.Level.Platforms, g.Level.Enemies)
 
-	if !g.Player.Alive {
+	if g.Player.Dead {
 		g.State = Dead
 		return
 	}
 
-	room.Update(dt, g.Player)
+	// Update enemies
+	for _, e := range g.Level.Enemies {
+		e.Update(dt, g.Level.Platforms)
+	}
 
-	// Player attack
-	atkBox := g.Player.AttackBox()
-	if atkBox != nil {
-		for _, e := range room.Enemies {
+	// Player attack enemies
+	if g.Player.Attacking {
+		ax, ay, aw, ah := g.Player.AttackBox()
+		for _, e := range g.Level.Enemies {
 			if !e.Alive {
 				continue
 			}
-			if atkBox.Collides(&e.Entity) {
+			if ax < e.X+e.W && ax+aw > e.X && ay < e.Y+e.H && ay+ah > e.Y {
 				e.TakeDamage(1)
-				g.spawnParticles(e.X+e.W/2, e.Y+e.H/2, 8, 255, 255, 0)
+				g.spawnParticles(e.X+e.W/2, e.Y+e.H/2, 10, 255, 255, 0)
 				if !e.Alive {
 					g.Player.Score += 50
-					g.ShakeTimer = 5
 				}
 			}
 		}
 	}
 
-	// Check door interaction
-	for _, d := range room.Doors {
-		if d.Open {
+	// Coins
+	for _, c := range g.Level.Coins {
+		if c.Collected {
 			continue
 		}
-		if g.Player.X+g.Player.W > d.X && g.Player.X < d.X+d.W &&
-			g.Player.Y+g.Player.H > d.Y && g.Player.Y < d.Y+d.H {
-			if g.Player.Keys > 0 {
-				d.Open = true
-				g.Player.Keys--
-				g.spawnParticles(d.X, d.Y+d.H/2, 15, 100, 255, 100)
-			}
-		}
-		// Move to next room if door open and player near it
-		if d.Open && g.Player.X > d.X {
-			g.CurrentRoom++
-			if g.CurrentRoom >= len(g.Rooms) {
-				g.State = Win
-				return
-			}
-			g.Player.X = 20
-			g.Player.Y = float64(g.Rooms[g.CurrentRoom].H/2 - 16)
+		c.Update(dt, g.CamX)
+		if g.Player.X < c.X+c.W && g.Player.X+g.Player.W > c.X &&
+			g.Player.Y < c.Y+c.H && g.Player.Y+g.Player.H > c.Y {
+			c.Collected = true
+			g.Player.Coins++
+			g.Player.Score += c.Value
+			g.spawnParticles(c.X+8, c.Y+8, 6, 255, 215, 0)
 		}
 	}
 
-	// Update particles
+	// Flag (reach end)
+	if g.Player.X > g.Level.FlagX {
+		g.CurrentLvl++
+		if g.CurrentLvl >= g.MaxLevels {
+			g.State = Win
+			return
+		}
+		g.loadLevel(g.CurrentLvl)
+	}
+
+	// Particles
 	for i := len(g.Particles) - 1; i >= 0; i-- {
 		p := &g.Particles[i]
 		p.X += p.VX * dt
 		p.Y += p.VY * dt
-		p.VY += 200 * dt
+		p.VY += 300 * dt
 		p.Life--
 		if p.Life <= 0 {
 			g.Particles = append(g.Particles[:i], g.Particles[i+1:]...)
 		}
 	}
 
-	if g.ShakeTimer > 0 {
-		g.ShakeTimer--
+	// Camera
+	target := g.Player.X - 400
+	g.CamX += (target - g.CamX) * 0.08
+	if g.CamX < 0 {
+		g.CamX = 0
 	}
 }
 
-func (g *Game) spawnParticles(x, y float64, count int, r, gv, b uint8) {
-	for i := 0; i < count; i++ {
+func (g *Game) spawnParticles(x, y float64, n int, r, gv, b uint8) {
+	for i := 0; i < n; i++ {
 		g.Particles = append(g.Particles, Particle{
 			X: x, Y: y,
-			VX: (rand.Float64() - 0.5) * 300,
-			VY: (rand.Float64() - 0.5) * 300,
-			Life: 20 + rand.Intn(20),
-			MaxLife: 40,
+			VX: (rand.Float64() - 0.5) * 250,
+			VY: -rand.Float64() * 200,
+			Life: 15 + rand.Intn(20),
+			Max: 35,
 			R: r, G: gv, B: b,
 		})
 	}
 }
 
 func (g *Game) Draw(screen *ebiten.Image) {
-	screen.Fill(color.RGBA{20, 20, 30, 255})
+	screen.Fill(color.RGBA{135, 206, 235, 255})
 
 	switch g.State {
 	case Title:
-		g.drawTitle(screen)
+		drawCentered(screen, "CITY PLATFORMER", 200, color.RGBA{0, 100, 200, 255}, 20)
+		drawCentered(screen, "Press ENTER or SPACE", 300, color.White, 14)
+		drawCentered(screen, "A/D or Arrows = Move", 380, color.RGBA{200, 200, 200, 255}, 12)
+		drawCentered(screen, "SPACE/W/Up = Jump (Double!)", 410, color.RGBA{200, 200, 200, 255}, 12)
+		drawCentered(screen, "J/X = Attack", 440, color.RGBA{200, 200, 200, 255}, 12)
+		drawCentered(screen, "Stomp enemies from above!", 470, color.RGBA{200, 200, 200, 255}, 12)
 	case Playing:
 		g.drawGame(screen)
 	case Dead:
 		g.drawGame(screen)
-		g.drawOverlay(screen, "YOU DIED", color.RGBA{255, 50, 50, 255})
+		screen.Fill(color.RGBA{0, 0, 0, 180})
+		drawCentered(screen, "GAME OVER", 300, color.RGBA{255, 50, 50, 255}, 20)
+		drawCentered(screen, fmt.Sprintf("Score: %d", g.Player.Score), 360, color.White, 14)
+		drawCentered(screen, "Press ENTER", 420, color.RGBA{150, 200, 255, 255}, 14)
 	case Win:
 		g.drawGame(screen)
-		g.drawOverlay(screen, "YOU WIN!", color.RGBA{100, 255, 100, 255})
+		screen.Fill(color.RGBA{0, 0, 0, 180})
+		drawCentered(screen, "YOU WIN!", 300, color.RGBA{100, 255, 100, 255}, 20)
+		drawCentered(screen, fmt.Sprintf("Final Score: %d", g.Player.Score), 360, color.White, 14)
+		drawCentered(screen, "Press ENTER", 420, color.RGBA{150, 200, 255, 255}, 14)
 	}
-}
-
-func (g *Game) drawTitle(screen *ebiten.Image) {
-	screen.Fill(color.RGBA{15, 15, 30, 255})
-	drawText(screen, "DUNGEON CRAWLER", 640, 200, color.RGBA{200, 150, 50, 255}, 24)
-	drawText(screen, "Press ENTER or SPACE to Start", 640, 320, color.White, 14)
-	drawText(screen, "WASD / Arrows = Move", 640, 400, color.RGBA{180, 180, 180, 255}, 12)
-	drawText(screen, "SPACE / J = Attack", 640, 430, color.RGBA{180, 180, 180, 255}, 12)
-	drawText(screen, "Kill enemies, collect keys, open doors!", 640, 480, color.RGBA{150, 150, 200, 255}, 12)
-	drawText(screen, "5 rooms to clear", 640, 510, color.RGBA{150, 150, 200, 255}, 12)
 }
 
 func (g *Game) drawGame(screen *ebiten.Image) {
-	room := g.Rooms[g.CurrentRoom]
-
-	// Screen shake
-	op := &ebiten.DrawImageOptions{}
-	if g.ShakeTimer > 0 {
-		sx := (rand.Float64() - 0.5) * 6
-		sy := (rand.Float64() - 0.5) * 6
-		op.GeoM.Translate(sx, sy)
+	// Background
+	bg := load("assets/sprites/PlatformerComplete/Base pack/bg.png")
+	if bg != nil {
+		screen.DrawImage(bg, nil)
 	}
 
-	// Draw room
-	room.Draw(screen)
+	// Camera transform
+	op := &ebiten.DrawImageOptions{}
+	op.GeoM.Translate(-g.CamX, 0)
 
-	// Draw particles
+	// Platforms
+	for _, p := range g.Level.Platforms {
+		if p.X+p.W < g.CamX-50 || p.X > g.CamX+1330 {
+			continue
+		}
+		p.Draw(screen)
+	}
+
+	// Coins
+	for _, c := range g.Level.Coins {
+		c.Draw(screen)
+	}
+
+	// Enemies
+	for _, e := range g.Level.Enemies {
+		e.Draw(screen)
+	}
+
+	// Flag at end
+	flagImg := ebiten.NewImage(8, 80)
+	flagImg.Fill(color.RGBA{255, 50, 50, 255})
+	fop := &ebiten.DrawImageOptions{}
+	fop.GeoM.Translate(g.Level.FlagX, 470)
+	screen.DrawImage(flagImg, fop)
+
+	// Player
+	g.Player.Draw(screen)
+
+	// Particles
 	for _, p := range g.Particles {
-		alpha := uint8(p.Life * 255 / p.MaxLife)
-		img := ebiten.NewImage(5, 5)
+		alpha := uint8(p.Life * 255 / p.Max)
+		img := ebiten.NewImage(4, 4)
 		img.Fill(color.RGBA{p.R, p.G, p.B, alpha})
 		pop := &ebiten.DrawImageOptions{}
 		pop.GeoM.Translate(p.X, p.Y)
 		screen.DrawImage(img, pop)
 	}
 
-	// Draw player
-	if g.Player.Invincible <= 0 || g.Player.Invincible%4 < 2 {
-		g.Player.Draw(screen, color.RGBA{0, 150, 255, 255})
-
-		// Attack visual
-		if g.Player.Attacking {
-			ab := g.Player.AttackBox()
-			if ab != nil {
-				img := ebiten.NewImage(int(ab.W), int(ab.H))
-				img.Fill(color.RGBA{255, 255, 200, 180})
-				aop := &ebiten.DrawImageOptions{}
-				aop.GeoM.Translate(ab.X, ab.Y)
-				screen.DrawImage(img, aop)
-			}
-		}
-	}
-
 	// HUD
-	drawText(screen, fmt.Sprintf("HP: %d/%d", g.Player.HP, g.Player.MaxHP), 20, 30, color.RGBA{255, 80, 80, 255}, 14)
-	drawText(screen, fmt.Sprintf("Score: %d", g.Player.Score), 20, 55, color.White, 14)
-	drawText(screen, fmt.Sprintf("Keys: %d", g.Player.Keys), 20, 80, color.RGBA{255, 255, 0, 255}, 14)
-	drawText(screen, fmt.Sprintf("Room: %d/5", g.CurrentRoom+1), 20, 105, color.RGBA{150, 200, 255, 255}, 14)
+	drawText(screen, fmt.Sprintf("HP: %d/%d", g.Player.HP, g.Player.MaxHP), 20, 30, color.RGBA{255, 80, 80, 255})
+	drawText(screen, fmt.Sprintf("Score: %d", g.Player.Score), 20, 55, color.White)
+	drawText(screen, fmt.Sprintf("Coins: %d", g.Player.Coins), 20, 80, color.RGBA{255, 215, 0, 255})
+	drawText(screen, fmt.Sprintf("Level: %d/%d", g.CurrentLvl+1, g.MaxLevels), 20, 105, color.RGBA{150, 200, 255, 255})
 
-	if room.Cleared {
-		drawText(screen, "ROOM CLEARED!", 640, 100, color.RGBA{100, 255, 100, 255}, 16)
-	}
-
-	ebitenutil.DebugPrint(screen, fmt.Sprintf("Room %d | Enemies: %d | Keys: %d", g.CurrentRoom+1, countAlive(room.Enemies), g.Player.Keys))
+	ebitenutil.DebugPrint(screen, fmt.Sprintf("Pos: (%.0f, %.0f)", g.Player.X, g.Player.Y))
 }
 
-func (g *Game) drawOverlay(screen *ebiten.Image, title string, c color.Color) {
-	screen.Fill(color.RGBA{0, 0, 0, 180})
-	drawText(screen, title, 640, 280, c, 24)
-	drawText(screen, fmt.Sprintf("Final Score: %d", g.Player.Score), 640, 340, color.White, 16)
-	drawText(screen, "Press ENTER", 640, 400, color.RGBA{150, 200, 255, 255}, 14)
+func drawCentered(screen *ebiten.Image, msg string, y int, c color.Color, scale int) {
+	x := (1280 - len(msg)*7) / 2
+	text.Draw(screen, msg, basicfont.Face7x13, x, y, c)
 }
 
-func drawText(screen *ebiten.Image, msg string, x, y int, c color.Color, scale int) {
-	text.Draw(screen, msg, basicfont.Face7x13, x-len(msg)*7/2, y, c)
+func drawText(screen *ebiten.Image, msg string, x, y int, c color.Color) {
+	text.Draw(screen, msg, basicfont.Face7x13, x, y, c)
 }
 
-func countAlive(enemies []*Enemy) int {
-	n := 0
-	for _, e := range enemies {
-		if e.Alive {
-			n++
-		}
-	}
-	return n
-}
-
-func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
+func (g *Game) Layout(w, h int) (int, int) {
 	return 1280, 720
 }
 
@@ -834,11 +848,10 @@ func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
 
 func main() {
 	ebiten.SetWindowSize(1280, 720)
-	ebiten.SetWindowTitle("Dungeon Crawler - Go365 Day 94")
+	ebiten.SetWindowTitle("City Platformer - Go365 Day 94")
 	ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
 
 	game := NewGame()
-
 	if err := ebiten.RunGame(game); err != nil {
 		panic(err)
 	}
