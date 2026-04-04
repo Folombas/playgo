@@ -711,7 +711,7 @@ func sweep(dur, f1, f2 float64, sr int) []float64 {
 	return o
 }
 
-// ======================== ЧАСТИЦЫ ========================
+// ======================== СПЕЦЭФФЕКТЫ ========================
 type Particle struct {
 	x, y     float64
 	vx, vy   float64
@@ -719,27 +719,149 @@ type Particle struct {
 	maxLife  int
 	clr      color.Color
 	sz       int
+	rotation float64
+	rotSpeed float64
+	square   bool // true = квадрат, false = круг
 }
+
+// Анимация перемещения фигуры
+type SlideAnim struct {
+	spr    *ebiten.Image
+	x, y   float64 // текущая позиция
+	tx, ty float64 // целевая
+	t      int
+	total  int
+}
+
+func (a *SlideAnim) Update() bool {
+	a.t++
+	return a.t >= a.total
+}
+
+func (a *SlideAnim) Draw(s *ebiten.Image) {
+	if a.spr == nil {
+		return
+	}
+	// Ease in-out
+	f := float64(a.t) / float64(a.total)
+	f = f * f * (3 - 2*f)
+	// Интерполяция
+	// Сохраняем стартовую позицию
+	// Используем линейную интерполяцию от изначальной до целевой
+	// Нужно знать откуда - сохраним при создании
+	px := a.x + (a.tx-a.x)*0 // будет пересчитано в execMove
+	_ = px
+	// Просто рисуем на текущей позиции
+	op := &ebiten.DrawImageOptions{}
+	// Небольшой "прыжок" по дуге
+	jumpH := math.Sin(f * math.Pi) * 15
+	op.GeoM.Translate(a.x, a.y-jumpH)
+	// Fade in/out
+	alpha := 1.0
+	if a.t < 5 {
+		alpha = float64(a.t) / 5
+	}
+	if a.t > a.total-5 {
+		alpha = float64(a.total-a.t) / 5
+	}
+	op.ColorM.Scale(1, 1, 1, alpha)
+	s.DrawImage(a.spr, op)
+}
+
+// Тряска экрана
+type ScreenShake struct {
+	intensity float64
+	timer     int
+}
+
+func (s *ScreenShake) Add(i float64, dur int) {
+	s.intensity = i
+	s.timer = dur
+}
+
+func (s *ScreenShake) Update() (float64, float64) {
+	if s.timer > 0 {
+		s.timer--
+		return (rand.Float64()-0.5)*s.intensity*2, (rand.Float64()-0.5)*s.intensity*2
+	}
+	s.intensity = 0
+	return 0, 0
+}
+
+// Вспышка
+type Flash struct {
+	clr   color.Color
+	life  int
+	maxLife int
+}
+
+func (f *Flash) Draw(s *ebiten.Image) {
+	if f.life <= 0 {
+		return
+	}
+	a := float64(f.life) / float64(f.maxLife)
+	op := &ebiten.DrawImageOptions{}
+	op.ColorM.Scale(1, 1, 1, a*0.3)
+	// Рисуем прямоугольник на весь экран
+	img := ebiten.NewImage(WW, WH)
+	img.Fill(f.clr)
+	s.DrawImage(img, op)
+}
+
+// ======================== ИГРА ========================
 
 func spawnParts(x, y float64, clr color.Color, n int) []Particle {
 	ps := make([]Particle, 0, n)
 	for i := 0; i < n; i++ {
 		a := rand.Float64() * 6.2832
-		sp := 1.5 + rand.Float64()*3
+		sp := 1.5 + rand.Float64()*4
 		ps = append(ps, Particle{
 			x: x, y: y,
 			vx: math.Cos(a) * sp,
 			vy: math.Sin(a)*sp - 2,
-			life:    15 + rand.Intn(20),
-			maxLife: 35,
+			life:    20 + rand.Intn(25),
+			maxLife: 45,
 			clr: clr,
-			sz:   2 + rand.Intn(5),
+			sz:   2 + rand.Intn(6),
+			rotation: rand.Float64() * 6.2832,
+			rotSpeed: (rand.Float64()-0.5) * 0.3,
+			square: rand.Float64() > 0.5,
 		})
 	}
 	return ps
 }
 
-// ======================== ИГРА ========================
+// Конфетти - разноцветные частицы для победы
+func spawnConfetti(x, y, n int) []Particle {
+	ps := make([]Particle, 0, n)
+	clrs := []color.Color{
+		color.RGBA{255, 100, 100, 255},
+		color.RGBA{100, 255, 100, 255},
+		color.RGBA{100, 100, 255, 255},
+		color.RGBA{255, 255, 100, 255},
+		color.RGBA{255, 100, 255, 255},
+		color.RGBA{100, 255, 255, 255},
+	}
+	for i := 0; i < n; i++ {
+		a := rand.Float64() * 6.2832
+		sp := 2 + rand.Float64()*5
+		ps = append(ps, Particle{
+			x: float64(x + rand.Intn(100)-50),
+			y: float64(y),
+			vx: math.Cos(a) * sp,
+			vy: -3 - rand.Float64()*6,
+			life:    40 + rand.Intn(40),
+			maxLife: 80,
+			clr: clrs[rand.Intn(len(clrs))],
+			sz:   3 + rand.Intn(6),
+			rotation: rand.Float64() * 6.2832,
+			rotSpeed: (rand.Float64()-0.5) * 0.4,
+			square: true,
+		})
+	}
+	return ps
+}
+
 var fCount int64
 
 type Game struct {
@@ -762,6 +884,10 @@ type Game struct {
 	moveNum int
 
 	particles []Particle
+	slideAnims []SlideAnim // анимации перемещения фигур
+	shake     ScreenShake // тряска экрана
+	flash     Flash       // вспышка
+	hovScale  float64     // hover scale для фигуры
 
 	aiResult chan *Move
 	aiBusy   bool
@@ -832,10 +958,35 @@ func (g *Game) Update() error {
 		p.x += p.vx
 		p.y += p.vy
 		p.vy += 0.12
+		p.rotation += p.rotSpeed
 		p.life--
 		if p.life <= 0 {
 			g.particles = append(g.particles[:i], g.particles[i+1:]...)
 		}
+	}
+
+	// Анимации перемещения
+	for i := len(g.slideAnims) - 1; i >= 0; i-- {
+		a := &g.slideAnims[i]
+		a.t++
+		if a.t >= a.total {
+			g.slideAnims = append(g.slideAnims[:i], g.slideAnims[i+1:]...)
+		}
+	}
+
+	// Тряска
+	g.shake.Update()
+
+	// Вспышка
+	if g.flash.life > 0 {
+		g.flash.life--
+	}
+
+	// Hover scale
+	if g.hovR >= 0 && g.hovC >= 0 && g.board[g.hovR][g.hovC] != NONE {
+		g.hovScale += (1.15 - g.hovScale) * 0.2
+	} else {
+		g.hovScale += (1.0 - g.hovScale) * 0.2
 	}
 
 	// AI результат
@@ -847,9 +998,12 @@ func (g *Game) Update() error {
 				g.state = 2
 				g.msg = "Вы победили!"
 				play(sWin)
-				for i := 0; i < 40; i++ {
-					g.particles = append(g.particles, spawnParts(WW/2, WH/2, color.RGBA{100, 255, 100, 255}, 1)...)
+				// Конфетти!
+				for i := 0; i < 80; i++ {
+					g.particles = append(g.particles, spawnConfetti(WW/2, WH/2, 1)...)
 				}
+				// Тряска
+				g.shake.Add(6, 20)
 			} else {
 				g.execMove(*m)
 				if len(m.Caps) > 0 {
@@ -943,6 +1097,27 @@ func (g *Game) aiChain(r, c int, caps [][2]int) {
 
 func (g *Game) execMove(m Move) {
 	oldV := g.board[m.FR][m.FC]
+	
+	// Анимация перемещения
+	var spr *ebiten.Image
+	switch oldV {
+	case 1: spr = sprWP
+	case 2: spr = sprBP
+	case 3: spr = sprWK
+	case 4: spr = sprBK
+	}
+	if spr != nil {
+		g.slideAnims = append(g.slideAnims, SlideAnim{
+			spr:   spr,
+			x:     float64(m.FC*SZ + 4),
+			y:     float64(m.FR*SZ + 4),
+			tx:    float64(m.TC*SZ + 4),
+			ty:    float64(m.TR*SZ + 4),
+			t:     0,
+			total: 15,
+		})
+	}
+	
 	g.board = apply(g.board, m)
 	newV := g.board[m.TR][m.TC]
 
@@ -953,17 +1128,28 @@ func (g *Game) execMove(m Move) {
 	cy := float64(m.TR*SZ + SZ/2)
 	if len(m.Caps) > 0 {
 		play(sCap)
+		// Тряска!
+		g.shake.Add(4, 10)
+		// Вспышка
+		g.flash = Flash{clr: color.RGBA{255, 200, 100, 255}, life: 12, maxLife: 12}
+		// Частицы при каждом взятом
 		for _, cap := range m.Caps {
 			cx2 := float64(cap[1]*SZ + SZ/2)
 			cy2 := float64(cap[0]*SZ + SZ/2)
-			g.particles = append(g.particles, spawnParts(cx2, cy2, color.RGBA{255, 200, 100, 255}, 15)...)
+			g.particles = append(g.particles, spawnParts(cx2, cy2, color.RGBA{255, 200, 100, 255}, 20)...)
+			// Дополнительные "искры"
+			g.particles = append(g.particles, spawnParts(cx2, cy2, color.RGBA{255, 255, 200, 255}, 10)...)
 		}
 	} else {
 		play(sMove)
 	}
 	if isKing(newV) && !isKing(oldV) {
 		play(sKing)
-		g.particles = append(g.particles, spawnParts(cx, cy, color.RGBA{255, 215, 0, 255}, 20)...)
+		// Эффект короны - золотые звёзды
+		g.particles = append(g.particles, spawnParts(cx, cy, color.RGBA{255, 215, 0, 255}, 25)...)
+		g.particles = append(g.particles, spawnParts(cx, cy, color.RGBA{255, 255, 200, 255}, 15)...)
+		// Маленькая тряска
+		g.shake.Add(2, 8)
 	}
 }
 
@@ -1028,6 +1214,9 @@ func (g *Game) pick(r, c int) {
 
 // ======================== РИСОВАНИЕ ========================
 func (g *Game) Draw(s *ebiten.Image) {
+	// Тряска экрана
+	sx, sy := g.shake.Update()
+	
 	s.Fill(color.RGBA{18, 18, 28, 255})
 
 	if g.state == 0 {
@@ -1037,8 +1226,8 @@ func (g *Game) Draw(s *ebiten.Image) {
 
 	for r := 0; r < N; r++ {
 		for c := 0; c < N; c++ {
-			x := c * SZ
-			y := r * SZ
+			x := c*SZ + int(sx)
+			y := r*SZ + int(sy)
 
 			// Клетка
 			op := &ebiten.DrawImageOptions{}
@@ -1103,27 +1292,91 @@ func (g *Game) Draw(s *ebiten.Image) {
 				}
 				if spr != nil {
 					op := &ebiten.DrawImageOptions{}
-					// Центрируем
 					sb := spr.Bounds()
 					ox := (SZ - sb.Dx()) / 2
 					oy := (SZ - sb.Dy()) / 2
+					
+					// Hover scale
+					if g.hovR == r && g.hovC == c && g.turn == WHITE {
+						sc := g.hovScale
+						cx := float64(SZ/2)
+						cy := float64(SZ/2)
+						op.GeoM.Translate(cx, cy)
+						op.GeoM.Scale(sc, sc)
+						op.GeoM.Translate(-cx, -cy)
+					}
+					
 					op.GeoM.Translate(float64(x+ox), float64(y+oy))
+					
+					// Свечение дамок (пульсация)
+					if isKing(v) {
+						pulse := 0.7 + 0.3*math.Sin(float64(fCount)*0.1)
+						op.ColorM.Scale(1, 0.9, 0.5, pulse)
+					}
+					
 					s.DrawImage(spr, op)
 				}
 			}
 		}
 	}
 
-	// Частицы
-	for _, p := range g.particles {
-		a := float64(p.life) / float64(p.maxLife)
+	// Анимации перемещения фигур
+	for _, a := range g.slideAnims {
+		f := float64(a.t) / float64(a.total)
+		f = f * f * (3 - 2*f) // ease in-out
+		
+		// Интерполяция позиции
+		curX := a.x + (a.tx - a.x) * f
+		curY := a.y + (a.ty - a.y) * f
+		
+		// Дуга прыжка
+		jumpH := math.Sin(f * math.Pi) * 20
+		curY -= jumpH
+		
 		op := &ebiten.DrawImageOptions{}
-		op.GeoM.Translate(p.x-float64(p.sz)/2, p.y-float64(p.sz)/2)
-		op.ColorM.Scale(1, 1, 1, a)
-		s.DrawImage(mkImg(p.sz, p.sz, p.clr), op)
+		op.GeoM.Translate(curX, curY)
+		
+		// Fade in/out
+		alpha := 1.0
+		if a.t < 3 {
+			alpha = float64(a.t) / 3
+		}
+		if a.t > a.total-3 {
+			alpha = float64(a.total-a.t) / 3
+		}
+		op.ColorM.Scale(1, 1, 1, alpha)
+		
+		s.DrawImage(a.spr, op)
 	}
 
-	// HUD
+	// Частицы - с вращением для квадратных
+	for _, p := range g.particles {
+		a := float64(p.life) / float64(p.maxLife)
+		
+		if p.square {
+			// Вращающийся квадрат
+			img := mkImg(p.sz, p.sz, p.clr)
+			op := &ebiten.DrawImageOptions{}
+			op.GeoM.Translate(p.x+sx, p.y+sy)
+			op.GeoM.Rotate(p.rotation)
+			op.GeoM.Translate(-float64(p.sz)/2, -float64(p.sz)/2)
+			op.ColorM.Scale(1, 1, 1, a)
+			s.DrawImage(img, op)
+		} else {
+			// Круглая частица
+			op := &ebiten.DrawImageOptions{}
+			op.GeoM.Translate(p.x+sx-float64(p.sz)/2, p.y+sy-float64(p.sz)/2)
+			op.ColorM.Scale(1, 1, 1, a)
+			s.DrawImage(mkImg(p.sz, p.sz, p.clr), op)
+		}
+	}
+
+	// Вспышка
+	if g.flash.life > 0 {
+		g.flash.Draw(s)
+	}
+
+	// HUD (рисуем без тряски)
 	op := &ebiten.DrawImageOptions{}
 	op.GeoM.Translate(0, BDPX)
 	s.DrawImage(sprHBG, op)
