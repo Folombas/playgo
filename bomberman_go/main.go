@@ -12,6 +12,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/audio"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
+	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"github.com/hajimehoshi/ebiten/v2/text"
 	"golang.org/x/image/font/basicfont"
 )
@@ -79,6 +80,12 @@ var (
 	C_PU_HEART = color.RGBA{255, 50, 100, 255}
 	C_PU_SHIELD = color.RGBA{100, 200, 255, 255}
 	C_PU_KICK  = color.RGBA{200, 150, 100, 255}
+
+	// Menu цвета
+	C_MENU_BG     = color.RGBA{10, 10, 30, 255}
+	C_MENU_TITLE  = color.RGBA{255, 220, 100, 255}
+	C_MENU_BTN_BG = color.RGBA{40, 40, 80, 200}
+	C_MENU_BTN_H  = color.RGBA{60, 60, 120, 230}
 )
 
 // ======================== СОСТОЯНИЕ ========================
@@ -87,6 +94,7 @@ type State int
 const (
 	S_MENU State = iota
 	S_PLAY
+	S_PAUSE
 	S_DEAD
 	S_WIN
 )
@@ -94,7 +102,7 @@ const (
 // ======================== POWER-UPS ========================
 type PowerUp struct {
 	gx, gy int
-	kind   int // 0=fire, 1=bomb, 2=speed, 3=heart, 4=shield, 5=kick
+	kind   int
 	anim   int
 	frame  int
 }
@@ -130,17 +138,17 @@ func puColor(kind int) color.RGBA {
 func puSymbol(kind int) string {
 	switch kind {
 	case PU_FIRE:
-		return "🔥"
+		return "F"
 	case PU_BOMB:
-		return "💣"
+		return "B"
 	case PU_SPEED:
-		return "⚡"
+		return "S"
 	case PU_HEART:
-		return "❤"
+		return "H"
 	case PU_SHIELD:
-		return "🛡"
+		return "D"
 	case PU_KICK:
-		return "👟"
+		return "K"
 	default:
 		return "?"
 	}
@@ -167,12 +175,12 @@ func puName(kind int) string {
 
 // ======================== ЧАСТИЦЫ ========================
 type Particle struct {
-	x, y     float64
-	vx, vy   float64
-	life     int
-	maxLife  int
-	clr      color.RGBA
-	size     int
+	x, y    float64
+	vx, vy  float64
+	life    int
+	maxLife int
+	clr     color.RGBA
+	size    int
 }
 
 func spawnParticles(gx, gy int, clr color.RGBA, count int) []Particle {
@@ -181,14 +189,14 @@ func spawnParticles(gx, gy int, clr color.RGBA, count int) []Particle {
 		angle := rand.Float64() * math.Pi * 2
 		speed := 1.0 + rand.Float64()*3.0
 		ps = append(ps, Particle{
-			x: float64(gx*Tile + Tile/2),
-			y: float64(gy*Tile + HUD + Tile/2),
-			vx: math.Cos(angle) * speed,
-			vy: math.Sin(angle) * speed - 1,
-			life: 20 + rand.Intn(20),
+			x:       float64(gx*Tile + Tile/2),
+			y:       float64(gy*Tile + HUD + Tile/2),
+			vx:      math.Cos(angle) * speed,
+			vy:      math.Sin(angle) * speed - 1,
+			life:    20 + rand.Intn(20),
 			maxLife: 40,
-			clr: clr,
-			size: 2 + rand.Intn(4),
+			clr:     clr,
+			size:    2 + rand.Intn(4),
 		})
 	}
 	return ps
@@ -221,24 +229,56 @@ func (s *ScreenShake) offset() (float64, float64) {
 		(rand.Float64() - 0.5) * s.intensity * 2
 }
 
+// ======================== КНОПКА МЕНЮ ========================
+type MenuButton struct {
+	x, y, w, h int
+	label      string
+	spr        *ebiten.Image
+	hover      bool
+}
+
+func (b *MenuButton) contains(mx, my int) bool {
+	return mx >= b.x && mx < b.x+b.w && my >= b.y && my < b.y+b.h
+}
+
+func (b *MenuButton) Draw(s *ebiten.Image) {
+	if b.spr != nil {
+		op := &ebiten.DrawImageOptions{}
+		op.GeoM.Scale(float64(b.w)/float64(b.spr.Bounds().Dx()), float64(b.h)/float64(b.spr.Bounds().Dy()))
+		op.GeoM.Translate(float64(b.x), float64(b.y))
+		if b.hover {
+			op.ColorM.Scale(1.2, 1.2, 1.2, 1)
+		}
+		s.DrawImage(b.spr, op)
+	} else {
+		bg := C_MENU_BTN_BG
+		if b.hover {
+			bg = C_MENU_BTN_H
+		}
+		rectCached(s, b.x, b.y, b.w, b.h, bg)
+		bw := text.BoundString(basicfont.Face7x13, b.label)
+		text.Draw(s, b.label, basicfont.Face7x13, b.x+b.w/2-bw.Dx()/2, b.y+b.h/2+5, C_WHITE)
+	}
+}
+
 // ======================== ИГРОК ========================
 type Player struct {
-	gx, gy    int
-	dir       int
-	lives     int
-	bombs     int
-	active    int
-	radius    int
-	cd        int
-	anim      int
-	frame     int
-	inv       int
-	shield    bool
-	speedBoost int // бонус скорости
-	kick      bool  // пинать бомбы
-	score     int
-	combos    int
-	comboTimer int
+	gx, gy       int
+	dir          int
+	lives        int
+	bombs        int
+	active       int
+	radius       int
+	cd           int
+	anim         int
+	frame        int
+	inv          int
+	shield       bool
+	speedBoost   int
+	kick         bool
+	score        int
+	combos       int
+	comboTimer   int
 }
 
 func NewPlayer() *Player {
@@ -311,8 +351,7 @@ func (p *Player) Update(g *Game) {
 	if p.kick {
 		for i, b := range g.bombs {
 			if (b.gx == p.gx+dx && b.gy == p.gy) || (b.gx == p.gx && b.gy == p.gy+dy) {
-				if b.timer > BOMB_T - 60 { // только что поставленную
-					// Пинуть бомбу
+				if b.timer > BOMB_T - 60 {
 					newX, newY := b.gx+dx, b.gy+dy
 					if g.walkable(newX, newY, p.gx, p.gy) {
 						g.bombs[i].gx = newX
@@ -341,7 +380,7 @@ func (p *Player) Update(g *Game) {
 	}
 }
 
-func (p *Player) Draw(s *ebiten.Image) {
+func (p *Player) Draw(s *ebiten.Image, sprites map[string]*ebiten.Image) {
 	if p.inv > 0 && p.inv%8 < 4 {
 		return
 	}
@@ -350,12 +389,20 @@ func (p *Player) Draw(s *ebiten.Image) {
 
 	// Shield эффект
 	if p.shield {
-		rect(s, px+2, py+2, Tile-4, Tile-4, C_SHIELD)
+		rectCached(s, px+2, py+2, Tile-4, Tile-4, C_SHIELD)
 	}
 
-	// Тело
-	rect(s, px+4, py+4, Tile-8, Tile-8, C_PLAYER)
-	rect(s, px+12, py+2, Tile-24, 16, C_PLAYER_H)
+	// Спрайт игрока
+	if spr := sprites["player"]; spr != nil {
+		op := &ebiten.DrawImageOptions{}
+		op.GeoM.Scale(float64(Tile)/float64(spr.Bounds().Dx()), float64(Tile)/float64(spr.Bounds().Dy()))
+		op.GeoM.Translate(float64(px), float64(py))
+		s.DrawImage(spr, op)
+	} else {
+		// Fallback на примитивы
+		rectCached(s, px+4, py+4, Tile-8, Tile-8, C_PLAYER)
+		rectCached(s, px+12, py+2, Tile-24, 16, C_PLAYER_H)
+	}
 
 	// Глаза
 	ex, ey := px+Tile/2, py+Tile/3
@@ -369,21 +416,21 @@ func (p *Player) Draw(s *ebiten.Image) {
 	case D_RIGHT:
 		ex += 6
 	}
-	rect(s, ex-3, ey-3, 3, 3, color.Black)
-	rect(s, ex+3, ey-3, 3, 3, color.Black)
+	rectCached(s, ex-3, ey-3, 3, 3, color.Black)
+	rectCached(s, ex+3, ey-3, 3, 3, color.Black)
 
 	if p.anim > 0 {
-		rect(s, px+8, py+Tile-6, 8, 6, C_PLAYER)
-		rect(s, px+Tile-16, py+Tile-6, 8, 6, C_PLAYER)
+		rectCached(s, px+8, py+Tile-6, 8, 6, C_PLAYER)
+		rectCached(s, px+Tile-16, py+Tile-6, 8, 6, C_PLAYER)
 	}
 }
 
 // ======================== ВРАГИ ========================
 const (
-	E_BALLOON = iota // Случайное движение, медленный
-	E_CHASER         // Преследует игрока
-	E_SPLITTER       // Делится при смерти
-	E_TELEPORTER     // Телепортируется
+	E_BALLOON = iota
+	E_CHASER
+	E_SPLITTER
+	E_TELEPORTER
 )
 
 type Enemy struct {
@@ -394,7 +441,7 @@ type Enemy struct {
 	cd     int
 	anim   int
 	frame  int
-	hp     int // HP для сплиттера
+	hp     int
 }
 
 func NewEnemy(gx, gy int, kind int) *Enemy {
@@ -443,14 +490,13 @@ func (e *Enemy) updateBalloon(g *Game) {
 }
 
 func (e *Enemy) updateChaser(g *Game) {
-	e.cd = ECMD - 3 + rand.Intn(10) // Быстрее чем Balloon
+	e.cd = ECMD - 3 + rand.Intn(10)
 
-	// Движение к игроку с небольшим рандомом
 	dx := g.player.gx - e.gx
 	dy := g.player.gy - e.gy
 
 	moves := [][2]int{}
-	if rand.Float64() < 0.7 { // 70% идти к игроку
+	if rand.Float64() < 0.7 {
 		if dx > 0 {
 			moves = append(moves, [2]int{1, 0})
 		} else if dx < 0 {
@@ -462,7 +508,6 @@ func (e *Enemy) updateChaser(g *Game) {
 			moves = append(moves, [2]int{0, -1})
 		}
 	}
-	// 30% случайное
 	moves = append(moves, [2]int{0, -1}, [2]int{0, 1}, [2]int{-1, 0}, [2]int{1, 0})
 
 	rand.Shuffle(len(moves), func(i, j int) { moves[i], moves[j] = moves[j], moves[i] })
@@ -490,18 +535,15 @@ func (e *Enemy) updateSplitter(g *Game) {
 }
 
 func (e *Enemy) updateTeleporter(g *Game) {
-	e.cd = 60 + rand.Intn(40) // Телепорт каждые 1-1.5 сек
+	e.cd = 60 + rand.Intn(40)
 
-	// Найти случайное свободное место
 	for attempts := 0; attempts < 20; attempts++ {
 		nx := 1 + rand.Intn(GW-2)
 		ny := 1 + rand.Intn(GH-2)
 		if g.grid[ny][nx] == T_EMPTY {
-			// Не рядом с игроком
 			dist := abs(nx-g.player.gx) + abs(ny-g.player.gy)
 			if dist > 3 {
 				e.gx, e.gy = nx, ny
-				// Частицы при телепортации
 				g.particles = append(g.particles, spawnParticles(e.gx, e.gy, C_ENEMY_TEL, 8)...)
 				return
 			}
@@ -516,13 +558,12 @@ func abs(x int) int {
 	return x
 }
 
-func (e *Enemy) Draw(s *ebiten.Image) {
+func (e *Enemy) Draw(s *ebiten.Image, sprites map[string]*ebiten.Image) {
 	if !e.alive {
 		return
 	}
 	px, py := e.gx*Tile, e.gy*Tile+HUD
 
-	// Цвет по типу
 	clr := C_ENEMY_BAL
 	switch e.kind {
 	case E_CHASER:
@@ -533,50 +574,49 @@ func (e *Enemy) Draw(s *ebiten.Image) {
 		clr = C_ENEMY_TEL
 	}
 
-	// Тело (разные формы для разных типов)
-	switch e.kind {
-	case E_BALLOON:
-		// Круг
-		rect(s, px+4, py+4, Tile-8, Tile-8, clr)
-		rect(s, px+8, py+2, Tile-16, 4, clr)
-	case E_CHASER:
-		// Стрелка к игроку
-		rect(s, px+4, py+4, Tile-8, Tile-8, clr)
-		if g_player != nil {
-			if e.gx < g_player.gx {
-				rect(s, px+Tile-6, py+Tile/2-4, 6, 8, C_ENEMY_E)
-			} else if e.gx > g_player.gx {
-				rect(s, px, py+Tile/2-4, 6, 8, C_ENEMY_E)
+	if spr := sprites["enemy"]; spr != nil {
+		op := &ebiten.DrawImageOptions{}
+		op.GeoM.Scale(float64(Tile)/float64(spr.Bounds().Dx()), float64(Tile)/float64(spr.Bounds().Dy()))
+		op.GeoM.Translate(float64(px), float64(py))
+		s.DrawImage(spr, op)
+	} else {
+		switch e.kind {
+		case E_BALLOON:
+			rectCached(s, px+4, py+4, Tile-8, Tile-8, clr)
+			rectCached(s, px+8, py+2, Tile-16, 4, clr)
+		case E_CHASER:
+			rectCached(s, px+4, py+4, Tile-8, Tile-8, clr)
+			if g_player != nil {
+				if e.gx < g_player.gx {
+					rectCached(s, px+Tile-6, py+Tile/2-4, 6, 8, C_ENEMY_E)
+				} else if e.gx > g_player.gx {
+					rectCached(s, px, py+Tile/2-4, 6, 8, C_ENEMY_E)
+				}
 			}
+		case E_SPLITTER:
+			rectCached(s, px+2, py+2, Tile-4, Tile-4, clr)
+			if e.hp > 1 {
+				rectCached(s, px+4, py+Tile-8, (Tile-8)*e.hp/2, 4, C_ENEMY_E)
+			}
+		case E_TELEPORTER:
+			rectCached(s, px+Tile/2-4, py+4, 8, Tile-8, clr)
+			rectCached(s, px+4, py+Tile/2-4, Tile-8, 8, clr)
 		}
-	case E_SPLITTER:
-		// Квадрат + HP индикатор
-		rect(s, px+2, py+2, Tile-4, Tile-4, clr)
-		// Полоска HP
-		if e.hp > 1 {
-			rect(s, px+4, py+Tile-8, (Tile-8)*e.hp/2, 4, C_ENEMY_E)
-		}
-	case E_TELEPORTER:
-		// Ромб
-		rect(s, px+Tile/2-4, py+4, 8, Tile-8, clr)
-		rect(s, px+4, py+Tile/2-4, Tile-8, 8, clr)
 	}
 
-	// Глаза
-	rect(s, px+10, py+14, 8, 8, C_ENEMY_E)
-	rect(s, px+Tile-18, py+14, 8, 8, C_ENEMY_E)
+	rectCached(s, px+10, py+14, 8, 8, C_ENEMY_E)
+	rectCached(s, px+Tile-18, py+14, 8, 8, C_ENEMY_E)
 }
 
-// Глобальная ссылка для Chaser AI
 var g_player *Player
 
 // ======================== БОМБА ========================
 type Bomb struct {
-	gx, gy   int
-	timer    int
-	radius   int
-	kicked   bool
-	owner    int // ID владельца (для подсчёта)
+	gx, gy int
+	timer  int
+	radius int
+	kicked bool
+	owner  int
 }
 
 // ======================== ВЗРЫВ ========================
@@ -585,51 +625,119 @@ type Cell struct {
 	t      int
 }
 
+// ======================== КЭШИРОВАННЫЕ ИЗОБРАЖЕНИЯ ========================
+var cachedRects = make(map[string]*ebiten.Image)
+
+func rectCached(s *ebiten.Image, x, y, w, h int, c color.Color) {
+	key := fmt.Sprintf("%d_%d_%d_%d_%d_%d_%d", c.(color.RGBA).R, c.(color.RGBA).G, c.(color.RGBA).B, c.(color.RGBA).A, w, h, 0)
+	if img, ok := cachedRects[key]; ok {
+		op := &ebiten.DrawImageOptions{}
+		op.GeoM.Translate(float64(x), float64(y))
+		s.DrawImage(img, op)
+		return
+	}
+	img := ebiten.NewImage(w, h)
+	img.Fill(c)
+	cachedRects[key] = img
+	op := &ebiten.DrawImageOptions{}
+	op.GeoM.Translate(float64(x), float64(y))
+	s.DrawImage(img, op)
+}
+
 // ======================== ИГРА ========================
 type Game struct {
-	grid   [][]int
-	player *Player
+	grid    [][]int
+	player  *Player
 	enemies []*Enemy
-	bombs  []Bomb
-	explos []Cell
-	pus    []PowerUp     // power-ups на поле
+	bombs   []Bomb
+	explos  []Cell
+	pus     []PowerUp
 	particles []Particle
-	state  State
-	keys   string
+	state   State
+	keys    string
 	sprites map[string]*ebiten.Image
-	level  int
+	menuSprites map[string]*ebiten.Image
+	level   int
 	spacePrev bool
 	enterPrev bool
-	shake  ScreenShake
-	score  int
+	shake   ScreenShake
+	score   int
+	buttons []*MenuButton
+	highScore int
+	menuAnim int
 }
 
 func NewGame() *Game {
-	g := &Game{state: S_MENU, sprites: make(map[string]*ebiten.Image), level: 1}
+	g := &Game{
+		state:       S_MENU,
+		sprites:     make(map[string]*ebiten.Image),
+		menuSprites: make(map[string]*ebiten.Image),
+		level:       1,
+		highScore:   0,
+	}
 	g.loadSprites()
+	g.loadMenuSprites()
+	g.initButtons()
 	initAudio()
 	return g
 }
 
 func (g *Game) loadSprites() {
-	tryLoad := func(name, file string) {
+	tryLoad := func(name, file string, target map[string]*ebiten.Image) {
 		img, _, err := ebitenutil.NewImageFromFile("assets/sprites/" + file)
 		if err == nil {
-			g.sprites[name] = img
+			target[name] = img
 		}
 	}
-	tryLoad("player", "player_stand.png")
-	tryLoad("enemy", "enemy1.png")
-	tryLoad("bomb", "bomb.png")
-	tryLoad("brick", "brick.png")
-	tryLoad("stone", "stone.png")
-	tryLoad("grass", "grass.png")
-	tryLoad("explosion", "explosion.png")
+	
+	// Основные спрайты
+	tryLoad("player", "player_stand.png", g.sprites)
+	tryLoad("enemy", "enemy1.png", g.sprites)
+	tryLoad("bomb", "bomb.png", g.sprites)
+	tryLoad("brick", "brick.png", g.sprites)
+	tryLoad("stone", "stone.png", g.sprites)
+	tryLoad("grass", "grass.png", g.sprites)
+	tryLoad("explosion", "explosion.png", g.sprites)
 
 	if len(g.sprites) > 0 {
-		fmt.Printf("✓ Loaded %d sprites\n", len(g.sprites))
+		fmt.Printf("✓ Loaded %d game sprites\n", len(g.sprites))
+	}
+}
+
+func (g *Game) loadMenuSprites() {
+	tryLoad := func(name, file string) {
+		img, _, err := ebitenutil.NewImageFromFile("assets/sprites/menu/" + file)
+		if err == nil {
+			g.menuSprites[name] = img
+		}
+	}
+
+	tryLoad("play", "play button.png")
+	tryLoad("options", "Options Button.png")
+	tryLoad("exit", "Exit Button.png")
+	tryLoad("back", "Back Button.png")
+	tryLoad("stars", "stars.png")
+	tryLoad("stars_bg", "stars back.png")
+	tryLoad("particles1", "particles 1.png")
+
+	if len(g.menuSprites) > 0 {
+		fmt.Printf("✓ Loaded %d menu sprites\n", len(g.menuSprites))
+	}
+}
+
+func (g *Game) initButtons() {
+	g.buttons = nil
+	
+	if spr, ok := g.menuSprites["play"]; ok {
+		g.buttons = append(g.buttons, &MenuButton{
+			x: WinW/2 - 80, y: WinH/2 - 20, w: 160, h: 50,
+			label: "PLAY", spr: spr,
+		})
 	} else {
-		fmt.Println("✗ No sprites loaded, using primitives")
+		g.buttons = append(g.buttons, &MenuButton{
+			x: WinW/2 - 60, y: WinH/2 - 20, w: 120, h: 40,
+			label: "▶ PLAY",
+		})
 	}
 }
 
@@ -639,14 +747,12 @@ func (g *Game) initLevel() {
 		g.grid[y] = make([]int, GW)
 	}
 
-	// Каменная сетка
 	for y := 0; y < GH; y += 2 {
 		for x := 0; x < GW; x += 2 {
 			g.grid[y][x] = T_STONE
 		}
 	}
 
-	// Кирпичи + power-ups под ними
 	r := rand.New(rand.NewSource(42 + int64(g.level)*7))
 	g.pus = nil
 
@@ -657,7 +763,6 @@ func (g *Game) initLevel() {
 			}
 			if r.Float32() < 0.30 {
 				g.grid[y][x] = T_BRICK
-				// 25% шанс power-up под кирпичом
 				if r.Float32() < 0.25 {
 					kind := r.Intn(6)
 					g.pus = append(g.pus, PowerUp{gx: x, gy: y, kind: kind})
@@ -671,7 +776,6 @@ func (g *Game) initLevel() {
 	g.explos = nil
 	g.particles = nil
 
-	// Враги: сложнее с каждым уровнем
 	g.enemies = nil
 	count := 3 + g.level
 	positions := [][2]int{}
@@ -700,7 +804,7 @@ func (g *Game) initLevel() {
 		g.enemies = append(g.enemies, NewEnemy(positions[i][0], positions[i][1], kind))
 	}
 
-	g_player = g.player // для AI
+	g_player = g.player
 }
 
 func (g *Game) walkable(nx, ny, fromX, fromY int) bool {
@@ -738,15 +842,59 @@ func (g *Game) Update() error {
 
 	// ===== МЕНЮ =====
 	if g.state == S_MENU {
+		g.menuAnim++
+		
+		mx, my := ebiten.CursorPosition()
+		for _, btn := range g.buttons {
+			btn.hover = btn.contains(mx, my)
+			if btn.hover && inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
+				if btn.label == "PLAY" || btn.label == "▶ PLAY" {
+					g.state = S_PLAY
+					g.initLevel()
+					g.score = 0
+					playSound(soundMenu)
+					fmt.Println("▶ Game started! Level", g.level)
+				}
+			}
+		}
+
 		enter := ebiten.IsKeyPressed(ebiten.KeyEnter) || ebiten.IsKeyPressed(ebiten.KeySpace)
 		if enter && !g.enterPrev {
 			g.state = S_PLAY
 			g.initLevel()
 			g.score = 0
 			playSound(soundMenu)
-			fmt.Println("▶ Game started! Level", g.level)
 		}
 		g.enterPrev = enter
+		return nil
+	}
+
+	// ===== PAUSE =====
+	if g.state == S_PAUSE {
+		esc := ebiten.IsKeyPressed(ebiten.KeyEscape) || ebiten.IsKeyPressed(ebiten.KeyP)
+		if esc && !g.enterPrev {
+			g.state = S_PLAY
+			playSound(soundMenu)
+		}
+		
+		mx, my := ebiten.CursorPosition()
+		for _, btn := range g.buttons {
+			btn.hover = btn.contains(mx, my)
+			if btn.hover && inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
+				if btn.label == "▶ RESUME" {
+					g.state = S_PLAY
+					playSound(soundMenu)
+				} else if btn.label == "▶ RESTART" {
+					g.level = 1
+					g.initLevel()
+					g.state = S_PLAY
+					g.score = 0
+					playSound(soundMenu)
+				}
+			}
+		}
+		
+		g.enterPrev = esc
 		return nil
 	}
 
@@ -776,6 +924,14 @@ func (g *Game) Update() error {
 	// ===== ИГРА =====
 	space := ebiten.IsKeyPressed(ebiten.KeySpace)
 	g_player = g.player
+
+	// Пауза
+	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) || inpututil.IsKeyJustPressed(ebiten.KeyP) {
+		g.state = S_PAUSE
+		g.initPauseButtons()
+		playSound(soundMenu)
+		return nil
+	}
 
 	g.player.Update(g)
 	g.shake.update()
@@ -829,7 +985,7 @@ func (g *Game) Update() error {
 		p := &g.particles[i]
 		p.x += p.vx
 		p.y += p.vy
-		p.vy += 0.15 // гравитация
+		p.vy += 0.15
 		p.life--
 		if p.life <= 0 {
 			g.particles = append(g.particles[:i], g.particles[i+1:]...)
@@ -873,7 +1029,6 @@ func (g *Game) Update() error {
 					g.player.score += bonus
 					g.particles = append(g.particles, spawnParticles(e.gx, e.gy, C_EXPL, 12)...)
 
-					// Splitter: делится на 2
 					if e.kind == E_SPLITTER {
 						for _, d := range [][2]int{{0, -1}, {0, 1}, {-1, 0}, {1, 0}} {
 							nx, ny := e.gx+d[0], e.gy+d[1]
@@ -888,7 +1043,6 @@ func (g *Game) Update() error {
 
 					playSound(soundKill)
 				} else {
-					// Hit но не dead
 					g.particles = append(g.particles, spawnParticles(e.gx, e.gy, C_ENEMY_E, 6)...)
 					playSound(soundPlace)
 				}
@@ -906,12 +1060,43 @@ func (g *Game) Update() error {
 	if alive == 0 && len(g.enemies) > 0 {
 		g.state = S_WIN
 		g.player.score += 500 * g.level
+		if g.player.score > g.highScore {
+			g.highScore = g.player.score
+		}
 		playSound(soundWin)
 		g.shake.shake(5, 20)
 		fmt.Println("🏆 Level complete! Score:", g.player.score)
 	}
 
 	return nil
+}
+
+func (g *Game) initPauseButtons() {
+	g.buttons = nil
+	
+	if spr, ok := g.menuSprites["back"]; ok {
+		g.buttons = append(g.buttons, &MenuButton{
+			x: WinW/2 - 80, y: WinH/2 - 40, w: 160, h: 50,
+			label: "▶ RESUME", spr: spr,
+		})
+	} else {
+		g.buttons = append(g.buttons, &MenuButton{
+			x: WinW/2 - 60, y: WinH/2 - 40, w: 120, h: 40,
+			label: "▶ RESUME",
+		})
+	}
+
+	if spr, ok := g.menuSprites["play"]; ok {
+		g.buttons = append(g.buttons, &MenuButton{
+			x: WinW/2 - 80, y: WinH/2 + 30, w: 160, h: 50,
+			label: "▶ RESTART", spr: spr,
+		})
+	} else {
+		g.buttons = append(g.buttons, &MenuButton{
+			x: WinW/2 - 60, y: WinH/2 + 30, w: 120, h: 40,
+			label: "▶ RESTART",
+		})
+	}
 }
 
 func (g *Game) playerHit() {
@@ -931,6 +1116,9 @@ func (g *Game) playerHit() {
 
 	if g.player.lives <= 0 {
 		g.state = S_DEAD
+		if g.player.score > g.highScore {
+			g.highScore = g.player.score
+		}
 		fmt.Println("💀 Game Over! Score:", g.player.score)
 	}
 }
@@ -942,11 +1130,9 @@ func (g *Game) doExplosion(idx int) {
 	playSound(soundExpl)
 	g.shake.shake(3, 10)
 
-	// Центр
 	g.explos = append(g.explos, Cell{b.gx, b.gy, EXPL_T})
 	g.particles = append(g.particles, spawnParticles(b.gx, b.gy, C_EXPL, 8)...)
 
-	// 4 направления
 	dirs := [][2]int{{0, -1}, {0, 1}, {-1, 0}, {1, 0}}
 	for _, d := range dirs {
 		for i := 1; i <= b.radius; i++ {
@@ -960,15 +1146,12 @@ func (g *Game) doExplosion(idx int) {
 			}
 			g.explos = append(g.explos, Cell{nx, ny, EXPL_T})
 
-			// Разрушение кирпича
 			if g.grid[ny][nx] == T_BRICK {
 				g.grid[ny][nx] = T_EMPTY
 				g.particles = append(g.particles, spawnParticles(nx, ny, C_BRICK, 10)...)
 
-				// Проверяем power-up под кирпичом
 				for j := len(g.pus) - 1; j >= 0; j-- {
 					if g.pus[j].gx == nx && g.pus[j].gy == ny {
-						// Оставляем на поле
 						g.pus = append(g.pus[:j], g.pus[j+1:]...)
 						break
 					}
@@ -976,7 +1159,6 @@ func (g *Game) doExplosion(idx int) {
 				break
 			}
 
-			// Цепная реакция
 			for j := range g.bombs {
 				if g.bombs[j].gx == nx && g.bombs[j].gy == ny {
 					g.bombs[j].timer = 1
@@ -1021,6 +1203,11 @@ func (g *Game) Draw(s *ebiten.Image) {
 		return
 	}
 
+	if g.state == S_PAUSE {
+		g.drawPause(s)
+		return
+	}
+
 	// Тряска экрана
 	sx, sy := g.shake.offset()
 
@@ -1029,14 +1216,13 @@ func (g *Game) Draw(s *ebiten.Image) {
 		for x := 0; x < GW; x++ {
 			px, py := x*Tile+int(sx), y*Tile+HUD+int(sy)
 
-			// Трава
 			if spr := g.sprites["grass"]; spr != nil {
 				op := &ebiten.DrawImageOptions{}
 				op.GeoM.Scale(float64(Tile)/float64(spr.Bounds().Dx()), float64(Tile)/float64(spr.Bounds().Dy()))
 				op.GeoM.Translate(float64(px), float64(py))
 				s.DrawImage(spr, op)
 			} else {
-				rect(s, px, py, Tile, Tile, C_GRASS)
+				rectCached(s, px, py, Tile, Tile, C_GRASS)
 			}
 
 			switch g.grid[y][x] {
@@ -1044,26 +1230,25 @@ func (g *Game) Draw(s *ebiten.Image) {
 				if spr := g.sprites["stone"]; spr != nil {
 					drawTile(spr, s, px, py)
 				} else {
-					rect(s, px+1, py+1, Tile-2, Tile-2, C_STONE)
-					rect(s, px+4, py+4, Tile-8, Tile-8, color.RGBA{140, 140, 160, 255})
+					rectCached(s, px+1, py+1, Tile-2, Tile-2, C_STONE)
+					rectCached(s, px+4, py+4, Tile-8, Tile-8, color.RGBA{140, 140, 160, 255})
 				}
 			case T_BRICK:
 				if spr := g.sprites["brick"]; spr != nil {
 					drawTile(spr, s, px, py)
 				} else {
-					rect(s, px+1, py+1, Tile-2, Tile-2, C_BRICK)
-					rect(s, px, py+Tile/2, Tile, 2, color.RGBA{140, 70, 40, 255})
-					rect(s, px+Tile/2, py, 2, Tile/2, color.RGBA{140, 70, 40, 255})
-					rect(s, px+Tile/4, py+Tile/2, 2, Tile/2, color.RGBA{140, 70, 40, 255})
-					rect(s, px+Tile*3/4, py+Tile/2, 2, Tile/2, color.RGBA{140, 70, 40, 255})
+					rectCached(s, px+1, py+1, Tile-2, Tile-2, C_BRICK)
+					rectCached(s, px, py+Tile/2, Tile, 2, color.RGBA{140, 70, 40, 255})
+					rectCached(s, px+Tile/2, py, 2, Tile/2, color.RGBA{140, 70, 40, 255})
+					rectCached(s, px+Tile/4, py+Tile/2, 2, Tile/2, color.RGBA{140, 70, 40, 255})
+					rectCached(s, px+Tile*3/4, py+Tile/2, 2, Tile/2, color.RGBA{140, 70, 40, 255})
 				}
 
-				// Индикатор power-up под кирпичом
 				for _, pu := range g.pus {
 					if pu.gx == x && pu.gy == y {
 						pu.frame++
 						if pu.frame%20 < 10 {
-							rect(s, px+Tile-8, py+2, 6, 6, puColor(pu.kind))
+							rectCached(s, px+Tile-8, py+2, 6, 6, puColor(pu.kind))
 						}
 					}
 				}
@@ -1078,23 +1263,20 @@ func (g *Game) Draw(s *ebiten.Image) {
 
 		px, py := pu.gx*Tile, pu.gy*Tile+HUD
 
-		// Проверяем, есть ли здесь игрок
 		if g.player.gx == pu.gx && g.player.gy == pu.gy {
 			g.applyPowerUp(pu)
 			g.pus = append(g.pus[:i], g.pus[i+1:]...)
 			continue
 		}
 
-		// Рисуем
 		clr := puColor(pu.kind)
 		bobY := py
 		if pu.anim == 1 {
 			bobY -= 4
 		}
-		rect(s, px+8, bobY+8, Tile-16, Tile-16, clr)
-		rect(s, px+12, bobY+4, Tile-24, 6, puColor(pu.kind))
+		rectCached(s, px+8, bobY+8, Tile-16, Tile-16, clr)
+		rectCached(s, px+12, bobY+4, Tile-24, 6, puColor(pu.kind))
 
-		// Символ
 		sym := puSymbol(pu.kind)
 		text.Draw(s, sym, basicfont.Face7x13, px+16, bobY+Tile-12, C_WHITE)
 	}
@@ -1137,24 +1319,23 @@ func (g *Game) Draw(s *ebiten.Image) {
 		} else {
 			sz := int(float64(Tile-8) * pulse)
 			off := (Tile - sz) / 2
-			rect(s, px+off, py+off, sz, sz, C_BOMB)
-			rect(s, px+off+4, py+off+4, sz-8, sz-8, C_BOMB_H)
-			rect(s, px+Tile/2-1, py+2, 3, 8, C_BRICK)
+			rectCached(s, px+off, py+off, sz, sz, C_BOMB)
+			rectCached(s, px+off+4, py+off+4, sz-8, sz-8, C_BOMB_H)
+			rectCached(s, px+Tile/2-1, py+2, 3, 8, C_BRICK)
 
-			// Мигание когда скоро взорвётся
 			if b.timer < 30 && b.timer%4 < 2 {
-				rect(s, px+off, py+off, sz, sz, C_EXPL)
+				rectCached(s, px+off, py+off, sz, sz, C_EXPL)
 			}
 		}
 	}
 
 	// Враги
 	for _, e := range g.enemies {
-		e.Draw(s)
+		e.Draw(s, g.sprites)
 	}
 
 	// Игрок
-	g.player.Draw(s)
+	g.player.Draw(s, g.sprites)
 
 	// HUD (без тряски)
 	g.drawHUD(s)
@@ -1173,7 +1354,7 @@ func (g *Game) Draw(s *ebiten.Image) {
 }
 
 func (g *Game) drawHUD(s *ebiten.Image) {
-	rect(s, 0, 0, WinW, HUD, C_HUD_BG)
+	rectCached(s, 0, 0, WinW, HUD, C_HUD_BG)
 
 	alive := 0
 	for _, e := range g.enemies {
@@ -1182,13 +1363,12 @@ func (g *Game) drawHUD(s *ebiten.Image) {
 		}
 	}
 
-	hud := fmt.Sprintf("♥%d  💣%d/%d  🔥%d  👾%d  Score:%d  [R]Restart",
+	hud := fmt.Sprintf("♥%d  💣%d/%d  🔥%d  👾%d  Score:%d  [R]Restart  [P]Pause",
 		g.player.lives, g.player.active, g.player.bombs, g.player.radius, alive, g.player.score)
 	text.Draw(s, hud, basicfont.Face7x13, 8, 25, C_WHITE)
 	text.Draw(s, fmt.Sprintf("Lv.%d", g.level), basicfont.Face7x13, WinW-40, 25, C_GREEN)
 
-	// Индикаторы бонусов
-	x := 200
+	x := 250
 	if g.player.speedBoost > 0 {
 		text.Draw(s, "⚡", basicfont.Face7x13, x, 25, C_PU_SPEED)
 		x += 15
@@ -1207,45 +1387,81 @@ func (g *Game) drawHUD(s *ebiten.Image) {
 }
 
 func (g *Game) drawMenu(s *ebiten.Image) {
-	s.Fill(color.RGBA{10, 10, 30, 255})
+	s.Fill(C_MENU_BG)
 
+	// Фон со звёздами
+	if sprBg := g.menuSprites["stars_bg"]; sprBg != nil {
+		for i := 0; i < 5; i++ {
+			for j := 0; j < 4; j++ {
+				op := &ebiten.DrawImageOptions{}
+				op.GeoM.Translate(float64(i*200), float64(j*200))
+				s.DrawImage(sprBg, op)
+			}
+		}
+	}
+
+	// Анимированные звёзды
+	if sprStars := g.menuSprites["stars"]; sprStars != nil {
+		t := frameCount / 60
+		for i := 0; i < 8; i++ {
+			x := (i*120 + int(t*20)) % (WinW + 40) - 20
+			y := 50 + int(math.Sin(float64(frameCount)/30+float64(i))*20)
+			op := &ebiten.DrawImageOptions{}
+			op.GeoM.Scale(0.5, 0.5)
+			op.GeoM.Translate(float64(x), float64(y))
+			s.DrawImage(sprStars, op)
+		}
+	}
+
+	// Заголовок
 	title := "BOMBERMAN GO"
 	bw := text.BoundString(basicfont.Face7x13, title)
-	text.Draw(s, title, basicfont.Face7x13, WinW/2-bw.Dx()/2, WinH/2-100, C_WHITE)
+	
+	// Тень заголовка
+	text.Draw(s, title, basicfont.Face7x13, WinW/2-bw.Dx()/2+2, WinH/2-98, color.RGBA{0, 0, 0, 150})
+	text.Draw(s, title, basicfont.Face7x13, WinW/2-bw.Dx()/2, WinH/2-100, C_MENU_TITLE)
 
-	frame := frameCount / 30
-	c := C_GREEN
-	if frame%2 == 0 {
-		c = C_YELLOW
-	}
-	text.Draw(s, "Press ENTER or SPACE", basicfont.Face7x13, WinW/2-90, WinH/2-50, c)
+	// Подзаголовок
+	sub := "Go365 Challenge — Day 96"
+	bwSub := text.BoundString(basicfont.Face7x13, sub)
+	text.Draw(s, sub, basicfont.Face7x13, WinW/2-bwSub.Dx()/2, WinH/2-75, color.RGBA{150, 150, 150, 255})
 
-	text.Draw(s, "WASD / Arrows - Move", basicfont.Face7x13, WinW/2-80, WinH/2, C_WHITE)
-	text.Draw(s, "SPACE - Place Bomb", basicfont.Face7x13, WinW/2-70, WinH/2+20, C_WHITE)
-	text.Draw(s, "R - Restart Level", basicfont.Face7x13, WinW/2-65, WinH/2+40, C_WHITE)
-
-	// Типы врагов
-	text.Draw(s, "Enemies:", basicfont.Face7x13, WinW/2-50, WinH/2+80, C_GREEN)
-	text.Draw(s, "● Balloon  ■ Chaser  ◆ Splitter  ✦ Teleporter", basicfont.Face7x13, WinW/2-160, WinH/2+100, C_WHITE)
-
-	// Power-ups
-	text.Draw(s, "Power-ups under bricks:", basicfont.Face7x13, WinW/2-110, WinH/2+130, C_YELLOW)
-	text.Draw(s, "🔥Fire  💣Bomb  ⚡Speed  ❤Life  🛡Shield  👟Kick", basicfont.Face7x13, WinW/2-180, WinH/2+150, C_WHITE)
-
-	// Анимированные бомбы
-	t := frameCount
-	for i := 0; i < 5; i++ {
-		bx := WinW/2 - 80 + i*40
-		by := WinH/2 - 150 + int(t/20+int64(i)*10)%10
-		rect(s, bx, by, 20, 20, C_BOMB)
-		rect(s, bx+4, by+4, 12, 12, C_BOMB_H)
+	// Кнопки
+	for _, btn := range g.buttons {
+		btn.Draw(s)
 	}
 
-	text.Draw(s, "Go365 Challenge — Day 95", basicfont.Face7x13, WinW/2-95, WinH-30, color.RGBA{150, 150, 150, 255})
+	// Управление
+	text.Draw(s, "WASD / Arrows — Move", basicfont.Face7x13, WinW/2-80, WinH/2+80, C_WHITE)
+	text.Draw(s, "SPACE — Place Bomb", basicfont.Face7x13, WinW/2-70, WinH/2+100, C_WHITE)
+	text.Draw(s, "ESC / P — Pause", basicfont.Face7x13, WinW/2-70, WinH/2+120, C_WHITE)
+	text.Draw(s, "R — Restart", basicfont.Face7x13, WinW/2-50, WinH/2+140, C_WHITE)
+
+	// High Score
+	if g.highScore > 0 {
+		hs := fmt.Sprintf("High Score: %d", g.highScore)
+		bwHS := text.BoundString(basicfont.Face7x13, hs)
+		text.Draw(s, hs, basicfont.Face7x13, WinW/2-bwHS.Dx()/2, WinH/2+180, C_YELLOW)
+	}
+}
+
+func (g *Game) drawPause(s *ebiten.Image) {
+	// Затемнение
+	rectAlpha(s, 0, 0, WinW, WinH, color.RGBA{0, 0, 0, 180}, 0.7)
+
+	// Заголовок
+	title := "PAUSED"
+	bw := text.BoundString(basicfont.Face7x13, title)
+	text.Draw(s, title, basicfont.Face7x13, WinW/2-bw.Dx()/2, WinH/2-100, C_YELLOW)
+
+	// Кнопки
+	for _, btn := range g.buttons {
+		btn.Draw(s)
+	}
 }
 
 func (g *Game) drawOverlay(s *ebiten.Image, msg string, clr color.Color) {
-	rect(s, 0, 0, WinW, WinH, color.RGBA{0, 0, 0, 180})
+	rectAlpha(s, 0, 0, WinW, WinH, color.RGBA{0, 0, 0, 180}, 0.7)
 
 	bw := text.BoundString(basicfont.Face7x13, msg)
 	text.Draw(s, msg, basicfont.Face7x13, WinW/2-bw.Dx()/2, WinH/2-20, clr)
@@ -1255,6 +1471,12 @@ func (g *Game) drawOverlay(s *ebiten.Image, msg string, clr color.Color) {
 	text.Draw(s, sub, basicfont.Face7x13, WinW/2-bw2.Dx()/2, WinH/2+30, C_WHITE)
 
 	text.Draw(s, fmt.Sprintf("Final Score: %d", g.player.score), basicfont.Face7x13, WinW/2-60, WinH/2+60, C_YELLOW)
+
+	if g.highScore > 0 {
+		hs := fmt.Sprintf("High Score: %d", g.highScore)
+		bwHS := text.BoundString(basicfont.Face7x13, hs)
+		text.Draw(s, hs, basicfont.Face7x13, WinW/2-bwHS.Dx()/2, WinH/2+90, C_YELLOW)
+	}
 }
 
 func (g *Game) Layout(w, h int) (int, int) {
@@ -1262,12 +1484,11 @@ func (g *Game) Layout(w, h int) (int, int) {
 }
 
 // ======================== УТИЛИТЫ ========================
-func rect(s *ebiten.Image, x, y, w, h int, c color.Color) {
-	img := ebiten.NewImage(w, h)
-	img.Fill(c)
+func drawTile(spr *ebiten.Image, dst *ebiten.Image, px, py int) {
 	op := &ebiten.DrawImageOptions{}
-	op.GeoM.Translate(float64(x), float64(y))
-	s.DrawImage(img, op)
+	op.GeoM.Scale(float64(Tile)/float64(spr.Bounds().Dx()), float64(Tile)/float64(spr.Bounds().Dy()))
+	op.GeoM.Translate(float64(px), float64(py))
+	dst.DrawImage(spr, op)
 }
 
 func rectAlpha(s *ebiten.Image, x, y, w, h int, c color.Color, a float64) {
@@ -1277,13 +1498,6 @@ func rectAlpha(s *ebiten.Image, x, y, w, h int, c color.Color, a float64) {
 	op.GeoM.Translate(float64(x), float64(y))
 	op.ColorM.Scale(1, 1, 1, a)
 	s.DrawImage(img, op)
-}
-
-func drawTile(spr *ebiten.Image, dst *ebiten.Image, px, py int) {
-	op := &ebiten.DrawImageOptions{}
-	op.GeoM.Scale(float64(Tile)/float64(spr.Bounds().Dx()), float64(Tile)/float64(spr.Bounds().Dy()))
-	op.GeoM.Translate(float64(px), float64(py))
-	dst.DrawImage(spr, op)
 }
 
 // ======================== ЗВУК ========================
@@ -1320,8 +1534,12 @@ func generateWAV(samples []float64, sampleRate int) []byte {
 	binary.Write(buf, binary.LittleEndian, uint32(dataSize))
 
 	for _, s := range samples {
-		if s > 1 { s = 1 }
-		if s < -1 { s = -1 }
+		if s > 1 {
+			s = 1
+		}
+		if s < -1 {
+			s = -1
+		}
 		binary.Write(buf, binary.LittleEndian, int16(s*32767))
 	}
 	return buf.Bytes()
@@ -1410,13 +1628,14 @@ var frameCount int64
 // ======================== MAIN ========================
 func main() {
 	fmt.Println("═══════════════════════════════════")
-	fmt.Println("  BOMBERMAN GO — Go365 Day 95")
+	fmt.Println("  BOMBERMAN GO — Go365 Day 96")
 	fmt.Println("  4 Enemy Types | 6 Power-Ups")
+	fmt.Println("  New: Menu | Pause | High Score")
 	fmt.Println("═══════════════════════════════════")
 	fmt.Println()
 
 	ebiten.SetWindowSize(WinW, WinH)
-	ebiten.SetWindowTitle("Bomberman Go — Go365 Day 95")
+	ebiten.SetWindowTitle("Bomberman Go — Go365 Day 96")
 	ebiten.SetWindowResizingMode(ebiten.WindowResizingModeDisabled)
 
 	if err := ebiten.RunGame(NewGame()); err != nil {
