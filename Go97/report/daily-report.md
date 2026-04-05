@@ -38,6 +38,34 @@
 
 ### Коммиты
 1. `Go97: new game PUZZLE RAID - arcade puzzle with match-3, enemies, coins, combo system`
+2. `Go97: add full audio system - 10 procedural SFX (strike, coin, combo, hit, death, win, menu, pause, step, tick)`
+
+## Звуковая система 🎵
+
+### 10 процедурных звуков (без внешних файлов!)
+
+| Звук | Когда | Техника |
+|------|-------|---------|
+| **sndStrike** | Удар по тайлам | Impact sweep + high spark |
+| **sndCoin** | Сбор монеты | High ping 1200Hz + harmonic 2400Hz |
+| **sndCombo** | 3+ combo | Восходящее арпеджио C-E-G-C |
+| **sndHit** | Урон игроку | Нисходящий sweep 400→80Hz + noise |
+| **sndDeath** | Game Over | Мрачное арпеджио A-F#-D#-A + drone 110Hz |
+| **sndWin** | Победа | Восходящее арпеджио + аккорд C-E-G |
+| **sndMenu** | Клик в меню | Короткий beep 880Hz |
+| **sndPause** | Пауза | Beep 440Hz |
+| **sndStep** | Движение | Тихий click 300Hz |
+| **sndTick** | Таймер <10с | Square wave 600Hz (ретро-тик) |
+
+### Генераторы звуков
+- `makeBeep()` — синус с затуханием
+- `makeNoise()` — белый шум с экспоненциальным затуханием
+- `makeSweep()` — sweep между частотами
+- `makeArp()` — арпеджио по массиву нот
+- `makeSquare()` — меандр (square wave) для ретро
+- `makeChord()` — аккорд из нескольких нот
+- `makeImpact()` — мощный удар (sweep + noise)
+- `makeSpark()` — высокий звон/искра
 
 ## Итоги дня
 - Создана новая игра с нуля
