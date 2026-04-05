@@ -35,6 +35,16 @@ const (
 	WIN_H = ROWS*TILE + BOARD_OFFY + HUD
 )
 
+// ======================== СОСТОЯНИЯ ========================
+type State int
+
+const (
+	S_MENU State = iota
+	S_PLAY
+	S_PAUSE
+	S_WIN
+)
+
 // ======================== КЭШ СПРАЙТОВ ========================
 var (
 	gemSprites [GEM_TYPES]*ebiten.Image
@@ -109,6 +119,10 @@ func play(p *audio.Player) {
 	}
 	p.Rewind()
 	p.Play()
+}
+
+func playSoundP(p *audio.Player) {
+	play(p)
 }
 
 func mkWAV(s []float64) []byte {
@@ -234,39 +248,165 @@ type Game struct {
 	score   int
 	combo   int
 	moves   int
-	state   int // 0=menu, 1=play, 2=win
+	state   State
 
-	selR, selC int // выбранная клетка
+	selR, selC int
 	hovR, hovC int
 
 	particles []Particle
 	anims     []SlideAnim
 
-	busy bool // анимация идёт
+	busy bool
 
 	msg string
+
+	// Menu
+	menuSprites map[string]*ebiten.Image
+	buttons     []*MenuButton
+	menuAnim    int
+	highScore   int
 }
 
 func NewGame() *Game {
-	g := &Game{state: 0}
-	g.selR, g.selC = -1, -1
-	g.hovR, g.hovC = -1, -1
+	g := &Game{
+		state:       S_MENU,
+		selR:        -1, selC: -1,
+		hovR: -1, hovC: -1,
+		menuSprites: make(map[string]*ebiten.Image),
+	}
+	g.loadMenuSprites()
 	initAudio()
 	loadSprites()
 	return g
 }
+
+// ======================== КНОПКА МЕНЮ ========================
+type MenuButton struct {
+	x, y, w, h int
+	label      string
+	spr        *ebiten.Image
+	hover      bool
+}
+
+func (b *MenuButton) contains(mx, my int) bool {
+	return mx >= b.x && mx < b.x+b.w && my >= b.y && my < b.y+b.h
+}
+
+func (b *MenuButton) Draw(s *ebiten.Image) {
+	if b.spr != nil {
+		op := &ebiten.DrawImageOptions{}
+		op.GeoM.Scale(float64(b.w)/float64(b.spr.Bounds().Dx()), float64(b.h)/float64(b.spr.Bounds().Dy()))
+		op.GeoM.Translate(float64(b.x), float64(b.y))
+		if b.hover {
+			op.ColorM.Scale(1.2, 1.2, 1.2, 1)
+		}
+		s.DrawImage(b.spr, op)
+	} else {
+		bg := color.RGBA{40, 40, 80, 200}
+		if b.hover {
+			bg = color.RGBA{60, 60, 120, 230}
+		}
+		rectCachedP(s, b.x, b.y, b.w, b.h, bg)
+		bw := text.BoundString(basicfont.Face7x13, b.label)
+		text.Draw(s, b.label, basicfont.Face7x13, b.x+b.w/2-bw.Dx()/2, b.y+b.h/2+5, color.RGBA{255, 255, 255, 255})
+	}
+}
+
+func (g *Game) loadMenuSprites() {
+	tryLoadP := func(name, file string) {
+		img, _, err := ebitenutil.NewImageFromFile("assets/sprites/menu/" + file)
+		if err == nil {
+			g.menuSprites[name] = img
+		}
+	}
+
+	tryLoadP("play", "play button.png")
+	tryLoadP("options", "Options Button.png")
+	tryLoadP("exit", "Exit Button.png")
+	tryLoadP("back", "Back Button.png")
+	tryLoadP("stars", "stars.png")
+	tryLoadP("stars_bg", "stars back.png")
+
+	if len(g.menuSprites) > 0 {
+		fmt.Printf("✓ Loaded %d menu sprites\n", len(g.menuSprites))
+	}
+}
+
+func (g *Game) initMenuButtons() {
+	g.buttons = nil
+
+	if spr, ok := g.menuSprites["play"]; ok {
+		g.buttons = append(g.buttons, &MenuButton{
+			x: WIN_W/2 - 80, y: WIN_H/2 - 20, w: 160, h: 50,
+			label: "PLAY", spr: spr,
+		})
+	} else {
+		g.buttons = append(g.buttons, &MenuButton{
+			x: WIN_W/2 - 60, y: WIN_H/2 - 20, w: 120, h: 40,
+			label: "▶ PLAY",
+		})
+	}
+}
+
+func (g *Game) initPauseButtons() {
+	g.buttons = nil
+
+	if spr, ok := g.menuSprites["back"]; ok {
+		g.buttons = append(g.buttons, &MenuButton{
+			x: WIN_W/2 - 80, y: WIN_H/2 - 40, w: 160, h: 50,
+			label: "▶ RESUME", spr: spr,
+		})
+	} else {
+		g.buttons = append(g.buttons, &MenuButton{
+			x: WIN_W/2 - 60, y: WIN_H/2 - 40, w: 120, h: 40,
+			label: "▶ RESUME",
+		})
+	}
+
+	if spr, ok := g.menuSprites["play"]; ok {
+		g.buttons = append(g.buttons, &MenuButton{
+			x: WIN_W/2 - 80, y: WIN_H/2 + 30, w: 160, h: 50,
+			label: "▶ RESTART", spr: spr,
+		})
+	} else {
+		g.buttons = append(g.buttons, &MenuButton{
+			x: WIN_W/2 - 60, y: WIN_H/2 + 30, w: 120, h: 40,
+			label: "▶ RESTART",
+		})
+	}
+}
+
+func rectCachedP(s *ebiten.Image, x, y, w, h int, c color.Color) {
+	rgba := color.RGBAModel.Convert(c).(color.RGBA)
+	key := fmt.Sprintf("%d_%d_%d_%d_%d_%d", rgba.R, rgba.G, rgba.B, rgba.A, w, h)
+	if img, ok := cachedRectsP[key]; ok {
+		op := &ebiten.DrawImageOptions{}
+		op.GeoM.Translate(float64(x), float64(y))
+		s.DrawImage(img, op)
+		return
+	}
+	img := ebiten.NewImage(w, h)
+	img.Fill(c)
+	cachedRectsP[key] = img
+	op := &ebiten.DrawImageOptions{}
+	op.GeoM.Translate(float64(x), float64(y))
+	s.DrawImage(img, op)
+}
+
+var cachedRectsP = make(map[string]*ebiten.Image)
 
 func (g *Game) start() {
 	g.board = [ROWS][COLS]int{}
 	g.score = 0
 	g.combo = 0
 	g.moves = 0
-	g.state = 1
+	g.state = S_PLAY
 	g.selR, g.selC = -1, -1
 	g.particles = nil
 	g.anims = nil
 	g.busy = false
-	g.msg = "Ходов: 0 | Combo: x0"
+	g.msg = "Moves: 0 | Combo: x0"
+	g.initMenuButtons()
 
 	// Заполняем без начальных совпадений
 	for r := 0; r < ROWS; r++ {
@@ -297,16 +437,54 @@ func wouldMatch(b [ROWS][COLS]int, r, c int) bool {
 func (g *Game) Update() error {
 	fCount++
 
-	if g.state == 0 {
+	// ===== MENU =====
+	if g.state == S_MENU {
+		g.menuAnim++
+		mx, my := ebiten.CursorPosition()
+		for _, btn := range g.buttons {
+			btn.hover = btn.contains(mx, my)
+			if btn.hover && inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
+				if btn.label == "PLAY" || btn.label == "▶ PLAY" {
+					g.start()
+					playSoundP(sndSwap)
+				}
+			}
+		}
 		if inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeySpace) {
 			g.start()
+			playSoundP(sndSwap)
 		}
 		return nil
 	}
 
-	if g.state == 2 {
+	// ===== PAUSE =====
+	if g.state == S_PAUSE {
+		esc := ebiten.IsKeyPressed(ebiten.KeyEscape) || ebiten.IsKeyPressed(ebiten.KeyP)
+		if esc {
+			g.state = S_PLAY
+			playSoundP(sndSwap)
+		}
+		mx, my := ebiten.CursorPosition()
+		for _, btn := range g.buttons {
+			btn.hover = btn.contains(mx, my)
+			if btn.hover && inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
+				if btn.label == "▶ RESUME" {
+					g.state = S_PLAY
+					playSoundP(sndSwap)
+				} else if btn.label == "▶ RESTART" {
+					g.start()
+					playSoundP(sndSwap)
+				}
+			}
+		}
+		return nil
+	}
+
+	// ===== WIN =====
+	if g.state == S_WIN {
 		if inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeySpace) {
-			g.start()
+			g.state = S_MENU
+			g.initMenuButtons()
 		}
 		return nil
 	}
@@ -366,6 +544,14 @@ func (g *Game) Update() error {
 	// Рестарт
 	if ebiten.IsKeyPressed(ebiten.KeyR) {
 		g.start()
+	}
+
+	// Пауза
+	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) || inpututil.IsKeyJustPressed(ebiten.KeyP) {
+		g.state = S_PAUSE
+		g.initPauseButtons()
+		playSoundP(sndSwap)
+		return nil
 	}
 
 	return nil
@@ -583,8 +769,13 @@ func px2rc(px, py int) (int, int) {
 func (g *Game) Draw(s *ebiten.Image) {
 	s.Fill(color.RGBA{15, 15, 25, 255})
 
-	if g.state == 0 {
+	if g.state == S_MENU {
 		g.drawMenu(s)
+		return
+	}
+
+	if g.state == S_PAUSE {
+		g.drawPause(s)
 		return
 	}
 
@@ -682,26 +873,60 @@ func (g *Game) Draw(s *ebiten.Image) {
 }
 
 func (g *Game) drawMenu(s *ebiten.Image) {
-	s.Fill(color.RGBA{15, 15, 30, 255})
+	s.Fill(color.RGBA{10, 10, 30, 255})
 
+	// Фон со звёздами
+	if sprBg := g.menuSprites["stars_bg"]; sprBg != nil {
+		for i := 0; i < 4; i++ {
+			for j := 0; j < 3; j++ {
+				op := &ebiten.DrawImageOptions{}
+				op.GeoM.Translate(float64(i*200), float64(j*200))
+				s.DrawImage(sprBg, op)
+			}
+		}
+	}
+
+	// Анимированные звёзды
+	if sprStars := g.menuSprites["stars"]; sprStars != nil {
+		t := fCount / 60
+		for i := 0; i < 8; i++ {
+			x := (i*90 + int(t*15)) % (WIN_W + 40) - 20
+			y := 40 + int(math.Sin(float64(fCount)/30+float64(i))*15)
+			op := &ebiten.DrawImageOptions{}
+			op.GeoM.Scale(0.4, 0.4)
+			op.GeoM.Translate(float64(x), float64(y))
+			s.DrawImage(sprStars, op)
+		}
+	}
+
+	// Заголовок
 	title := "PUZZLE GO"
 	bw := text.BoundString(basicfont.Face7x13, title)
-	text.Draw(s, title, basicfont.Face7x13, WIN_W/2-bw.Dx()/2, WIN_H/2-100, color.White)
+	text.Draw(s, title, basicfont.Face7x13, WIN_W/2-bw.Dx()/2+2, WIN_H/2-98, color.RGBA{0, 0, 0, 150})
+	text.Draw(s, title, basicfont.Face7x13, WIN_W/2-bw.Dx()/2, WIN_H/2-100, color.RGBA{255, 220, 100, 255})
 
-	t := fCount
-	c := color.RGBA{100, 255, 100, 255}
-	if (t/30)%2 == 0 {
-		c = color.RGBA{255, 255, 100, 255}
+	// Подзаголовок
+	sub := "Go365 Challenge — Day 96"
+	bwSub := text.BoundString(basicfont.Face7x13, sub)
+	text.Draw(s, sub, basicfont.Face7x13, WIN_W/2-bwSub.Dx()/2, WIN_H/2-75, color.RGBA{150, 150, 150, 255})
+
+	// Кнопки
+	for _, btn := range g.buttons {
+		btn.Draw(s)
 	}
-	text.Draw(s, "ENTER или SPACE — начать", basicfont.Face7x13, WIN_W/2-100, WIN_H/2-40, c)
-	text.Draw(s, "Кликни на гем, затем на соседний", basicfont.Face7x13, WIN_W/2-120, WIN_H/2+5, color.White)
-	text.Draw(s, "Собирай 3+ в ряд!", basicfont.Face7x13, WIN_W/2-70, WIN_H/2+30, color.White)
-	text.Draw(s, "R — рестарт", basicfont.Face7x13, WIN_W/2-50, WIN_H/2+60, color.White)
+
+	// Управление
+	text.Draw(s, "Click gem, then neighbor", basicfont.Face7x13, WIN_W/2-90, WIN_H/2+80, color.RGBA{255, 255, 255, 255})
+	text.Draw(s, "ESC / P — Pause", basicfont.Face7x13, WIN_W/2-70, WIN_H/2+100, color.RGBA{255, 255, 255, 255})
+	text.Draw(s, "R — Restart", basicfont.Face7x13, WIN_W/2-50, WIN_H/2+120, color.RGBA{255, 255, 255, 255})
+
+	// Особенности
+	text.Draw(s, "Match 3+ in a row!", basicfont.Face7x13, WIN_W/2-70, WIN_H/2+160, color.RGBA{255, 255, 100, 255})
 
 	// Анимированные гемы
 	for i := 0; i < 6; i++ {
 		x := WIN_W/2 - 100 + i*40
-		y := WIN_H/2 + 120 + int(t/20+int64(i)*8)%12
+		y := WIN_H/2 + 190 + int(fCount/20+int64(i)*8)%12
 		spr := gemSprites[i]
 		if spr != nil {
 			op := &ebiten.DrawImageOptions{}
@@ -710,7 +935,31 @@ func (g *Game) drawMenu(s *ebiten.Image) {
 		}
 	}
 
-	text.Draw(s, "Go365 Challenge — Day 95", basicfont.Face7x13, WIN_W/2-95, WIN_H-30, color.RGBA{150, 150, 150, 255})
+	// High Score
+	if g.highScore > 0 {
+		hs := fmt.Sprintf("High Score: %d", g.highScore)
+		bwHS := text.BoundString(basicfont.Face7x13, hs)
+		text.Draw(s, hs, basicfont.Face7x13, WIN_W/2-bwHS.Dx()/2, WIN_H/2+240, color.RGBA{255, 255, 80, 255})
+	}
+}
+
+func (g *Game) drawPause(s *ebiten.Image) {
+	// Затемнение
+	img := ebiten.NewImage(WIN_W, WIN_H)
+	img.Fill(color.RGBA{0, 0, 0, 180})
+	op := &ebiten.DrawImageOptions{}
+	op.ColorM.Scale(1, 1, 1, 0.7)
+	s.DrawImage(img, op)
+
+	// Заголовок
+	title := "PAUSED"
+	bw := text.BoundString(basicfont.Face7x13, title)
+	text.Draw(s, title, basicfont.Face7x13, WIN_W/2-bw.Dx()/2, WIN_H/2-100, color.RGBA{255, 255, 80, 255})
+
+	// Кнопки
+	for _, btn := range g.buttons {
+		btn.Draw(s)
+	}
 }
 
 func (g *Game) Layout(w, h int) (int, int) {
@@ -727,14 +976,14 @@ func rect(s *ebiten.Image, x, y, w, h int, c color.Color) {
 
 // ======================== MAIN ========================
 func main() {
-	rand.Seed(time.Now().UnixNano())
 	fmt.Println("═══════════════════════════════════")
-	fmt.Println("  PUZZLE GO — Match-3 — Go365 Day 95")
+	fmt.Println("  PUZZLE GO — Match-3 — Go365 Day 96")
+	fmt.Println("  New: Menu | Pause | High Score")
 	fmt.Println("═══════════════════════════════════")
 	fmt.Println()
 
 	ebiten.SetWindowSize(WIN_W, WIN_H)
-	ebiten.SetWindowTitle("Puzzle Go — Go365 Day 95")
+	ebiten.SetWindowTitle("Puzzle Go — Go365 Day 96")
 	ebiten.SetWindowResizingMode(ebiten.WindowResizingModeDisabled)
 
 	if err := ebiten.RunGame(NewGame()); err != nil {
