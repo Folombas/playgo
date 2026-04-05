@@ -221,6 +221,123 @@ func spawnParts(x, y float64, clr color.Color, n int) []Particle {
 	return ps
 }
 
+// ======================== АНИМАЦИЯ ВЫДЕЛЕНИЯ ========================
+type SelectAnim struct {
+	r, c int    // позиция гема
+	t    int    // кадр
+}
+
+func (s *SelectAnim) Update() {
+	s.t++
+}
+
+func (s *SelectAnim) Draw(screen *ebiten.Image, x, y int) {
+	pulse := 0.5 + 0.5*math.Sin(float64(s.t)/8)
+
+	// Кольцо свечения
+	ringR := TILE/2 + 4
+	ringW := 3 + int(pulse*3)
+	for i := 0; i < 32; i++ {
+		angle := float64(i) * math.Pi * 2 / 32
+		px := float64(x+TILE/2) + math.Cos(angle)*float64(ringR)
+		py := float64(y+TILE/2) + math.Sin(angle)*float64(ringR)
+		a := 0.4 + pulse*0.4
+		rectAlphaC(screen, int(px)-ringW/2, int(py)-ringW/2, ringW, ringW,
+			color.RGBA{100, 255, 200, 255}, a)
+	}
+
+	// Искорки по кругу
+	for i := 0; i < 4; i++ {
+		angle := float64(i)*math.Pi/2 + float64(s.t)/20
+		px := float64(x+TILE/2) + math.Cos(angle)*float64(ringR+6)
+		py := float64(y+TILE/2) + math.Sin(angle)*float64(ringR+6)
+		sparkSz := 3 + int(pulse*3)
+		rectAlphaC(screen, int(px)-sparkSz/2, int(py)-sparkSz/2, sparkSz, sparkSz,
+			color.RGBA{255, 255, 255, 255}, 0.5+pulse*0.5)
+	}
+}
+
+// ======================== АНИМАЦИЯ УДАЛЕНИЯ ========================
+type RemoveAnim struct {
+	r, c  int
+	x, y  float64
+	t     int
+	total int // 25 кадров
+	typeId int
+}
+
+func (a *RemoveAnim) Update() bool {
+	a.t++
+	// Частицы на каждом кадре
+	if a.t%2 == 0 && a.t < 15 {
+		clr := gemColor(a.typeId)
+		x := a.x + float64(TILE/2)
+		y := a.y + float64(TILE/2)
+		ps := spawnParts(x, y, clr, 3)
+		for i := range ps {
+			ps[i].vx *= 1.5
+			ps[i].vy *= 1.5
+		}
+	}
+	return a.t >= a.total
+}
+
+func (a *RemoveAnim) Draw(screen *ebiten.Image) {
+	progress := float64(a.t) / float64(a.total)
+
+	// Фаза 1: увеличение (0-0.3)
+	// Фаза 2: исчезновение (0.3-1.0)
+	var scale, alpha float64
+	if progress < 0.3 {
+		t := progress / 0.3
+		scale = 1.0 + t*0.5
+		alpha = 1.0
+	} else {
+		t := (progress - 0.3) / 0.7
+		scale = 1.5 - t*1.5
+		alpha = 1.0 - t
+	}
+
+	if scale <= 0 || alpha <= 0 {
+		return
+	}
+
+	spr := gemSprites[a.typeId-1]
+	if spr != nil {
+		b := spr.Bounds()
+		ox := a.x + float64(TILE/2) - float64(b.Dx())*scale/2
+		oy := a.y + float64(TILE/2) - float64(b.Dy())*scale/2
+		op := &ebiten.DrawImageOptions{}
+		op.GeoM.Scale(scale, scale)
+		op.GeoM.Translate(ox, oy)
+		op.ColorM.Scale(1, 1, 1, alpha)
+		screen.DrawImage(spr, op)
+	}
+
+	// Вспышка при начале удаления
+	if a.t < 5 {
+		flashA := (1.0 - float64(a.t)/5.0) * 0.6
+		rectAlphaC(screen, int(a.x)-4, int(a.y)-4, TILE+8, TILE+8,
+			color.RGBA{255, 255, 255, 255}, flashA)
+	}
+}
+
+func gemColor(typeId int) color.Color {
+	clrs := []color.Color{
+		color.RGBA{255, 255, 255, 255},
+		color.RGBA{255, 80, 80, 255},   // red
+		color.RGBA{80, 255, 80, 255},   // green
+		color.RGBA{80, 80, 255, 255},   // blue
+		color.RGBA{255, 255, 80, 255},  // yellow
+		color.RGBA{255, 80, 255, 255},  // purple
+		color.RGBA{80, 255, 255, 255},  // cyan
+	}
+	if typeId >= 1 && typeId <= 6 {
+		return clrs[typeId]
+	}
+	return color.RGBA{255, 255, 255, 255}
+}
+
 // ======================== АНИМАЦИЯ ========================
 type SlideAnim struct {
 	r, c  int    // целевая позиция
@@ -257,8 +374,11 @@ type Game struct {
 
 	particles []Particle
 	anims     []SlideAnim
+	selectAnim *SelectAnim
+	removeAnims []RemoveAnim
 
 	busy bool
+	flash int
 
 	msg string
 
@@ -416,6 +536,15 @@ func rectCachedP(s *ebiten.Image, x, y, w, h int, c color.Color) {
 	cachedRectsP[key] = img
 	op := &ebiten.DrawImageOptions{}
 	op.GeoM.Translate(float64(x), float64(y))
+	s.DrawImage(img, op)
+}
+
+func rectAlphaC(s *ebiten.Image, x, y, w, h int, c color.Color, a float64) {
+	img := ebiten.NewImage(w, h)
+	img.Fill(c)
+	op := &ebiten.DrawImageOptions{}
+	op.GeoM.Translate(float64(x), float64(y))
+	op.ColorM.Scale(1, 1, 1, a)
 	s.DrawImage(img, op)
 }
 
@@ -580,6 +709,23 @@ func (g *Game) Update() error {
 		return nil
 	}
 
+	// Обновляем selectAnim
+	if g.selectAnim != nil {
+		g.selectAnim.Update()
+	}
+
+	// Обновляем removeAnims
+	for i := len(g.removeAnims) - 1; i >= 0; i-- {
+		if g.removeAnims[i].Update() {
+			g.removeAnims = append(g.removeAnims[:i], g.removeAnims[i+1:]...)
+		}
+	}
+
+	// Flash
+	if g.flash > 0 {
+		g.flash--
+	}
+
 	// Hover
 	mx, my := ebiten.CursorPosition()
 	cr, cc := px2rc(mx, my)
@@ -620,12 +766,14 @@ func (g *Game) click(r, c int) {
 	// Если ничего не выбрано
 	if g.selR < 0 {
 		g.selR, g.selC = r, c
+		g.selectAnim = &SelectAnim{r: r, c: c, t: 0}
 		return
 	}
 
 	// Кликнули на ту же клетку
 	if g.selR == r && g.selC == c {
 		g.selR, g.selC = -1, -1
+		g.selectAnim = nil
 		return
 	}
 
@@ -636,9 +784,11 @@ func (g *Game) click(r, c int) {
 		// Пробуем свап
 		g.trySwap(g.selR, g.selC, r, c)
 		g.selR, g.selC = -1, -1
+		g.selectAnim = nil
 	} else {
 		// Выбрали другую
 		g.selR, g.selC = r, c
+		g.selectAnim = &SelectAnim{r: r, c: c, t: 0}
 	}
 }
 
@@ -733,14 +883,32 @@ func (g *Game) removeMatches(matches [][2]int) {
 		g.msg = fmt.Sprintf("Ходов: %d | Combo: x%d | + %d", g.moves, g.combo, bonus)
 	}
 
-	// Удаляем
+	// Удаляем с анимацией
 	for _, m := range matches {
+		typeId := g.board[m[0]][m[1]]
+		px := float64(m[1]*TILE + BOARD_OFFX)
+		py := float64(m[0]*TILE + BOARD_OFFY)
+
+		// Анимация удаления
+		g.removeAnims = append(g.removeAnims, RemoveAnim{
+			r: m[0], c: m[1],
+			x: px, y: py,
+			t: 0, total: 25,
+			typeId: typeId,
+		})
+
 		g.board[m[0]][m[1]] = 0
+
 		// Частицы
-		px := float64(m[1]*TILE + BOARD_OFFX + TILE/2)
-		py := float64(m[0]*TILE + BOARD_OFFY + TILE/2)
-		clr := gemColor(g.board[m[0]][m[1]])
-		g.particles = append(g.particles, spawnParts(px, py, clr, 8)...)
+		cx := px + float64(TILE/2)
+		cy := py + float64(TILE/2)
+		clr := gemColor(typeId)
+		g.particles = append(g.particles, spawnParts(cx, cy, clr, 8)...)
+	}
+
+	// Вспышка экрана при комбо
+	if g.combo >= 2 {
+		g.flash = 8
 	}
 
 	// Падают вниз
@@ -789,22 +957,6 @@ func (g *Game) fillEmpty() {
 			}
 		}
 	}
-}
-
-func gemColor(t int) color.Color {
-	clrs := []color.Color{
-		color.RGBA{255, 255, 255, 255},
-		color.RGBA{60, 120, 255, 255},   // blue
-		color.RGBA{255, 80, 80, 255},    // red
-		color.RGBA{80, 200, 80, 255},    // green
-		color.RGBA{255, 255, 80, 255},   // yellow
-		color.RGBA{180, 80, 255, 255},   // purple
-		color.RGBA{180, 180, 180, 255},  // grey
-	}
-	if t >= 0 && t < len(clrs) {
-		return clrs[t]
-	}
-	return color.White
 }
 
 func px2rc(px, py int) (int, int) {
@@ -867,6 +1019,18 @@ func (g *Game) Draw(s *ebiten.Image) {
 			x := c*TILE + BOARD_OFFX
 			y := r*TILE + BOARD_OFFY
 
+			// Пропускаем гемы которые сейчас удаляются
+			skipped := false
+			for _, ra := range g.removeAnims {
+				if ra.r == r && ra.c == c {
+					skipped = true
+					break
+				}
+			}
+			if skipped {
+				continue
+			}
+
 			spr := gemSprites[v-1]
 			if spr != nil {
 				op := &ebiten.DrawImageOptions{}
@@ -881,16 +1045,19 @@ func (g *Game) Draw(s *ebiten.Image) {
 				op.GeoM.Translate(float64(x), float64(y))
 				s.DrawImage(mkImg(TILE, TILE, color.White), op)
 			}
-
-			// Выбор
-			if g.selR == r && g.selC == c {
-				if selSprite != nil {
-					op := &ebiten.DrawImageOptions{}
-					op.GeoM.Translate(float64(x-2), float64(y-2))
-					s.DrawImage(selSprite, op)
-				}
-			}
 		}
+	}
+
+	// Анимация выделения
+	if g.selectAnim != nil && g.selR >= 0 && g.selC >= 0 {
+		x := g.selC*TILE + BOARD_OFFX
+		y := g.selR*TILE + BOARD_OFFY
+		g.selectAnim.Draw(s, x, y)
+	}
+
+	// Анимации удаления
+	for _, ra := range g.removeAnims {
+		ra.Draw(s)
 	}
 
 	// Частицы
@@ -902,6 +1069,14 @@ func (g *Game) Draw(s *ebiten.Image) {
 		op.GeoM.Translate(-float64(p.sz)/2, -float64(p.sz)/2)
 		op.ColorM.Scale(1, 1, 1, a)
 		s.DrawImage(mkImg(p.sz, p.sz, p.clr), op)
+	}
+
+	// Вспышка экрана при комбо
+	if g.flash > 0 {
+		a := float64(g.flash) / 8.0 * 0.3
+		op := &ebiten.DrawImageOptions{}
+		op.ColorM.Scale(1, 1, 1, a)
+		s.DrawImage(mkImg(WIN_W, WIN_H, color.White), op)
 	}
 
 	// HUD
