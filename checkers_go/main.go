@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"image"
 	"image/color"
 	"log"
 	"math"
@@ -1002,6 +1003,13 @@ func (g *Game) loadMenuSprites() {
 	tryLoadM("back", "Back Button.png")
 	tryLoadM("stars", "stars.png")
 	tryLoadM("stars_bg", "stars back.png")
+	tryLoadM("particles1", "particles 1.png")
+	tryLoadM("leaf", "leaf.png")
+	tryLoadM("lvl1", "Level 1.png")
+	tryLoadM("lvl2", "Level 2.png")
+	tryLoadM("lvl3", "Level 3.png")
+	tryLoadM("dialog", "menu_dialogs_and_icons_-_dialog_frames.png")
+	tryLoadM("icons", "menu_dialogs_and_icons_-_controls_and_symbols.png")
 
 	if len(g.menuSprites) > 0 {
 		fmt.Printf("✓ Loaded %d menu sprites\n", len(g.menuSprites))
@@ -1693,6 +1701,33 @@ func (g *Game) drawMenu(s *ebiten.Image) {
 		}
 	}
 
+	// Частицы меню
+	if sprPart := g.menuSprites["particles1"]; sprPart != nil {
+		t := fCount / 50
+		for i := 0; i < 10; i++ {
+			x := (i*70 + int(t*12)) % (WW + 30) - 15
+			y := 20 + int(math.Sin(float64(fCount)/20+float64(i)*1.3)*25) + 80
+			op := &ebiten.DrawImageOptions{}
+			op.GeoM.Scale(0.35, 0.35)
+			op.ColorM.Scale(1, 0.85, 0.5, 0.5)
+			op.GeoM.Translate(float64(x), float64(y))
+			s.DrawImage(sprPart, op)
+		}
+	}
+
+	// Листья декоративные
+	if sprLeaf := g.menuSprites["leaf"]; sprLeaf != nil {
+		for i := 0; i < 6; i++ {
+			x := 30 + i*(WW-60)/5
+			y := WH - 80 + int(math.Sin(float64(fCount)/35+float64(i)*2)*10)
+			op := &ebiten.DrawImageOptions{}
+			op.GeoM.Scale(0.5, 0.5)
+			op.ColorM.Scale(0.7, 1, 0.6, 0.4)
+			op.GeoM.Translate(float64(x), float64(y))
+			s.DrawImage(sprLeaf, op)
+		}
+	}
+
 	// Заголовок
 	title := "CHECKERS GO"
 	bw := text.BoundString(basicfont.Face7x13, title)
@@ -1760,9 +1795,78 @@ func (g *Game) drawOptions(s *ebiten.Image) {
 		}
 	}
 
-	frameW, frameH := 320, 150
-	frameX, frameY := WW/2-frameW/2, WH/2-frameH/2-30
-	rectCachedC(s, frameX, frameY, frameW, frameH, color.RGBA{30, 30, 60, 220})
+	frameW, frameH := 320, 180
+	frameX, frameY := WW/2-frameW/2, WH/2-frameH/2-40
+
+	// Диалоговая рамка из спрайта
+	if sprDialog := g.menuSprites["dialog"]; sprDialog != nil {
+		// 9-slice: углы 16x16, растягиваем середину
+		corner := 16
+		bounds := sprDialog.Bounds()
+		tW, tH := bounds.Dx(), bounds.Dy()
+		edgeW := (tW - corner*2)
+		edgeH := (tH - corner*2)
+
+		dstW := frameW
+		dstH := frameH
+
+		// Top-left corner
+		op := &ebiten.DrawImageOptions{}
+		op.GeoM.Scale(float64(corner)/float64(corner), float64(corner)/float64(corner))
+		op.GeoM.Translate(float64(frameX), float64(frameY))
+		s.DrawImage(sprDialog.SubImage(image.Rect(0, 0, corner, corner)).(*ebiten.Image), op)
+
+		// Top-right corner
+		op = &ebiten.DrawImageOptions{}
+		op.GeoM.Translate(float64(frameX+dstW-corner), float64(frameY))
+		s.DrawImage(sprDialog.SubImage(image.Rect(tW-corner, 0, tW, corner)).(*ebiten.Image), op)
+
+		// Bottom-left corner
+		op = &ebiten.DrawImageOptions{}
+		op.GeoM.Translate(float64(frameX), float64(frameY+dstH-corner))
+		s.DrawImage(sprDialog.SubImage(image.Rect(0, tH-corner, corner, tH)).(*ebiten.Image), op)
+
+		// Bottom-right corner
+		op = &ebiten.DrawImageOptions{}
+		op.GeoM.Translate(float64(frameX+dstW-corner), float64(frameY+dstH-corner))
+		s.DrawImage(sprDialog.SubImage(image.Rect(tW-corner, tH-corner, tW, tH)).(*ebiten.Image), op)
+
+		// Top edge
+		op = &ebiten.DrawImageOptions{}
+		op.GeoM.Scale(float64(dstW-corner*2)/float64(edgeW), 1)
+		op.GeoM.Translate(float64(frameX+corner), float64(frameY))
+		s.DrawImage(sprDialog.SubImage(image.Rect(corner, 0, tW-corner, corner)).(*ebiten.Image), op)
+
+		// Bottom edge
+		op = &ebiten.DrawImageOptions{}
+		op.GeoM.Scale(float64(dstW-corner*2)/float64(edgeW), 1)
+		op.GeoM.Translate(float64(frameX+corner), float64(frameY+dstH-corner))
+		s.DrawImage(sprDialog.SubImage(image.Rect(corner, tH-corner, tW-corner, tH)).(*ebiten.Image), op)
+
+		// Left edge
+		op = &ebiten.DrawImageOptions{}
+		op.GeoM.Scale(1, float64(dstH-corner*2)/float64(edgeH))
+		op.GeoM.Translate(float64(frameX), float64(frameY+corner))
+		s.DrawImage(sprDialog.SubImage(image.Rect(0, corner, corner, tH-corner)).(*ebiten.Image), op)
+
+		// Right edge
+		op = &ebiten.DrawImageOptions{}
+		op.GeoM.Scale(1, float64(dstH-corner*2)/float64(edgeH))
+		op.GeoM.Translate(float64(frameX+dstW-corner), float64(frameY+corner))
+		s.DrawImage(sprDialog.SubImage(image.Rect(tW-corner, corner, tW, tH-corner)).(*ebiten.Image), op)
+
+		// Center (tiled)
+		centerSpr := sprDialog.SubImage(image.Rect(corner, corner, tW-corner, tH-corner)).(*ebiten.Image)
+		for ty := 0; ty < dstH-corner*2; ty += edgeH {
+			for tx := 0; tx < dstW-corner*2; tx += edgeW {
+				op = &ebiten.DrawImageOptions{}
+				op.GeoM.Translate(float64(frameX+corner+tx), float64(frameY+corner+ty))
+				s.DrawImage(centerSpr, op)
+			}
+		}
+	} else {
+		rectCachedC(s, frameX, frameY, frameW, frameH, color.RGBA{30, 30, 60, 220})
+	}
 
 	title := "CONTROLS"
 	bw := text.BoundString(basicfont.Face7x13, title)
@@ -1777,6 +1881,36 @@ func (g *Game) drawOptions(s *ebiten.Image) {
 		text.Draw(s, line, basicfont.Face7x13, WW/2-120, frameY+55+i*22, color.RGBA{255, 255, 255, 255})
 	}
 	text.Draw(s, "Flying Kings | Forced Captures", basicfont.Face7x13, WW/2-120, frameY+125, color.RGBA{255, 255, 100, 255})
+
+	// Иконки уровней AI
+	lvlY := frameY + 150
+	lvlNames := []string{"Easy", "Medium", "Hard"}
+	lvlKeys := []string{"lvl1", "lvl2", "lvl3"}
+	for i := 0; i < 3; i++ {
+		x := WW/2 - 60 + i*45
+		if spr, ok := g.menuSprites[lvlKeys[i]]; ok {
+			op := &ebiten.DrawImageOptions{}
+			op.GeoM.Scale(0.6, 0.6)
+			op.GeoM.Translate(float64(x), float64(lvlY))
+			s.DrawImage(spr, op)
+		}
+		text.Draw(s, lvlNames[i], basicfont.Face7x13, x+2, lvlY+22, color.RGBA{200, 200, 200, 255})
+	}
+
+	// Иконки управления
+	if sprIcons := g.menuSprites["icons"]; sprIcons != nil {
+		iconLabels := []string{"Click", "Pause", "Restart"}
+		for i := 0; i < 3; i++ {
+			x := WW/2 - 80 + i*55
+			y := frameY + 77
+			// Берём часть spritesheet — иконки 32x32
+			op := &ebiten.DrawImageOptions{}
+			op.GeoM.Scale(0.5, 0.5)
+			op.GeoM.Translate(float64(x), float64(y))
+			s.DrawImage(sprIcons, op)
+			text.Draw(s, iconLabels[i], basicfont.Face7x13, x, y+20, color.RGBA{180, 180, 180, 255})
+		}
+	}
 
 	for _, btn := range g.buttons {
 		btn.Draw(s)
