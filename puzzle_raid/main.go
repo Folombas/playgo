@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"encoding/binary"
 	"fmt"
 	"image/color"
 	"log"
@@ -9,6 +11,7 @@ import (
 	"sort"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/hajimehoshi/ebiten/v2/audio"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"github.com/hajimehoshi/ebiten/v2/text"
@@ -293,6 +296,7 @@ func NewGame() *Game {
 	}
 	g.loadSprites()
 	g.initMenuButtons()
+	initAudio()
 	return g
 }
 
@@ -599,6 +603,7 @@ func (g *Game) Update() error {
 				g.level = 1
 				g.startLevel()
 				g.highScore = 0
+				playSoundP(sndMenu)
 				return nil
 			}
 		}
@@ -607,6 +612,7 @@ func (g *Game) Update() error {
 			g.level = 1
 			g.startLevel()
 			g.highScore = 0
+			playSoundP(sndMenu)
 		}
 		return nil
 	}
@@ -616,6 +622,7 @@ func (g *Game) Update() error {
 		esc := ebiten.IsKeyPressed(ebiten.KeyEscape) || ebiten.IsKeyPressed(ebiten.KeyP)
 		if esc && !g.enterPrev {
 			g.state = S_PLAY
+			playSoundP(sndPause)
 		}
 		mx, my := ebiten.CursorPosition()
 		for _, btn := range g.buttons {
@@ -623,10 +630,12 @@ func (g *Game) Update() error {
 			if btn.hover && inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
 				if btn.label == "▶ RESUME" {
 					g.state = S_PLAY
+					playSoundP(sndPause)
 				} else if btn.label == "▶ RESTART" {
 					g.state = S_PLAY
 					g.level = 1
 					g.startLevel()
+					playSoundP(sndMenu)
 				}
 			}
 		}
@@ -640,6 +649,7 @@ func (g *Game) Update() error {
 		if enter && !g.enterPrev {
 			g.state = S_MENU
 			g.initMenuButtons()
+			playSoundP(sndMenu)
 		}
 		g.enterPrev = enter
 		return nil
@@ -667,6 +677,16 @@ func (g *Game) Update() error {
 			}
 			return nil
 		}
+	}
+
+	// Combo check
+	if g.player.combo >= 3 {
+		playSoundP(sndCombo)
+	}
+
+	// Timer tick
+	if g.timeLeft <= 10 && g.timeLeft > 0 && frameCount%60 == 0 {
+		playSoundP(sndTick)
 	}
 
 	g.player.Update(g)
@@ -702,6 +722,7 @@ func (g *Game) Update() error {
 		if g.player.score > g.highScore {
 			g.highScore = g.player.score
 		}
+		playSoundP(sndWin)
 	}
 
 	// Pause
@@ -720,12 +741,14 @@ func (g *Game) playerHit() {
 	px := g.player.gx*TILE + BOARD_OFFX + TILE/2
 	py := g.player.gy*TILE + BOARD_OFFY + TILE/2
 	g.particles = append(g.particles, spawnParticles(px, py, C_RED, 20)...)
+	playSoundP(sndHit)
 
 	if g.player.lives <= 0 {
 		g.state = S_DEAD
 		if g.player.score > g.highScore {
 			g.highScore = g.player.score
 		}
+		playSoundP(sndDeath)
 	}
 }
 
@@ -963,68 +986,67 @@ func rectAlphaC(s *ebiten.Image, x, y, w, h int, c color.Color, a float64) {
 }
 
 // ======================== ЗВУК ========================
-var sndStrike, sndCoin *PlayerSound
+var (
+	audioCtx    *audio.Context
+	sndStrike   *audio.Player
+	sndCoin     *audio.Player
+	sndCombo    *audio.Player
+	sndHit      *audio.Player
+	sndDeath    *audio.Player
+	sndWin      *audio.Player
+	sndMenu     *audio.Player
+	sndPause    *audio.Player
+	sndStep     *audio.Player
+	sndTick     *audio.Player // таймер тиканье
+)
 
-type PlayerSound struct {
-	data []byte
-}
-
+// generateWAV создаёт WAV из семплов
 func generateWAV(samples []float64, sampleRate int) []byte {
-	buf := make([]byte, 44+len(samples)*2)
-	copy(buf[:4], []byte("RIFF"))
-	dataSize := uint32(36 + len(samples)*2)
-	buf[4] = byte(dataSize)
-	buf[5] = byte(dataSize >> 8)
-	buf[6] = byte(dataSize >> 16)
-	buf[7] = byte(dataSize >> 24)
-	copy(buf[8:12], []byte("WAVE"))
-	copy(buf[12:16], []byte("fmt "))
-	buf[16] = 16
-	buf[20] = 1
-	buf[22] = 1
-	buf[24] = 68
-	buf[25] = 172
-	buf[26] = 0
-	buf[27] = 0
-	buf[28] = 136
-	buf[29] = 172
-	buf[30] = 0
-	buf[31] = 0
-	buf[32] = 2
-	buf[33] = 0
-	buf[34] = 16
-	buf[35] = 0
-	copy(buf[36:40], []byte("data"))
-	ds := uint32(len(samples) * 2)
-	buf[40] = byte(ds)
-	buf[41] = byte(ds >> 8)
-	buf[42] = byte(ds >> 16)
-	buf[43] = byte(ds >> 24)
+	buf := new(bytes.Buffer)
+	numCh := uint16(1)
+	bitsPS := uint16(16)
+	byteRate := sampleRate * int(numCh) * int(bitsPS) / 8
+	blockAlign := numCh * bitsPS / 8
+	dataSize := len(samples) * 2
 
-	for i, v := range samples {
-		if v > 1 {
-			v = 1
+	buf.WriteString("RIFF")
+	binary.Write(buf, binary.LittleEndian, uint32(36+dataSize))
+	buf.WriteString("WAVE")
+	buf.WriteString("fmt ")
+	binary.Write(buf, binary.LittleEndian, uint32(16))
+	binary.Write(buf, binary.LittleEndian, uint16(1))
+	binary.Write(buf, binary.LittleEndian, numCh)
+	binary.Write(buf, binary.LittleEndian, uint32(sampleRate))
+	binary.Write(buf, binary.LittleEndian, uint32(byteRate))
+	binary.Write(buf, binary.LittleEndian, blockAlign)
+	binary.Write(buf, binary.LittleEndian, bitsPS)
+	buf.WriteString("data")
+	binary.Write(buf, binary.LittleEndian, uint32(dataSize))
+
+	for _, s := range samples {
+		if s > 1 {
+			s = 1
 		}
-		if v < -1 {
-			v = -1
+		if s < -1 {
+			s = -1
 		}
-		s := int16(v * 32767)
-		buf[44+i*2] = byte(s)
-		buf[44+i*2+1] = byte(s >> 8)
+		binary.Write(buf, binary.LittleEndian, int16(s*32767))
 	}
-	return buf
+	return buf.Bytes()
 }
 
+// makeBeep — простой тон с затуханием
 func makeBeep(dur float64, freq float64, sr int) []float64 {
 	n := int(float64(sr) * dur)
 	out := make([]float64, n)
 	for i := 0; i < n; i++ {
 		t := float64(i) / float64(sr)
-		out[i] = math.Sin(6.2832*freq*t) * math.Exp(-t*8) * 0.5
+		out[i] = math.Sin(2*math.Pi*freq*t) * math.Exp(-t*8) * 0.5
 	}
 	return out
 }
 
+// makeNoise — белый шум с затуханием
 func makeNoise(dur float64, sr int) []float64 {
 	n := int(float64(sr) * dur)
 	out := make([]float64, n)
@@ -1035,8 +1057,195 @@ func makeNoise(dur float64, sr int) []float64 {
 	return out
 }
 
-func playSoundP(snd *PlayerSound) {
-	_ = snd
+// makeSweep — sweep от f1 к f2
+func makeSweep(dur float64, f1, f2 float64, sr int) []float64 {
+	n := int(float64(sr) * dur)
+	out := make([]float64, n)
+	for i := 0; i < n; i++ {
+		t := float64(i) / float64(sr)
+		p := float64(i) / float64(n)
+		freq := f1 + (f2-f1)*p
+		out[i] = math.Sin(2*math.Pi*freq*t) * math.Exp(-t*4) * 0.5
+	}
+	return out
+}
+
+// makeArp — арпеджио по набору нот
+func makeArp(dur float64, freqs []float64, sr int) []float64 {
+	n := int(float64(sr) * dur)
+	out := make([]float64, n)
+	stepDur := dur / float64(len(freqs))
+	for i := 0; i < n; i++ {
+		t := float64(i) / float64(sr)
+		idx := int(t / stepDur)
+		if idx >= len(freqs) {
+			idx = len(freqs) - 1
+		}
+		out[i] = math.Sin(2*math.Pi*freqs[idx]*t) * math.Exp(-t*5) * 0.4
+	}
+	return out
+}
+
+// makeSquare — меандр (square wave) для ретро-звуков
+func makeSquare(dur float64, freq float64, sr int) []float64 {
+	n := int(float64(sr) * dur)
+	out := make([]float64, n)
+	period := float64(sr) / freq
+	for i := 0; i < n; i++ {
+		t := float64(i) / float64(sr)
+		phase := float64(i) / period
+		if phase-float64(int(phase)) < 0.5 {
+			out[i] = 0.3 * math.Exp(-t*6)
+		} else {
+			out[i] = -0.3 * math.Exp(-t*6)
+		}
+	}
+	return out
+}
+
+// makeChord — аккорд из нескольких нот
+func makeChord(dur float64, freqs []float64, sr int) []float64 {
+	n := int(float64(sr) * dur)
+	out := make([]float64, n)
+	for i := 0; i < n; i++ {
+		t := float64(i) / float64(sr)
+		v := 0.0
+		for _, f := range freqs {
+			v += math.Sin(2*math.Pi*f*t) * math.Exp(-t*3)
+		}
+		v /= float64(len(freqs))
+		out[i] = v * 0.4
+	}
+	return out
+}
+
+// makeImpact — мощный удар (низкий sweep + шум)
+func makeImpact(dur float64, sr int) []float64 {
+	n := int(float64(sr) * dur)
+	out := make([]float64, n)
+	for i := 0; i < n; i++ {
+		t := float64(i) / float64(sr)
+		// Низкий sweep
+		freq := 200.0 - 80.0*t
+		if freq < 40 {
+			freq = 40
+		}
+		sweep := math.Sin(2*math.Pi*freq*t) * math.Exp(-t*10) * 0.4
+		// Шум
+		noise := (rand.Float64()*2 - 1) * math.Exp(-t*15) * 0.3
+		out[i] = sweep + noise
+	}
+	return out
+}
+
+// makeSpark — искра/звон (высокий ping)
+func makeSpark(dur float64, freq float64, sr int) []float64 {
+	n := int(float64(sr) * dur)
+	out := make([]float64, n)
+	for i := 0; i < n; i++ {
+		t := float64(i) / float64(sr)
+		out[i] = math.Sin(2*math.Pi*freq*t) * math.Exp(-t*20) * 0.3
+	}
+	return out
+}
+
+func initAudio() {
+	audioCtx = audio.NewContext(44100)
+
+	// === УДАР ПО ТАЙЛАМ ===
+	// Мощный impact + высокий звон
+	impactData := makeImpact(0.2, 44100)
+	sparkData := makeSpark(0.08, 1200, 44100)
+	strikeSamples := make([]float64, len(impactData))
+	for i := range strikeSamples {
+		spark := 0.0
+		if i < len(sparkData) {
+			spark = sparkData[i]
+		}
+		strikeSamples[i] = impactData[i]*0.7 + spark*0.3
+	}
+	sndStrike, _ = audio.NewPlayer(audioCtx, bytes.NewReader(generateWAV(strikeSamples, 44100)))
+
+	// === МОНЕТА ===
+	// Яркий высокий ping с harmonic
+	coinBase := makeBeep(0.1, 1200, 44100)
+	coinHarmonic := makeSpark(0.15, 2400, 44100)
+	coinSamples := make([]float64, len(coinBase))
+	for i := range coinSamples {
+		h := 0.0
+		if i < len(coinHarmonic) {
+			h = coinHarmonic[i]
+		}
+		coinSamples[i] = coinBase[i]*0.6 + h*0.4
+	}
+	sndCoin, _ = audio.NewPlayer(audioCtx, bytes.NewReader(generateWAV(coinSamples, 44100)))
+
+	// === КОМБО ===
+	// Восходящее арпеджио — C-E-G-C
+	comboArp := makeArp(0.3, []float64{523, 659, 784, 1047}, 44100)
+	sndCombo, _ = audio.NewPlayer(audioCtx, bytes.NewReader(generateWAV(comboArp, 44100)))
+
+	// === УРОН (игрок получает урон) ===
+	// Нисходящий резкий sweep
+	hitSweep := makeSweep(0.3, 400, 80, 44100)
+	hitNoise := makeNoise(0.2, 44100)
+	hitSamples := make([]float64, len(hitSweep))
+	for i := range hitSamples {
+		n := 0.0
+		if i < len(hitNoise) {
+			n = hitNoise[i]
+		}
+		hitSamples[i] = hitSweep[i]*0.7 + n*0.3
+	}
+	sndHit, _ = audio.NewPlayer(audioCtx, bytes.NewReader(generateWAV(hitSamples, 44100)))
+
+	// === СМЕРТЬ (Game Over) ===
+	// Мрачное нисходящее арпеджио
+	deathArp := makeArp(0.8, []float64{440, 370, 311, 220}, 44100)
+	deathDrone := makeBeep(0.8, 110, 44100)
+	deathSamples := make([]float64, len(deathArp))
+	for i := range deathSamples {
+		d := 0.0
+		if i < len(deathDrone) {
+			d = deathDrone[i]
+		}
+		deathSamples[i] = deathArp[i]*0.6 + d*0.4
+	}
+	sndDeath, _ = audio.NewPlayer(audioCtx, bytes.NewReader(generateWAV(deathSamples, 44100)))
+
+	// === ПОБЕДА ===
+	// Яркое восходящее арпеджио + аккорд
+	winArp := makeArp(0.6, []float64{523, 659, 784, 1047, 1319}, 44100)
+	winChord := makeChord(0.8, []float64{523, 659, 784}, 44100)
+	winSamples := make([]float64, len(winArp))
+	for i := range winSamples {
+		c := 0.0
+		if i < len(winChord) {
+			c = winChord[i]
+		}
+		winSamples[i] = winArp[i]*0.5 + c*0.5
+	}
+	sndWin, _ = audio.NewPlayer(audioCtx, bytes.NewReader(generateWAV(winSamples, 44100)))
+
+	// === МЕНЮ (клик) ===
+	sndMenu, _ = audio.NewPlayer(audioCtx, bytes.NewReader(generateWAV(makeBeep(0.05, 880, 44100), 44100)))
+
+	// === ПАУЗА ===
+	sndPause, _ = audio.NewPlayer(audioCtx, bytes.NewReader(generateWAV(makeBeep(0.06, 440, 44100), 44100)))
+
+	// === ШАГ (тихий клик при движении) ===
+	sndStep, _ = audio.NewPlayer(audioCtx, bytes.NewReader(generateWAV(makeBeep(0.02, 300, 44100), 44100)))
+
+	// === ТАЙМЕР ТИК (последние 10 секунд) ===
+	sndTick, _ = audio.NewPlayer(audioCtx, bytes.NewReader(generateWAV(makeSquare(0.05, 600, 44100), 44100)))
+}
+
+func playSoundP(player *audio.Player) {
+	if player == nil {
+		return
+	}
+	player.Rewind()
+	player.Play()
 }
 
 // ======================== MAIN ========================
