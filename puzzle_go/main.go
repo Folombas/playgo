@@ -8,6 +8,7 @@ import (
 	"log"
 	"math"
 	"math/rand"
+	"os"
 	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -42,6 +43,7 @@ const (
 	S_MENU State = iota
 	S_PLAY
 	S_PAUSE
+	S_OPTIONS
 	S_WIN
 )
 
@@ -265,6 +267,7 @@ type Game struct {
 	buttons     []*MenuButton
 	menuAnim    int
 	highScore   int
+	enterPrev   bool
 }
 
 func NewGame() *Game {
@@ -337,15 +340,23 @@ func (g *Game) initMenuButtons() {
 
 	if spr, ok := g.menuSprites["play"]; ok {
 		g.buttons = append(g.buttons, &MenuButton{
-			x: WIN_W/2 - 80, y: WIN_H/2 - 20, w: 160, h: 50,
+			x: WIN_W/2 - 90, y: WIN_H/2 - 60, w: 180, h: 44,
 			label: "PLAY", spr: spr,
 		})
 	} else {
 		g.buttons = append(g.buttons, &MenuButton{
-			x: WIN_W/2 - 60, y: WIN_H/2 - 20, w: 120, h: 40,
+			x: WIN_W/2 - 60, y: WIN_H/2 - 60, w: 120, h: 40,
 			label: "▶ PLAY",
 		})
 	}
+	g.buttons = append(g.buttons, &MenuButton{
+		x: WIN_W/2 - 90, y: WIN_H/2, w: 180, h: 44,
+		label: "OPTIONS", spr: g.menuSprites["options"],
+	})
+	g.buttons = append(g.buttons, &MenuButton{
+		x: WIN_W/2 - 90, y: WIN_H/2 + 60, w: 180, h: 44,
+		label: "EXIT", spr: g.menuSprites["exit"],
+	})
 }
 
 func (g *Game) initPauseButtons() {
@@ -372,6 +383,21 @@ func (g *Game) initPauseButtons() {
 		g.buttons = append(g.buttons, &MenuButton{
 			x: WIN_W/2 - 60, y: WIN_H/2 + 30, w: 120, h: 40,
 			label: "▶ RESTART",
+		})
+	}
+}
+
+func (g *Game) initOptionsButtons() {
+	g.buttons = nil
+	if spr, ok := g.menuSprites["back"]; ok {
+		g.buttons = append(g.buttons, &MenuButton{
+			x: WIN_W/2 - 80, y: WIN_H/2 + 80, w: 160, h: 44,
+			label: "▶ BACK", spr: spr,
+		})
+	} else {
+		g.buttons = append(g.buttons, &MenuButton{
+			x: WIN_W/2 - 60, y: WIN_H/2 + 80, w: 120, h: 40,
+			label: "▶ BACK",
 		})
 	}
 }
@@ -444,9 +470,15 @@ func (g *Game) Update() error {
 		for _, btn := range g.buttons {
 			btn.hover = btn.contains(mx, my)
 			if btn.hover && inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
-				if btn.label == "PLAY" || btn.label == "▶ PLAY" {
+				if btn.label == "PLAY" {
 					g.start()
 					playSoundP(sndSwap)
+				} else if btn.label == "OPTIONS" {
+					g.state = S_OPTIONS
+					g.initOptionsButtons()
+					playSoundP(sndSwap)
+				} else if btn.label == "EXIT" {
+					os.Exit(0)
 				}
 			}
 		}
@@ -454,6 +486,29 @@ func (g *Game) Update() error {
 			g.start()
 			playSoundP(sndSwap)
 		}
+		return nil
+	}
+
+	// ===== OPTIONS =====
+	if g.state == S_OPTIONS {
+		esc := ebiten.IsKeyPressed(ebiten.KeyEscape) || ebiten.IsKeyPressed(ebiten.KeyBackspace)
+		if esc && !g.enterPrev {
+			g.state = S_MENU
+			g.initMenuButtons()
+			playSoundP(sndSwap)
+		}
+		mx, my := ebiten.CursorPosition()
+		for _, btn := range g.buttons {
+			btn.hover = btn.contains(mx, my)
+			if btn.hover && inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
+				if btn.label == "▶ BACK" {
+					g.state = S_MENU
+					g.initMenuButtons()
+					playSoundP(sndSwap)
+				}
+			}
+		}
+		g.enterPrev = esc
 		return nil
 	}
 
@@ -774,6 +829,11 @@ func (g *Game) Draw(s *ebiten.Image) {
 		return
 	}
 
+	if g.state == S_OPTIONS {
+		g.drawOptions(s)
+		return
+	}
+
 	if g.state == S_PAUSE {
 		g.drawPause(s)
 		return
@@ -940,6 +1000,36 @@ func (g *Game) drawMenu(s *ebiten.Image) {
 		hs := fmt.Sprintf("High Score: %d", g.highScore)
 		bwHS := text.BoundString(basicfont.Face7x13, hs)
 		text.Draw(s, hs, basicfont.Face7x13, WIN_W/2-bwHS.Dx()/2, WIN_H/2+240, color.RGBA{255, 255, 80, 255})
+	}
+}
+
+func (g *Game) drawOptions(s *ebiten.Image) {
+	s.Fill(color.RGBA{10, 10, 30, 255})
+
+	if sprBg := g.menuSprites["stars_bg"]; sprBg != nil {
+		for i := 0; i < 4; i++ {
+			for j := 0; j < 3; j++ {
+				op := &ebiten.DrawImageOptions{}
+				op.GeoM.Translate(float64(i*200), float64(j*200))
+				s.DrawImage(sprBg, op)
+			}
+		}
+	}
+
+	frameW, frameH := 300, 120
+	frameX, frameY := WIN_W/2-frameW/2, WIN_H/2-frameH/2-30
+	rectCachedP(s, frameX, frameY, frameW, frameH, color.RGBA{30, 30, 60, 220})
+
+	title := "CONTROLS"
+	bw := text.BoundString(basicfont.Face7x13, title)
+	text.Draw(s, title, basicfont.Face7x13, WIN_W/2-bw.Dx()/2, frameY+20, color.RGBA{255, 220, 100, 255})
+
+	text.Draw(s, "Click gem, then neighbor to swap", basicfont.Face7x13, WIN_W/2-120, frameY+50, color.RGBA{255, 255, 255, 255})
+	text.Draw(s, "ESC / P — Pause", basicfont.Face7x13, WIN_W/2-70, frameY+72, color.RGBA{255, 255, 255, 255})
+	text.Draw(s, "R — Restart", basicfont.Face7x13, WIN_W/2-50, frameY+94, color.RGBA{255, 255, 255, 255})
+
+	for _, btn := range g.buttons {
+		btn.Draw(s)
 	}
 }
 

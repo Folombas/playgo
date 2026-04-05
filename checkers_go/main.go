@@ -8,6 +8,7 @@ import (
 	"log"
 	"math"
 	"math/rand"
+	"os"
 	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -35,6 +36,7 @@ const (
 	S_MENU State = iota
 	S_PLAY
 	S_PAUSE
+	S_OPTIONS
 	S_WIN
 	S_LOSE
 )
@@ -938,6 +940,7 @@ type Game struct {
 	menuAnim    int
 	highScore   int
 	score       int
+	enterPrev   bool
 }
 
 func NewGame() *Game {
@@ -1010,15 +1013,23 @@ func (g *Game) initMenuButtons() {
 
 	if spr, ok := g.menuSprites["play"]; ok {
 		g.buttons = append(g.buttons, &MenuButton{
-			x: WW/2 - 80, y: WH/2 - 20, w: 160, h: 50,
+			x: WW/2 - 90, y: WH/2 - 60, w: 180, h: 44,
 			label: "NEW GAME", spr: spr,
 		})
 	} else {
 		g.buttons = append(g.buttons, &MenuButton{
-			x: WW/2 - 60, y: WH/2 - 20, w: 120, h: 40,
+			x: WW/2 - 60, y: WH/2 - 60, w: 120, h: 40,
 			label: "▶ NEW GAME",
 		})
 	}
+	g.buttons = append(g.buttons, &MenuButton{
+		x: WW/2 - 90, y: WH/2, w: 180, h: 44,
+		label: "OPTIONS", spr: g.menuSprites["options"],
+	})
+	g.buttons = append(g.buttons, &MenuButton{
+		x: WW/2 - 90, y: WH/2 + 60, w: 180, h: 44,
+		label: "EXIT", spr: g.menuSprites["exit"],
+	})
 }
 
 func (g *Game) initPauseButtons() {
@@ -1045,6 +1056,21 @@ func (g *Game) initPauseButtons() {
 		g.buttons = append(g.buttons, &MenuButton{
 			x: WW/2 - 60, y: WH/2 + 30, w: 120, h: 40,
 			label: "▶ RESTART",
+		})
+	}
+}
+
+func (g *Game) initOptionsButtons() {
+	g.buttons = nil
+	if spr, ok := g.menuSprites["back"]; ok {
+		g.buttons = append(g.buttons, &MenuButton{
+			x: WW/2 - 80, y: WH/2 + 80, w: 160, h: 44,
+			label: "▶ BACK", spr: spr,
+		})
+	} else {
+		g.buttons = append(g.buttons, &MenuButton{
+			x: WW/2 - 60, y: WH/2 + 80, w: 120, h: 40,
+			label: "▶ BACK",
 		})
 	}
 }
@@ -1096,9 +1122,15 @@ func (g *Game) Update() error {
 		for _, btn := range g.buttons {
 			btn.hover = btn.contains(mx, my)
 			if btn.hover && inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
-				if btn.label == "NEW GAME" || btn.label == "▶ NEW GAME" {
+				if btn.label == "NEW GAME" {
 					g.start()
 					play(sMove)
+				} else if btn.label == "OPTIONS" {
+					g.state = S_OPTIONS
+					g.initOptionsButtons()
+					play(sMove)
+				} else if btn.label == "EXIT" {
+					os.Exit(0)
 				}
 			}
 		}
@@ -1106,6 +1138,29 @@ func (g *Game) Update() error {
 			g.start()
 			play(sMove)
 		}
+		return nil
+	}
+
+	// ===== OPTIONS =====
+	if g.state == S_OPTIONS {
+		esc := ebiten.IsKeyPressed(ebiten.KeyEscape) || ebiten.IsKeyPressed(ebiten.KeyBackspace)
+		if esc && !g.enterPrev {
+			g.state = S_MENU
+			g.initMenuButtons()
+			play(sMove)
+		}
+		mx, my := ebiten.CursorPosition()
+		for _, btn := range g.buttons {
+			btn.hover = btn.contains(mx, my)
+			if btn.hover && inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
+				if btn.label == "▶ BACK" {
+					g.state = S_MENU
+					g.initMenuButtons()
+					play(sMove)
+				}
+			}
+		}
+		g.enterPrev = esc
 		return nil
 	}
 
@@ -1421,6 +1476,11 @@ func (g *Game) Draw(s *ebiten.Image) {
 		return
 	}
 
+	if g.state == S_OPTIONS {
+		g.drawOptions(s)
+		return
+	}
+
 	if g.state == S_PAUSE {
 		g.drawPause(s)
 		return
@@ -1673,6 +1733,53 @@ func (g *Game) drawMenu(s *ebiten.Image) {
 			op.GeoM.Translate(float64(x-sb.Dx()/2), float64(y-sb.Dy()/2))
 			s.DrawImage(spr, op)
 		}
+	}
+}
+
+func (g *Game) drawOptions(s *ebiten.Image) {
+	s.Fill(color.RGBA{10, 10, 30, 255})
+
+	if sprBg := g.menuSprites["stars_bg"]; sprBg != nil {
+		for i := 0; i < 4; i++ {
+			for j := 0; j < 3; j++ {
+				op := &ebiten.DrawImageOptions{}
+				op.GeoM.Translate(float64(i*200), float64(j*200))
+				s.DrawImage(sprBg, op)
+			}
+		}
+	}
+	if sprStars := g.menuSprites["stars"]; sprStars != nil {
+		t := fCount / 60
+		for i := 0; i < 8; i++ {
+			x := (i*90 + int(t*15)) % (WW + 40) - 20
+			y := 40 + int(math.Sin(float64(fCount)/30+float64(i))*15)
+			op := &ebiten.DrawImageOptions{}
+			op.GeoM.Scale(0.4, 0.4)
+			op.GeoM.Translate(float64(x), float64(y))
+			s.DrawImage(sprStars, op)
+		}
+	}
+
+	frameW, frameH := 320, 150
+	frameX, frameY := WW/2-frameW/2, WH/2-frameH/2-30
+	rectCachedC(s, frameX, frameY, frameW, frameH, color.RGBA{30, 30, 60, 220})
+
+	title := "CONTROLS"
+	bw := text.BoundString(basicfont.Face7x13, title)
+	text.Draw(s, title, basicfont.Face7x13, WW/2-bw.Dx()/2, frameY+20, color.RGBA{255, 220, 100, 255})
+
+	controls := []string{
+		"Mouse — Select & Move pieces",
+		"ESC / P — Pause",
+		"R — Restart Game",
+	}
+	for i, line := range controls {
+		text.Draw(s, line, basicfont.Face7x13, WW/2-120, frameY+55+i*22, color.RGBA{255, 255, 255, 255})
+	}
+	text.Draw(s, "Flying Kings | Forced Captures", basicfont.Face7x13, WW/2-120, frameY+125, color.RGBA{255, 255, 100, 255})
+
+	for _, btn := range g.buttons {
+		btn.Draw(s)
 	}
 }
 

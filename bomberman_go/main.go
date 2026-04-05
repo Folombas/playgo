@@ -8,6 +8,7 @@ import (
 	"log"
 	"math"
 	"math/rand"
+	"os"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/audio"
@@ -80,6 +81,7 @@ var (
 	C_PU_HEART = color.RGBA{255, 50, 100, 255}
 	C_PU_SHIELD = color.RGBA{100, 200, 255, 255}
 	C_PU_KICK  = color.RGBA{200, 150, 100, 255}
+	C_GOLD     = color.RGBA{255, 220, 100, 255}
 
 	// Menu цвета
 	C_MENU_BG     = color.RGBA{10, 10, 30, 255}
@@ -95,6 +97,7 @@ const (
 	S_MENU State = iota
 	S_PLAY
 	S_PAUSE
+	S_OPTIONS
 	S_DEAD
 	S_WIN
 )
@@ -727,18 +730,18 @@ func (g *Game) loadMenuSprites() {
 
 func (g *Game) initButtons() {
 	g.buttons = nil
-	
-	if spr, ok := g.menuSprites["play"]; ok {
-		g.buttons = append(g.buttons, &MenuButton{
-			x: WinW/2 - 80, y: WinH/2 - 20, w: 160, h: 50,
-			label: "PLAY", spr: spr,
-		})
-	} else {
-		g.buttons = append(g.buttons, &MenuButton{
-			x: WinW/2 - 60, y: WinH/2 - 20, w: 120, h: 40,
-			label: "▶ PLAY",
-		})
-	}
+	g.buttons = append(g.buttons, &MenuButton{
+		x: WinW/2 - 90, y: WinH/2 - 60, w: 180, h: 44,
+		label: "PLAY", spr: g.menuSprites["play"],
+	})
+	g.buttons = append(g.buttons, &MenuButton{
+		x: WinW/2 - 90, y: WinH/2, w: 180, h: 44,
+		label: "OPTIONS", spr: g.menuSprites["options"],
+	})
+	g.buttons = append(g.buttons, &MenuButton{
+		x: WinW/2 - 90, y: WinH/2 + 60, w: 180, h: 44,
+		label: "EXIT", spr: g.menuSprites["exit"],
+	})
 }
 
 func (g *Game) initLevel() {
@@ -843,17 +846,23 @@ func (g *Game) Update() error {
 	// ===== МЕНЮ =====
 	if g.state == S_MENU {
 		g.menuAnim++
-		
+
 		mx, my := ebiten.CursorPosition()
 		for _, btn := range g.buttons {
 			btn.hover = btn.contains(mx, my)
 			if btn.hover && inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
-				if btn.label == "PLAY" || btn.label == "▶ PLAY" {
+				if btn.label == "PLAY" {
 					g.state = S_PLAY
 					g.initLevel()
 					g.score = 0
 					playSound(soundMenu)
 					fmt.Println("▶ Game started! Level", g.level)
+				} else if btn.label == "OPTIONS" {
+					g.state = S_OPTIONS
+					g.initOptionsButtons()
+					playSound(soundMenu)
+				} else if btn.label == "EXIT" {
+					os.Exit(0)
 				}
 			}
 		}
@@ -866,6 +875,29 @@ func (g *Game) Update() error {
 			playSound(soundMenu)
 		}
 		g.enterPrev = enter
+		return nil
+	}
+
+	// ===== OPTIONS =====
+	if g.state == S_OPTIONS {
+		esc := ebiten.IsKeyPressed(ebiten.KeyEscape) || ebiten.IsKeyPressed(ebiten.KeyBackspace)
+		if esc && !g.enterPrev {
+			g.state = S_MENU
+			g.initButtons()
+			playSound(soundMenu)
+		}
+		mx, my := ebiten.CursorPosition()
+		for _, btn := range g.buttons {
+			btn.hover = btn.contains(mx, my)
+			if btn.hover && inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
+				if btn.label == "▶ BACK" {
+					g.state = S_MENU
+					g.initButtons()
+					playSound(soundMenu)
+				}
+			}
+		}
+		g.enterPrev = esc
 		return nil
 	}
 
@@ -1099,6 +1131,21 @@ func (g *Game) initPauseButtons() {
 	}
 }
 
+func (g *Game) initOptionsButtons() {
+	g.buttons = nil
+	if spr, ok := g.menuSprites["back"]; ok {
+		g.buttons = append(g.buttons, &MenuButton{
+			x: WinW/2 - 80, y: WinH/2 + 80, w: 160, h: 44,
+			label: "▶ BACK", spr: spr,
+		})
+	} else {
+		g.buttons = append(g.buttons, &MenuButton{
+			x: WinW/2 - 60, y: WinH/2 + 80, w: 120, h: 40,
+			label: "▶ BACK",
+		})
+	}
+}
+
 func (g *Game) playerHit() {
 	if g.player.shield {
 		g.player.shield = false
@@ -1200,6 +1247,11 @@ func (g *Game) Draw(s *ebiten.Image) {
 
 	if g.state == S_MENU {
 		g.drawMenu(s)
+		return
+	}
+
+	if g.state == S_OPTIONS {
+		g.drawOptions(s)
 		return
 	}
 
@@ -1413,6 +1465,20 @@ func (g *Game) drawMenu(s *ebiten.Image) {
 		}
 	}
 
+	// Меню-частицы
+	if sprPart := g.menuSprites["particles1"]; sprPart != nil {
+		t := frameCount / 40
+		for i := 0; i < 12; i++ {
+			x := (i*80 + int(t*10)) % (WinW + 30) - 15
+			y := 30 + int(math.Sin(float64(frameCount)/25+float64(i)*1.5)*30) + 100
+			op := &ebiten.DrawImageOptions{}
+			op.GeoM.Scale(0.3, 0.3)
+			op.ColorM.Scale(1, 0.8, 0.5, 0.6)
+			op.GeoM.Translate(float64(x), float64(y))
+			s.DrawImage(sprPart, op)
+		}
+	}
+
 	// Заголовок
 	title := "BOMBERMAN GO"
 	bw := text.BoundString(basicfont.Face7x13, title)
@@ -1441,7 +1507,64 @@ func (g *Game) drawMenu(s *ebiten.Image) {
 	if g.highScore > 0 {
 		hs := fmt.Sprintf("High Score: %d", g.highScore)
 		bwHS := text.BoundString(basicfont.Face7x13, hs)
-		text.Draw(s, hs, basicfont.Face7x13, WinW/2-bwHS.Dx()/2, WinH/2+180, C_YELLOW)
+		text.Draw(s, hs, basicfont.Face7x13, WinW/2-bwHS.Dx()/2, WinH/2+200, C_YELLOW)
+	}
+}
+
+func (g *Game) drawOptions(s *ebiten.Image) {
+	s.Fill(C_MENU_BG)
+
+	// Фон со звёздами
+	if sprBg := g.menuSprites["stars_bg"]; sprBg != nil {
+		for i := 0; i < 5; i++ {
+			for j := 0; j < 4; j++ {
+				op := &ebiten.DrawImageOptions{}
+				op.GeoM.Translate(float64(i*200), float64(j*200))
+				s.DrawImage(sprBg, op)
+			}
+		}
+	}
+	if sprStars := g.menuSprites["stars"]; sprStars != nil {
+		t := frameCount / 60
+		for i := 0; i < 8; i++ {
+			x := (i*120 + int(t*20)) % (WinW + 40) - 20
+			y := 50 + int(math.Sin(float64(frameCount)/30+float64(i))*20)
+			op := &ebiten.DrawImageOptions{}
+			op.GeoM.Scale(0.5, 0.5)
+			op.GeoM.Translate(float64(x), float64(y))
+			s.DrawImage(sprStars, op)
+		}
+	}
+
+	// Диалоговая рамка
+	frameW, frameH := 300, 180
+	frameX, frameY := WinW/2-frameW/2, WinH/2-frameH/2-30
+	rectCached(s, frameX, frameY, frameW, frameH, color.RGBA{30, 30, 60, 220})
+	rectCached(s, frameX+2, frameY+2, frameW-4, frameH-4, color.RGBA{20, 20, 50, 200})
+
+	// Заголовок
+	title := "CONTROLS"
+	bw := text.BoundString(basicfont.Face7x13, title)
+	text.Draw(s, title, basicfont.Face7x13, WinW/2-bw.Dx()/2, frameY+20, C_GOLD)
+
+	// Управление
+	controls := []string{
+		"WASD / Arrows — Move",
+		"SPACE — Place Bomb",
+		"ESC / P — Pause",
+		"R — Restart Level",
+	}
+	for i, line := range controls {
+		text.Draw(s, line, basicfont.Face7x13, WinW/2-80, frameY+50+i*20, C_WHITE)
+	}
+
+	// Power-ups legend
+	text.Draw(s, "Power-ups:", basicfont.Face7x13, WinW/2-45, frameY+135, C_YELLOW)
+	text.Draw(s, "F=Fire  B=Bomb  S=Speed  H=Life  D=Shield  K=Kick", basicfont.Face7x13, WinW/2-165, frameY+155, C_WHITE)
+
+	// Кнопка Back
+	for _, btn := range g.buttons {
+		btn.Draw(s)
 	}
 }
 

@@ -8,6 +8,7 @@ import (
 	"log"
 	"math"
 	"math/rand"
+	"os"
 	"sort"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -39,6 +40,7 @@ const (
 	S_MENU State = iota
 	S_PLAY
 	S_PAUSE
+	S_OPTIONS
 	S_DEAD
 	S_WIN
 )
@@ -282,10 +284,10 @@ type Game struct {
 	coinSprites []*ebiten.Image
 	menuAnim    int
 	highScore   int
-	enterPrev   bool
 
 	shakeIntensity float64
 	shakeTimer     int
+	enterPrev      bool
 }
 
 func NewGame() *Game {
@@ -325,9 +327,11 @@ func (g *Game) loadSprites() {
 
 	// Menu sprites
 	menuFiles := map[string]string{
-		"play":    "play button.png",
-		"back":    "Back Button.png",
-		"stars":   "stars.png",
+		"play":     "play button.png",
+		"options":  "Options Button.png",
+		"exit":     "Exit Button.png",
+		"back":     "Back Button.png",
+		"stars":    "stars.png",
 		"stars_bg": "stars back.png",
 	}
 	for name, file := range menuFiles {
@@ -359,15 +363,23 @@ func (g *Game) initMenuButtons() {
 	g.buttons = nil
 	if spr, ok := g.menuSprites["play"]; ok {
 		g.buttons = append(g.buttons, &MenuButton{
-			x: WIN_W/2 - 80, y: WIN_H/2 - 20, w: 160, h: 50,
+			x: WIN_W/2 - 90, y: WIN_H/2 - 60, w: 180, h: 44,
 			label: "PLAY", spr: spr,
 		})
 	} else {
 		g.buttons = append(g.buttons, &MenuButton{
-			x: WIN_W/2 - 60, y: WIN_H/2 - 20, w: 120, h: 40,
+			x: WIN_W/2 - 60, y: WIN_H/2 - 60, w: 120, h: 40,
 			label: "▶ PLAY",
 		})
 	}
+	g.buttons = append(g.buttons, &MenuButton{
+		x: WIN_W/2 - 90, y: WIN_H/2, w: 180, h: 44,
+		label: "OPTIONS", spr: g.menuSprites["options"],
+	})
+	g.buttons = append(g.buttons, &MenuButton{
+		x: WIN_W/2 - 90, y: WIN_H/2 + 60, w: 180, h: 44,
+		label: "EXIT", spr: g.menuSprites["exit"],
+	})
 }
 
 func (g *Game) initPauseButtons() {
@@ -392,6 +404,21 @@ func (g *Game) initPauseButtons() {
 		g.buttons = append(g.buttons, &MenuButton{
 			x: WIN_W/2 - 60, y: WIN_H/2 + 30, w: 120, h: 40,
 			label: "▶ RESTART",
+		})
+	}
+}
+
+func (g *Game) initOptionsButtons() {
+	g.buttons = nil
+	if spr, ok := g.menuSprites["back"]; ok {
+		g.buttons = append(g.buttons, &MenuButton{
+			x: WIN_W/2 - 80, y: WIN_H/2 + 80, w: 160, h: 44,
+			label: "▶ BACK", spr: spr,
+		})
+	} else {
+		g.buttons = append(g.buttons, &MenuButton{
+			x: WIN_W/2 - 60, y: WIN_H/2 + 80, w: 120, h: 40,
+			label: "▶ BACK",
 		})
 	}
 }
@@ -599,12 +626,20 @@ func (g *Game) Update() error {
 		for _, btn := range g.buttons {
 			btn.hover = btn.contains(mx, my)
 			if btn.hover && inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
-				g.state = S_PLAY
-				g.level = 1
-				g.startLevel()
-				g.highScore = 0
-				playSoundP(sndMenu)
-				return nil
+				if btn.label == "PLAY" {
+					g.state = S_PLAY
+					g.level = 1
+					g.startLevel()
+					g.highScore = 0
+					playSoundP(sndMenu)
+					return nil
+				} else if btn.label == "OPTIONS" {
+					g.state = S_OPTIONS
+					g.initOptionsButtons()
+					playSoundP(sndMenu)
+				} else if btn.label == "EXIT" {
+					os.Exit(0)
+				}
 			}
 		}
 		if inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeySpace) {
@@ -614,6 +649,29 @@ func (g *Game) Update() error {
 			g.highScore = 0
 			playSoundP(sndMenu)
 		}
+		return nil
+	}
+
+	// ===== OPTIONS =====
+	if g.state == S_OPTIONS {
+		esc := ebiten.IsKeyPressed(ebiten.KeyEscape) || ebiten.IsKeyPressed(ebiten.KeyBackspace)
+		if esc && !g.enterPrev {
+			g.state = S_MENU
+			g.initMenuButtons()
+			playSoundP(sndMenu)
+		}
+		mx, my := ebiten.CursorPosition()
+		for _, btn := range g.buttons {
+			btn.hover = btn.contains(mx, my)
+			if btn.hover && inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
+				if btn.label == "▶ BACK" {
+					g.state = S_MENU
+					g.initMenuButtons()
+					playSoundP(sndMenu)
+				}
+			}
+		}
+		g.enterPrev = esc
 		return nil
 	}
 
@@ -757,6 +815,10 @@ func (g *Game) Draw(s *ebiten.Image) {
 
 	if g.state == S_MENU {
 		g.drawMenu(s)
+		return
+	}
+	if g.state == S_OPTIONS {
+		g.drawOptions(s)
 		return
 	}
 	if g.state == S_PAUSE {
@@ -921,6 +983,32 @@ func (g *Game) drawMenu(s *ebiten.Image) {
 		hs := fmt.Sprintf("High Score: %d", g.highScore)
 		bwHS := text.BoundString(basicfont.Face7x13, hs)
 		text.Draw(s, hs, basicfont.Face7x13, WIN_W/2-bwHS.Dx()/2, WIN_H/2+200, C_GOLD)
+	}
+}
+
+func (g *Game) drawOptions(s *ebiten.Image) {
+	s.Fill(C_BG)
+	if sprBg := g.menuSprites["stars_bg"]; sprBg != nil {
+		for i := 0; i < 4; i++ {
+			for j := 0; j < 3; j++ {
+				op := &ebiten.DrawImageOptions{}
+				op.GeoM.Translate(float64(i*200), float64(j*200))
+				s.DrawImage(sprBg, op)
+			}
+		}
+	}
+	frameW, frameH := 300, 130
+	frameX, frameY := WIN_W/2-frameW/2, WIN_H/2-frameH/2-30
+	rectC(s, frameX, frameY, frameW, frameH, color.RGBA{30, 30, 60, 220})
+	title := "CONTROLS"
+	bw := text.BoundString(basicfont.Face7x13, title)
+	text.Draw(s, title, basicfont.Face7x13, WIN_W/2-bw.Dx()/2, frameY+20, C_GOLD)
+	text.Draw(s, "WASD/Arrows — Move", basicfont.Face7x13, WIN_W/2-80, frameY+50, C_WHITE)
+	text.Draw(s, "SPACE — Strike tiles", basicfont.Face7x13, WIN_W/2-75, frameY+72, C_WHITE)
+	text.Draw(s, "ESC/P — Pause", basicfont.Face7x13, WIN_W/2-60, frameY+94, C_WHITE)
+	text.Draw(s, "Match 3+ same color = COMBO!", basicfont.Face7x13, WIN_W/2-115, frameY+116, C_YELLOW)
+	for _, btn := range g.buttons {
+		btn.Draw(s)
 	}
 }
 
