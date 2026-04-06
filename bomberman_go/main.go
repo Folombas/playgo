@@ -631,8 +631,14 @@ type Cell struct {
 // ======================== КЭШИРОВАННЫЕ ИЗОБРАЖЕНИЯ ========================
 var cachedRects = make(map[string]*ebiten.Image)
 
+func colorToRGBA(c color.Color) color.RGBA {
+	r, g, b, a := c.RGBA()
+	return color.RGBA{uint8(r >> 8), uint8(g >> 8), uint8(b >> 8), uint8(a >> 8)}
+}
+
 func rectCached(s *ebiten.Image, x, y, w, h int, c color.Color) {
-	key := fmt.Sprintf("%d_%d_%d_%d_%d_%d_%d", c.(color.RGBA).R, c.(color.RGBA).G, c.(color.RGBA).B, c.(color.RGBA).A, w, h, 0)
+	rgba := colorToRGBA(c)
+	key := fmt.Sprintf("%d_%d_%d_%d_%d_%d", rgba.R, rgba.G, rgba.B, rgba.A, w, h)
 	if img, ok := cachedRects[key]; ok {
 		op := &ebiten.DrawImageOptions{}
 		op.GeoM.Translate(float64(x), float64(y))
