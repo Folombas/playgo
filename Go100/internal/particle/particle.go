@@ -11,13 +11,13 @@ import (
 
 // Particle represents a visual particle effect
 type Particle struct {
-	X, Y       float64
-	VX, VY     float64
-	Life       int
-	MaxLife    int
-	Color      color.Color
-	Size       float64
-	Type       ParticleType
+	X, Y    float64
+	VX, VY  float64
+	Life    int
+	MaxLife int
+	Color   color.Color
+	Size    float64
+	Type    ParticleType
 }
 
 type ParticleType int
@@ -46,12 +46,10 @@ func NewSystem() *System {
 func (ps *System) Emit(x, y float64, ptype ParticleType, count int) {
 	for i := 0; i < count; i++ {
 		p := &Particle{
-			X:       x,
-			Y:       y,
-			Life:    20 + rand.Intn(30),
-			MaxLife: 50,
-			Size:    2 + rand.Float64()*4,
-			Type:    ptype,
+			X:    x + (rand.Float64()-0.5)*10,
+			Y:    y + (rand.Float64()-0.5)*10,
+			Life: 20 + rand.Intn(30),
+			Size: 2 + rand.Float64()*4,
 		}
 
 		angle := rand.Float64() * math.Pi * 2
@@ -112,12 +110,10 @@ func (ps *System) Update() {
 		p.Y += p.VY
 		p.Life--
 
-		// Gravity
 		if p.Type == PTDeath || p.Type == PTExplosion {
 			p.VY += 0.1
 		}
 
-		// Friction
 		p.VX *= 0.98
 		p.VY *= 0.98
 
@@ -134,16 +130,14 @@ func (ps *System) Draw(screen *ebiten.Image) {
 		alpha := float64(p.Life) / float64(p.MaxLife)
 		size := p.Size * alpha
 
-		vector.DrawFilledCircle(screen, p.X, p.Y, size, p.Color, true)
+		if col, ok := p.Color.(color.RGBA); ok {
+			c := color.RGBA{col.R, col.G, col.B, uint8(float64(col.A) * alpha)}
+			vector.DrawFilledCircle(screen, float32(p.X), float32(p.Y), float32(size), c, false)
+		}
 	}
 }
 
 // IsActive returns true if there are active particles
 func (ps *System) IsActive() bool {
 	return len(ps.particles) > 0
-}
-
-// Clear removes all particles
-func (ps *System) Clear() {
-	ps.particles = ps.particles[:0]
 }

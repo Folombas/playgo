@@ -6,7 +6,7 @@ import (
 	"math"
 
 	"towerdefense/internal/config"
-	"towerdefense/internal/map"
+	gamemap "towerdefense/internal/map"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/vector"
@@ -14,6 +14,15 @@ import (
 
 // PathNode alias
 type PathNode = gamemap.PathNode
+
+// Enemy type constants - exported for use in game
+const (
+	EnemyBasic = iota
+	EnemyFast
+	EnemyTank
+	EnemyBoss
+	EnemySwarm
+)
 
 // Enemy represents an enemy unit
 type Enemy struct {
@@ -24,7 +33,7 @@ type Enemy struct {
 	Speed      float64
 	BaseSpeed  float64
 	Reward     int
-	Progress   float64 // 0.0 to 1.0 along path
+	Progress   float64
 	Alive      bool
 	SlowTimer  int
 	SlowFactor float64
@@ -94,10 +103,10 @@ func (e *Enemy) Update(pathPositions []PathPosition) {
 	}
 
 	// Move along path
-	e.Progress += e.Speed * 0.002 // Normalize progress
+	e.Progress += e.Speed * 0.002
 
 	if e.Progress >= 1.0 {
-		e.Alive = false // Reached the end
+		e.Alive = false
 	}
 
 	// Update position from path
@@ -142,39 +151,35 @@ func (e *Enemy) Draw(screen *ebiten.Image) {
 	}
 
 	stats := enemyStats[e.Type]
+	sz := float32(stats.Size)
 
 	// Shadow
-	vector.DrawFilledCircle(screen, e.X+2, e.Y+2, stats.Size, color.RGBA{0, 0, 0, 100}, true)
+	vector.DrawFilledCircle(screen, float32(e.X)+2, float32(e.Y)+2, sz+1, color.RGBA{0, 0, 0, 100}, false)
 
 	// Body
 	drawColor := stats.Color
 	if e.HitFlash > 0 {
 		drawColor = color.White
 	} else if e.SlowTimer > 0 {
-		// Blue tint when slowed
 		drawColor = color.RGBA{150, 200, 255, 255}
 	}
 
-	vector.DrawFilledCircle(screen, e.X, e.Y, stats.Size, drawColor, true)
-	
-	// Border
-	vector.StrokeCircle(screen, e.X, e.Y, stats.Size, 2, color.RGBA{0, 0, 0, 200}, true)
+	vector.DrawFilledCircle(screen, float32(e.X), float32(e.Y), sz, drawColor, false)
+	vector.StrokeCircle(screen, float32(e.X), float32(e.Y), sz, 2, color.RGBA{0, 0, 0, 200}, false)
 
 	// HP bar
 	if e.HP < e.MaxHP {
-		barWidth := stats.Size * 2
-		barHeight := float64(4)
+		barWidth := sz * 2
+		barHeight := float32(4)
 		hpRatio := e.HP / e.MaxHP
 
-		// Background
-		vector.DrawFilledRect(screen, e.X-barWidth/2, e.Y-stats.Size-8, barWidth, barHeight, color.RGBA{50, 50, 50, 255}, true)
-		
-		// HP fill
+		vector.DrawFilledRect(screen, float32(e.X)-barWidth/2, float32(e.Y)-sz-8, barWidth, barHeight, color.RGBA{50, 50, 50, 255}, false)
+
 		hpColor := color.RGBA{0, 255, 0, 255}
 		if hpRatio < 0.3 {
 			hpColor = color.RGBA{255, 0, 0, 255}
 		}
-		vector.DrawFilledRect(screen, e.X-barWidth/2, e.Y-stats.Size-8, barWidth*hpRatio, barHeight, hpColor, true)
+		vector.DrawFilledRect(screen, float32(e.X)-barWidth/2, float32(e.Y)-sz-8, barWidth*float32(hpRatio), barHeight, hpColor, false)
 	}
 }
 
@@ -192,12 +197,11 @@ type PathPosition struct {
 // PrecalculatePathPositions precalculates all positions along the path
 func PrecalculatePathPositions(path []PathNode) []PathPosition {
 	positions := make([]PathPosition, 0)
-	
+
 	for i := 0; i < len(path)-1; i++ {
 		p1 := path[i]
 		p2 := path[i+1]
-		
-		// Interpolate 10 points per segment
+
 		for t := 0; t < 10; t++ {
 			frac := float64(t) / 10.0
 			x := (p1.X + (p2.X-p1.X)*frac) * float64(config.TileSize) + float64(config.GridOffsetX) + float64(config.TileSize)/2
@@ -205,6 +209,11 @@ func PrecalculatePathPositions(path []PathNode) []PathPosition {
 			positions = append(positions, PathPosition{X: x, Y: y})
 		}
 	}
-	
+
 	return positions
+}
+
+// Distance to another position
+func (e *Enemy) DistanceTo(x, y float64) float64 {
+	return math.Hypot(e.X-x, e.Y-y)
 }

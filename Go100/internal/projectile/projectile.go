@@ -13,16 +13,16 @@ import (
 
 // Projectile represents a projectile fired by a tower
 type Projectile struct {
-	X, Y       float64
-	VX, VY     float64
-	Damage     float64
-	Speed      float64
-	Target     *enemy.Enemy
-	Type       int // Matches tower type
-	Radius     float64 // For splash
-	SlowFactor float64 // For slow towers
+	X, Y         float64
+	VX, VY       float64
+	Damage       float64
+	Speed        float64
+	Target       *enemy.Enemy
+	Type         int
+	Radius       float64
+	SlowFactor   float64
 	SlowDuration int
-	Alive      bool
+	Alive        bool
 }
 
 // NewProjectile creates a new projectile
@@ -36,7 +36,6 @@ func NewProjectile(t *tower.Tower, target *enemy.Enemy) *Projectile {
 	}
 
 	speed := 8.0
-	stats := tower.GetType(t.Type)
 
 	p := &Projectile{
 		X:      t.X,
@@ -48,7 +47,6 @@ func NewProjectile(t *tower.Tower, target *enemy.Enemy) *Projectile {
 		Alive:  true,
 	}
 
-	// Special properties based on tower type
 	switch t.Type {
 	case tower.TowerSlow:
 		p.SlowFactor = 0.5
@@ -57,10 +55,9 @@ func NewProjectile(t *tower.Tower, target *enemy.Enemy) *Projectile {
 	case tower.TowerSplash:
 		p.Radius = 60
 	case tower.TowerLaser:
-		p.Speed = 100 // Instant hit
+		p.Speed = 100
 	}
 
-	// Normalize direction
 	p.VX = (dx / dist) * speed
 	p.VY = (dy / dist) * speed
 
@@ -73,29 +70,23 @@ func (p *Projectile) Update() {
 		return
 	}
 
-	// Homing missile - track target
 	if p.Target != nil && p.Target.IsAlive() {
 		dx := p.Target.X - p.X
 		dy := p.Target.Y - p.Y
 		dist := math.Hypot(dx, dy)
 
 		if dist < 10 {
-			// Hit!
 			p.Hit()
 			return
 		}
 
-		// Adjust velocity
 		p.VX = (dx / dist) * p.Speed
 		p.VY = (dy / dist) * p.Speed
-	} else {
-		// Target dead, continue in last direction
 	}
 
 	p.X += p.VX
 	p.Y += p.VY
 
-	// Out of bounds
 	if p.X < -50 || p.X > 2000 || p.Y < -50 || p.Y > 1500 {
 		p.Alive = false
 	}
@@ -109,10 +100,7 @@ func (p *Projectile) Hit() {
 		return
 	}
 
-	if p.Type == tower.TowerSplash {
-		// Splash damage to all enemies in radius
-		// This is handled by game loop
-	} else {
+	if p.Type != tower.TowerSplash {
 		p.Target.TakeDamage(p.Damage)
 		if p.Type == tower.TowerSlow {
 			p.Target.ApplySlow(p.SlowFactor, p.SlowDuration)
@@ -147,33 +135,15 @@ func (p *Projectile) Draw(screen *ebiten.Image) {
 		size = 3
 	}
 
-	// Trail effect
+	// Trail
 	for i := 3; i > 0; i-- {
 		alpha := uint8(100 - i*30)
 		trailX := p.X - p.VX*float64(i)*0.3
 		trailY := p.Y - p.VY*float64(i)*0.3
-		vector.DrawFilledCircle(screen, trailX, trailY, size*0.6, color.RGBA{255, 255, 255, alpha}, true)
+		vector.DrawFilledCircle(screen, float32(trailX), float32(trailY), float32(size)*0.6, color.RGBA{255, 255, 255, alpha}, false)
 	}
 
-	// Main projectile
-	vector.DrawFilledCircle(screen, p.X, p.Y, size, projColor, true)
-	vector.StrokeCircle(screen, p.X, p.Y, size, 1, color.White, true)
-}
-
-// GetColor returns projectile color
-func (p *Projectile) GetColor() color.Color {
-	switch p.Type {
-	case tower.TowerBasic:
-		return color.RGBA{100, 255, 100, 255}
-	case tower.TowerSniper:
-		return color.RGBA{100, 100, 255, 255}
-	case tower.TowerSlow:
-		return color.RGBA{100, 200, 255, 255}
-	case tower.TowerSplash:
-		return color.RGBA{255, 150, 50, 255}
-	case tower.TowerLaser:
-		return color.RGBA{255, 50, 50, 255}
-	default:
-		return color.White
-	}
+	// Main
+	vector.DrawFilledCircle(screen, float32(p.X), float32(p.Y), float32(size), projColor, false)
+	vector.StrokeCircle(screen, float32(p.X), float32(p.Y), float32(size), 1, color.White, false)
 }

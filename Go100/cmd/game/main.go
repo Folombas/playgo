@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"image/color"
 	"log"
 	"math"
 	"math/rand"
@@ -18,10 +19,7 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
-	"github.com/hajimehoshi/ebiten/v2/text"
 	"github.com/hajimehoshi/ebiten/v2/vector"
-	"golang.org/x/image/font/basicfont"
-	"image/color"
 )
 
 // GameState
@@ -64,6 +62,17 @@ type Game struct {
 	pathPositions    []enemy.PathPosition
 	menuSelection    int
 	gameOverTimer    int
+	
+	// Visual effects
+	menuStars []Star
+	frameCount int
+}
+
+type Star struct {
+	X, Y   float64
+	Size   float64
+	Brightness float64
+	TwinkleSpeed float64
 }
 
 func NewGame() *Game {
@@ -79,6 +88,18 @@ func NewGame() *Game {
 		hoverGridX:        -1,
 		hoverGridY:        -1,
 		menuSelection:     0,
+		menuStars:         make([]Star, 100),
+	}
+	
+	// Initialize stars
+	for i := range g.menuStars {
+		g.menuStars[i] = Star{
+			X:            rand.Float64() * config.ScreenWidth,
+			Y:            rand.Float64() * config.ScreenHeight,
+			Size:         1 + rand.Float64()*2,
+			Brightness:   0.5 + rand.Float64()*0.5,
+			TwinkleSpeed: 0.02 + rand.Float64()*0.03,
+		}
 	}
 	
 	g.resetGame()
@@ -127,6 +148,8 @@ func (g *Game) Update() error {
 }
 
 func (g *Game) updateMenu() {
+	g.frameCount++
+	
 	if inpututil.IsKeyJustPressed(ebiten.KeyW) || inpututil.IsKeyJustPressed(ebiten.KeyUp) {
 		g.menuSelection--
 		if g.menuSelection < 0 {
@@ -148,12 +171,15 @@ func (g *Game) updateMenu() {
 		case 1:
 			// How to play - skip for now
 		case 2:
-			ebiten.Terminate()
+			// Exit - just close
+			return
 		}
 	}
 }
 
 func (g *Game) updatePlaying() {
+	g.frameCount++
+	
 	// Pause
 	if inpututil.IsKeyJustPressed(config.KeyPause) {
 		g.state = StatePaused
@@ -406,28 +432,39 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	case StatePlaying, StatePaused:
 		g.drawGame(screen)
 		if g.state == StatePaused {
-			ui.DrawText(screen, "PAUSED", config.ScreenWidth/2-30, config.ScreenHeight/2-20, 24, color.White)
+			ui.DrawText(screen, "PAUSED", config.ScreenWidth/2-20, config.ScreenHeight/2-10, color.White)
 		}
 	case StateGameOver:
 		g.drawGame(screen)
-		ui.DrawText(screen, "GAME OVER", config.ScreenWidth/2-60, config.ScreenHeight/2-20, 24, color.RGBA{255, 50, 50, 255})
-		ui.DrawText(screen, fmt.Sprintf("Score: %d", g.score), config.ScreenWidth/2-50, config.ScreenHeight/2+20, 16, color.White)
-		ui.DrawText(screen, "Press ENTER to restart", config.ScreenWidth/2-80, config.ScreenHeight/2+50, 14, color.RGBA{200, 200, 200, 255})
+		ui.DrawText(screen, "GAME OVER", config.ScreenWidth/2-35, config.ScreenHeight/2-20, color.RGBA{255, 50, 50, 255})
+		ui.DrawText(screen, fmt.Sprintf("Score: %d", g.score), config.ScreenWidth/2-30, config.ScreenHeight/2+20, color.White)
+		ui.DrawText(screen, "Press ENTER to restart", config.ScreenWidth/2-55, config.ScreenHeight/2+50, color.RGBA{200, 200, 200, 255})
 	case StateVictory:
 		g.drawGame(screen)
-		ui.DrawText(screen, "VICTORY!", config.ScreenWidth/2-50, config.ScreenHeight/2-20, 24, color.RGBA{255, 215, 0, 255})
-		ui.DrawText(screen, fmt.Sprintf("Final Score: %d", g.score), config.ScreenWidth/2-65, config.ScreenHeight/2+20, 16, color.White)
-		ui.DrawText(screen, "Press ENTER to play again", config.ScreenWidth/2-85, config.ScreenHeight/2+50, 14, color.White)
+		ui.DrawText(screen, "VICTORY!", config.ScreenWidth/2-35, config.ScreenHeight/2-20, color.RGBA{255, 215, 0, 255})
+		ui.DrawText(screen, fmt.Sprintf("Final Score: %d", g.score), config.ScreenWidth/2-40, config.ScreenHeight/2+20, color.White)
+		ui.DrawText(screen, "Press ENTER to play again", config.ScreenWidth/2-60, config.ScreenHeight/2+50, color.White)
 	}
 }
 
 func (g *Game) drawMenu(screen *ebiten.Image) {
-	// Background
-	vector.DrawFilledRect(screen, 0, 0, config.ScreenWidth, config.ScreenHeight, color.RGBA{20, 40, 20, 255}, true)
+	// Background gradient (dark blue to dark green)
+	vector.DrawFilledRect(screen, 0, 0, config.ScreenWidth, config.ScreenHeight, color.RGBA{10, 20, 40, 255}, false)
 	
-	// Title
-	ui.DrawText(screen, "TOWER DEFENSE", config.ScreenWidth/2-100, 150, 28, color.RGBA{255, 215, 0, 255})
-	ui.DrawText(screen, "Go365 Day 100 - Ebitengine", config.ScreenWidth/2-90, 190, 16, color.RGBA{200, 200, 200, 255})
+	// Stars
+	for _, star := range g.menuStars {
+		twinkle := 0.5 + 0.5*math.Sin(float64(g.frameCount)*star.TwinkleSpeed)
+		alpha := uint8(star.Brightness * twinkle * 255)
+		vector.DrawFilledCircle(screen, float32(star.X), float32(star.Y), float32(star.Size), color.RGBA{200, 220, 255, alpha}, false)
+	}
+	
+	// Title with glow effect
+	for i := 3; i > 0; i-- {
+		alpha := uint8(50 * i)
+		vector.StrokeCircle(screen, config.ScreenWidth/2, 140, 60+float32(i)*5, 3, color.RGBA{255, 215, 0, alpha}, false)
+	}
+	ui.DrawText(screen, "TOWER DEFENSE", config.ScreenWidth/2-65, 150, color.RGBA{255, 215, 0, 255})
+	ui.DrawText(screen, "Go365 Day 100 - Ebitengine", config.ScreenWidth/2-65, 190, color.RGBA{200, 200, 200, 255})
 	
 	// Menu items
 	items := []string{"START GAME", "HOW TO PLAY", "EXIT"}
@@ -436,16 +473,16 @@ func (g *Game) drawMenu(screen *ebiten.Image) {
 		x := config.ScreenWidth/2 - 70
 		
 		if i == g.menuSelection {
-			vector.DrawFilledRect(screen, float64(x-10), float64(y-20), 170, 35, color.RGBA{50, 80, 50, 200}, true)
-			ui.DrawText(screen, "> "+item, x, y, 18, color.RGBA{255, 255, 150, 255})
+			vector.DrawFilledRect(screen, float32(x-10), float32(y-20), 170, 35, color.RGBA{50, 80, 50, 200}, false)
+			ui.DrawText(screen, "> "+item, x, y, color.RGBA{255, 255, 150, 255})
 		} else {
-			ui.DrawText(screen, "  "+item, x, y, 18, color.RGBA{200, 200, 200, 255})
+			ui.DrawText(screen, "  "+item, x, y, color.RGBA{200, 200, 200, 255})
 		}
 	}
 	
 	// Instructions
-	ui.DrawText(screen, "W/S or Up/Down: Navigate", config.ScreenWidth/2-85, 480, 14, color.RGBA{150, 150, 150, 255})
-	ui.DrawText(screen, "ENTER or J: Select", config.ScreenWidth/2-70, 500, 14, color.RGBA{150, 150, 150, 255})
+	ui.DrawText(screen, "W/S or Up/Down: Navigate", config.ScreenWidth/2-65, 480, color.RGBA{150, 150, 150, 255})
+	ui.DrawText(screen, "ENTER or J: Select", config.ScreenWidth/2-45, 500, color.RGBA{150, 150, 150, 255})
 }
 
 func (g *Game) drawGame(screen *ebiten.Image) {
@@ -455,21 +492,22 @@ func (g *Game) drawGame(screen *ebiten.Image) {
 	// Draw tower placement preview
 	if g.selectedTowerType >= 0 && g.hoverGridX >= 0 && g.hoverGridX < config.GridWidth &&
 	   g.hoverGridY >= 0 && g.hoverGridY < config.GridHeight {
-		sx := float64(g.hoverGridX*config.TileSize + config.GridOffsetX)
-		sy := float64(g.hoverGridY*config.TileSize + config.GridOffsetY)
+		sx := float32(g.hoverGridX*config.TileSize + config.GridOffsetX)
+		sy := float32(g.hoverGridY*config.TileSize + config.GridOffsetY)
+		ts := float32(config.TileSize)
 		
 		canPlace := g.gameMap.CanPlaceTower(g.hoverGridX, g.hoverGridY)
 		stats := tower.GetType(g.selectedTowerType)
 		canAfford := g.gold >= stats.Cost
 		
 		if canPlace && canAfford {
-			vector.DrawFilledRect(screen, sx, sy, config.TileSize, config.TileSize, color.RGBA{0, 255, 0, 100}, true)
+			vector.DrawFilledRect(screen, sx, sy, ts, ts, color.RGBA{0, 255, 0, 100}, false)
 			// Range preview
-			cx := sx + config.TileSize/2
-			cy := sy + config.TileSize/2
-			vector.StrokeCircle(screen, cx, cy, stats.Range, &ebiten.DrawLinesOptions{Width: 1}, color.RGBA{0, 255, 0, 80}, true)
+			cx := float32(g.hoverGridX*config.TileSize + config.GridOffsetX + config.TileSize/2)
+			cy := float32(g.hoverGridY*config.TileSize + config.GridOffsetY + config.TileSize/2)
+			vector.StrokeCircle(screen, cx, cy, float32(stats.Range), 1, color.RGBA{0, 255, 0, 80}, false)
 		} else {
-			vector.DrawFilledRect(screen, sx, sy, config.TileSize, config.TileSize, color.RGBA{255, 0, 0, 100}, true)
+			vector.DrawFilledRect(screen, sx, sy, ts, ts, color.RGBA{255, 0, 0, 100}, false)
 		}
 	}
 	
@@ -512,26 +550,26 @@ func (g *Game) drawGame(screen *ebiten.Image) {
 	// Wave incoming text
 	if !g.waveActive && g.wave < config.MaxWaves {
 		msg := fmt.Sprintf("Wave %d in %d...", g.wave+1, (g.waveTimer+59)/60)
-		ui.DrawText(screen, msg, config.ScreenWidth/2-60, config.ScreenHeight-40, 16, color.RGBA{255, 255, 100, 255})
-		ui.DrawText(screen, "Press SPACE to start now", config.ScreenWidth/2-80, config.ScreenHeight-20, 12, color.RGBA{200, 200, 200, 255})
+		ui.DrawText(screen, msg, config.ScreenWidth/2-50, config.ScreenHeight-40, color.RGBA{255, 255, 100, 255})
+		ui.DrawText(screen, "Press SPACE to start now", config.ScreenWidth/2-65, config.ScreenHeight-20, color.RGBA{200, 200, 200, 255})
 	}
 }
 
 func (g *Game) drawHUD(screen *ebiten.Image) {
 	// Top bar
-	vector.DrawFilledRect(screen, 0, 0, config.ScreenWidth, 50, color.RGBA{20, 20, 30, 230}, true)
+	vector.DrawFilledRect(screen, 0, 0, config.ScreenWidth, 50, color.RGBA{20, 20, 30, 230}, false)
 	
 	// Gold
-	ui.DrawText(screen, fmt.Sprintf("Gold: %d", g.gold), 20, 15, 16, color.RGBA{255, 215, 0, 255})
+	ui.DrawText(screen, fmt.Sprintf("Gold: %d", g.gold), 20, 15, color.RGBA{255, 215, 0, 255})
 	
 	// Lives
-	ui.DrawText(screen, fmt.Sprintf("Lives: %d", g.lives), 200, 15, 16, color.RGBA{255, 100, 100, 255})
+	ui.DrawText(screen, fmt.Sprintf("Lives: %d", g.lives), 200, 15, color.RGBA{255, 100, 100, 255})
 	
 	// Score
-	ui.DrawText(screen, fmt.Sprintf("Score: %d", g.score), 400, 15, 16, color.RGBA{255, 255, 255, 255})
+	ui.DrawText(screen, fmt.Sprintf("Score: %d", g.score), 400, 15, color.White)
 	
 	// Wave
-	ui.DrawText(screen, fmt.Sprintf("Wave: %d/%d", g.wave, config.MaxWaves), 600, 15, 16, color.RGBA{150, 200, 255, 255})
+	ui.DrawText(screen, fmt.Sprintf("Wave: %d/%d", g.wave, config.MaxWaves), 600, 15, color.RGBA{150, 200, 255, 255})
 	
 	// Tower hotkeys
 	for i := 0; i < 5; i++ {
@@ -540,15 +578,15 @@ func (g *Game) drawHUD(screen *ebiten.Image) {
 		y := 55
 		
 		if g.selectedTowerType == i {
-			vector.DrawFilledRect(screen, float64(x), float64(y), 100, 45, color.RGBA{50, 80, 50, 200}, true)
+			vector.DrawFilledRect(screen, float32(x), float32(y), 100, 45, color.RGBA{50, 80, 50, 200}, false)
 		}
 		
 		// Tower icon
-		vector.DrawFilledCircle(screen, float64(x+15), float64(y+20), 10, stats.Color, true)
+		vector.DrawFilledCircle(screen, float32(x+15), float32(y+20), 10, stats.Color, false)
 		
 		// Tower name and cost
-		ui.DrawText(screen, fmt.Sprintf("[%d]%s", i+1, stats.Name), x+30, y+8, 12, color.White)
-		ui.DrawText(screen, fmt.Sprintf("%dg", stats.Cost), x+30, y+24, 10, color.RGBA{255, 215, 0, 255})
+		ui.DrawText(screen, fmt.Sprintf("[%d]%s", i+1, stats.Name), x+30, y+8, color.White)
+		ui.DrawText(screen, fmt.Sprintf("%dg", stats.Cost), x+30, y+24, color.RGBA{255, 215, 0, 255})
 	}
 }
 
@@ -559,26 +597,26 @@ func (g *Game) drawTowerMenu(screen *ebiten.Image) {
 	}
 	
 	// Panel background
-	px := float64(config.ScreenWidth - 220)
-	py := float64(60)
-	vector.DrawFilledRect(screen, px, py, 210, 150, color.RGBA{20, 20, 40, 230}, true)
+	px := float32(config.ScreenWidth - 220)
+	py := float32(60)
+	vector.DrawFilledRect(screen, px, py, 210, 150, color.RGBA{20, 20, 40, 230}, false)
 	
 	// Tower info
-	ui.DrawText(screen, t.GetInfo(), int(px)+10, int(py)+15, 12, color.White)
+	ui.DrawText(screen, t.GetInfo(), int(px)+10, int(py)+15, color.White)
 	
 	// Upgrade button
 	upgradeCost := t.GetUpgradeCost()
 	if upgradeCost > 0 && g.gold >= upgradeCost {
-		ui.DrawText(screen, fmt.Sprintf("[U] Upgrade (%dg)", upgradeCost), int(px)+10, int(py)+60, 12, color.RGBA{100, 255, 100, 255})
+		ui.DrawText(screen, fmt.Sprintf("[U] Upgrade (%dg)", upgradeCost), int(px)+10, int(py)+60, color.RGBA{100, 255, 100, 255})
 	} else if upgradeCost > 0 {
-		ui.DrawText(screen, fmt.Sprintf("[U] Upgrade (%dg) - Need %d more", upgradeCost, upgradeCost-g.gold), int(px)+10, int(py)+60, 12, color.RGBA{255, 100, 100, 255})
+		ui.DrawText(screen, fmt.Sprintf("[U] Upgrade (%dg) - Need %d more", upgradeCost, upgradeCost-g.gold), int(px)+10, int(py)+60, color.RGBA{255, 100, 100, 255})
 	} else {
-		ui.DrawText(screen, "[U] MAX LEVEL", int(px)+10, int(py)+60, 12, color.RGBA{255, 215, 0, 255})
+		ui.DrawText(screen, "[U] MAX LEVEL", int(px)+10, int(py)+60, color.RGBA{255, 215, 0, 255})
 	}
 	
 	// Sell button
 	sellValue := t.GetSellValue()
-	ui.DrawText(screen, fmt.Sprintf("[S] Sell (%dg)", sellValue), int(px)+10, int(py)+85, 12, color.RGBA{255, 150, 50, 255})
+	ui.DrawText(screen, fmt.Sprintf("[S] Sell (%dg)", sellValue), int(px)+10, int(py)+85, color.RGBA{255, 150, 50, 255})
 }
 
 func (g *Game) drawBuildPanel(screen *ebiten.Image) {

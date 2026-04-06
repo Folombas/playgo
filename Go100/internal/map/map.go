@@ -144,12 +144,12 @@ func (m *Map) Draw(screen *ebiten.Image) {
 			switch m.Tiles[y][x] {
 			case TileGrass:
 				vector.DrawFilledRect(screen, sx, sy, ts, ts, color.RGBA{40, 80, 40, 255}, false)
-				// Grass detail
 				vector.DrawFilledRect(screen, sx+2, sy+2, ts-4, ts-4, color.RGBA{50, 90, 50, 255}, false)
 			case TilePath:
 				vector.DrawFilledRect(screen, sx, sy, ts, ts, color.RGBA{180, 160, 120, 255}, false)
-				// Path detail
 				vector.DrawFilledRect(screen, sx+4, sy+4, ts-8, ts-8, color.RGBA{160, 140, 100, 255}, false)
+			case TileTower:
+				vector.DrawFilledRect(screen, sx, sy, ts, ts, color.RGBA{80, 80, 100, 255}, false)
 			}
 		}
 	}
@@ -158,7 +158,8 @@ func (m *Map) Draw(screen *ebiten.Image) {
 	if len(m.Path) > 0 {
 		sx := float32(m.Path[0].X*float64(config.TileSize) + float64(config.GridOffsetX) + float64(config.TileSize)/2)
 		sy := float32(m.Path[0].Y*float64(config.TileSize) + float64(config.GridOffsetY) + float64(config.TileSize)/2)
-		vector.DrawFilledCircle(screen, sx, sy, 12, color.RGBA{0, 200, 0, 255}, false)
+		vector.DrawFilledCircle(screen, sx, sy, 14, color.RGBA{0, 255, 0, 255}, false)
+		vector.StrokeCircle(screen, sx, sy, 14, 2, color.White, false)
 	}
 
 	// Draw exit (end point)
@@ -166,7 +167,8 @@ func (m *Map) Draw(screen *ebiten.Image) {
 		last := m.Path[len(m.Path)-1]
 		sx := float32(last.X*float64(config.TileSize) + float64(config.GridOffsetX) + float64(config.TileSize)/2)
 		sy := float32(last.Y*float64(config.TileSize) + float64(config.GridOffsetY) + float64(config.TileSize)/2)
-		vector.DrawFilledCircle(screen, sx, sy, 12, color.RGBA{255, 0, 0, 255}, false)
+		vector.DrawFilledCircle(screen, sx, sy, 14, color.RGBA{255, 0, 0, 255}, false)
+		vector.StrokeCircle(screen, sx, sy, 14, 2, color.White, false)
 	}
 }
 
