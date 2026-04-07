@@ -337,6 +337,7 @@ type Game struct {
 	board      *Board
 	foods      []*ebiten.Image
 	particles  []*Particle
+	audio      *AudioManager
 	score      int
 	combo      int
 	drag       *Piece
@@ -369,6 +370,7 @@ func NewGame() *Game {
 		foods:     make([]*ebiten.Image, foodCount),
 		particles: []*Particle{},
 	}
+	g.audio = NewAudioManager()
 	g.loadAssets()
 	return g
 }
@@ -470,21 +472,25 @@ func (g *Game) Update() error {
 	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
 		if g.state == StateMenu {
 			if g.btnPlay.contains(fx, fy) || g.btnNewGame.contains(fx, fy) {
+				g.audio.PlayMenuClick()
 				g.startGame()
 			}
 			if g.btnExit.contains(fx, fy) {
-				// В реальной игре здесь выход
+				g.audio.PlayMenuClick()
 				g.startGame()
 			}
 		} else if g.state == StatePlaying {
 			if g.btnPause.contains(fx, fy) {
+				g.audio.PlayMenuClick()
 				g.state = StatePaused
 			}
 		} else if g.state == StatePaused {
 			if g.btnBack.contains(fx, fy) || g.btnPlay.contains(fx, fy) {
+				g.audio.PlayMenuClick()
 				g.state = StatePlaying
 			}
 			if g.btnExit.contains(fx, fy) {
+				g.audio.PlayMenuClick()
 				g.state = StateMenu
 				g.board = nil
 			}
@@ -505,6 +511,7 @@ func (g *Game) startGame() {
 	g.score = 0
 	g.combo = 0
 	g.particles = []*Particle{}
+	g.audio.PlayLevelUp()
 }
 
 func (g *Game) updateGame(fx, fy float64) {
@@ -541,8 +548,16 @@ func (g *Game) removeMatches(count int) {
 	g.score += comboBonus
 	g.spawnParticles(count)
 	g.board.remove()
+	
+	// Аудио эффекты
+	if g.combo >= 3 {
+		g.audio.PlayCombo(g.combo)
+	} else {
+		g.audio.PlayMatch(g.combo)
+	}
+	
 	if g.board.drop() {
-		// wait for drop animation
+		g.audio.PlayDrop()
 	}
 }
 
@@ -556,6 +571,7 @@ func (g *Game) input(fx, fy float64) {
 			g.dragSX = p.X
 			g.dragSY = p.Y
 			g.isDragging = false
+			g.audio.PlaySelect()
 		}
 	}
 
@@ -602,7 +618,9 @@ func (g *Game) input(fx, fy float64) {
 							// Отмена
 							g.board.swap(g.lastC1, g.lastR1, g.lastC2, g.lastR2)
 							g.combo = 0
+							g.audio.PlayNoMatch()
 						} else {
+							g.audio.PlaySwap()
 							g.combo++
 							g.removeMatches(m)
 						}
