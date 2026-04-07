@@ -6,6 +6,7 @@ import (
 	"image/color"
 	"image/png"
 	"log"
+	"math"
 	"math/rand"
 	"os"
 	"path/filepath"
@@ -338,6 +339,8 @@ type Game struct {
 	foods      []*ebiten.Image
 	particles  []*Particle
 	audio      *AudioManager
+	anim       *AnimManager
+	shake      *ScreenShake
 	score      int
 	combo      int
 	drag       *Piece
@@ -361,6 +364,9 @@ type Game struct {
 	btnBack       *Button
 	btnPause      *Button
 	hoveredButton *Button
+	menuBtnAnims  []*MenuButtonAnim
+	floatingEmoji []*FloatingEmoji
+	gameTime      float64
 }
 
 func NewGame() *Game {
@@ -369,10 +375,21 @@ func NewGame() *Game {
 		state:     StateMenu,
 		foods:     make([]*ebiten.Image, foodCount),
 		particles: []*Particle{},
+		anim:      NewAnimManager(),
 	}
 	g.audio = NewAudioManager()
 	g.loadAssets()
+	g.initMenuAnims()
 	return g
+}
+
+func (g *Game) initMenuAnims() {
+	// Анимации кнопок меню (появление с отскоком)
+	g.menuBtnAnims = []*MenuButtonAnim{
+		NewMenuButtonAnim(380, 0),
+		NewMenuButtonAnim(470, 0.15),
+		NewMenuButtonAnim(560, 0.3),
+	}
 }
 
 func (g *Game) loadAssets() {
@@ -436,6 +453,15 @@ func (g *Game) loadButtonSprite(path string, btn *Button) {
 }
 
 func (g *Game) Update() error {
+	g.gameTime += 0.016
+
+	// Анимации
+	g.anim.Update(0.016)
+	for _, ba := range g.menuBtnAnims { ba.Update(0.016) }
+	for i := len(g.floatingEmoji) - 1; i >= 0; i-- {
+		if !g.floatingEmoji[i].Update(0.016) { g.floatingEmoji = append(g.floatingEmoji[:i], g.floatingEmoji[i+1:]...) }
+	}
+
 	// Частицы
 	for i := len(g.particles) - 1; i >= 0; i-- {
 		p := g.particles[i]
@@ -548,14 +574,26 @@ func (g *Game) removeMatches(count int) {
 	g.score += comboBonus
 	g.spawnParticles(count)
 	g.board.remove()
-	
+
+	// Screen shake для комбо
+	if g.combo >= 2 {
+		g.shake = NewScreenShake(float64(g.combo)*2, 0.3)
+	}
+
+	// Floating emoji для комбо
+	if g.combo >= 2 {
+		cx := float64(boardX + boardCols*(cellSize+cellPad)/2)
+		cy := float64(boardY + boardRows*(cellSize+cellPad)/2)
+		g.floatingEmoji = append(g.floatingEmoji, NewFloatingEmoji(cx, cy, "✨"))
+	}
+
 	// Аудио эффекты
 	if g.combo >= 3 {
 		g.audio.PlayCombo(g.combo)
 	} else {
 		g.audio.PlayMatch(g.combo)
 	}
-	
+
 	if g.board.drop() {
 		g.audio.PlayDrop()
 	}
@@ -658,6 +696,15 @@ func (g *Game) spawnParticles(count int) {
 func (g *Game) Draw(screen *ebiten.Image) {
 	screen.Fill(color.RGBA{15, 15, 30, 255})
 
+	// Screen shake
+	var shakeX, shakeY float64
+	if g.shake != nil && g.shake.active {
+		shakeX, shakeY = g.shake.Update(0.016)
+	}
+
+	op := &ebiten.DrawImageOptions{}
+	op.GeoM.Translate(shakeX, shakeY)
+
 	if g.state == StateMenu {
 		g.drawMenu(screen)
 	} else {
@@ -666,26 +713,33 @@ func (g *Game) Draw(screen *ebiten.Image) {
 			g.drawPause(screen)
 		}
 	}
+
+	// Animations layer
+	g.anim.Draw(screen)
+
+	// Floating emoji
+	for _, fe := range g.floatingEmoji {
+		fe.Draw(screen)
+	}
 }
 
 func (g *Game) drawMenu(screen *ebiten.Image) {
 	// Фон
 	if g.menuBg != nil {
 		op := &ebiten.DrawImageOptions{}
-		op.GeoM.Translate(0, 0)
 		screen.DrawImage(g.menuBg, op)
 	}
 	if g.menuStars != nil {
 		op := &ebiten.DrawImageOptions{}
-		op.GeoM.Translate(0, 0)
 		screen.DrawImage(g.menuStars, op)
 	}
 
-	// Заголовок
+	// Заголовок с анимацией появления
+	titleY := 180 + math.Sin(g.gameTime*2)*5
 	titlePanel := ebiten.NewImage(400, 80)
 	titlePanel.Fill(color.RGBA{30, 40, 70, 200})
 	op := &ebiten.DrawImageOptions{}
-	op.GeoM.Translate(312, 200)
+	op.GeoM.Translate(312, titleY)
 	screen.DrawImage(titlePanel, op)
 
 	titleBorder := ebiten.NewImage(400, 4)
@@ -694,11 +748,29 @@ func (g *Game) drawMenu(screen *ebiten.Image) {
 	op2.GeoM.Translate(312, 200)
 	screen.DrawImage(titleBorder, op2)
 
-	// Кнопки
-	g.drawButton(screen, g.btnPlay)
-	g.drawButton(screen, g.btnNewGame)
-	g.drawButton(screen, g.btnOptions)
-	g.drawButton(screen, g.btnExit)
+	// Кнопки с анимацией
+	btns := []*Button{g.btnPlay, g.btnNewGame, g.btnExit}
+	for i, btn := range btns {
+		if i < len(g.menuBtnAnims) {
+			animY := g.menuBtnAnims[i].Y()
+			if btn.Image != nil {
+				op := &ebiten.DrawImageOptions{}
+				op.GeoM.Translate(btn.X, animY)
+				if btn == g.hoveredButton { op.ColorM.Scale(1.1, 1.1, 1.1, 1) }
+				screen.DrawImage(btn.Image, op)
+			} else if btn != nil {
+				col := color.RGBA{60, 60, 100, 200}
+				if btn == g.hoveredButton { col = color.RGBA{80, 80, 140, 255} }
+				img := ebiten.NewImage(int(btn.W), int(btn.H))
+				img.Fill(col)
+				op := &ebiten.DrawImageOptions{}
+				op.GeoM.Translate(btn.X, animY)
+				screen.DrawImage(img, op)
+			}
+		} else {
+			g.drawButton(screen, btn)
+		}
+	}
 }
 
 func (g *Game) drawButton(screen *ebiten.Image, btn *Button) {
