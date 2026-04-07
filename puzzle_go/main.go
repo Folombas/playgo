@@ -1,13 +1,14 @@
-// Food Match-3 - Go365 Challenge Day 99
+// Food Match-3 with Menu - Go365 Challenge Day 99
 package main
 
 import (
 	"bytes"
-	"embed"
 	"image/color"
 	"image/png"
 	"log"
 	"math/rand"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -15,8 +16,17 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 )
 
-//go:embed assets/food/*.png
-var foodFS embed.FS
+func loadPNG(path string) (*ebiten.Image, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	img, err := png.Decode(bytes.NewReader(data))
+	if err != nil {
+		return nil, err
+	}
+	return ebiten.NewImageFromImage(img), nil
+}
 
 const (
 	screenWidth  = 1024
@@ -41,13 +51,12 @@ var foodColors = []color.RGBA{
 	{255, 180, 220, 255},
 }
 
-type State int
+type GameState int
 
 const (
-	StateIdle State = iota
-	StateSwapping
-	StateRemoving
-	StateDropping
+	StateMenu GameState = iota
+	StatePlaying
+	StatePaused
 )
 
 type Piece struct {
@@ -184,7 +193,6 @@ func (b *Board) swap(c1, r1, c2, r2 int) bool {
 func (b *Board) findMatches() int {
 	matched := make(map[[2]int]bool)
 	count := 0
-
 	for r := 0; r < boardRows; r++ {
 		for c := 0; c <= boardCols-3; c++ {
 			p := b.g[c][r]
@@ -207,7 +215,6 @@ func (b *Board) findMatches() int {
 			}
 		}
 	}
-
 	for c := 0; c < boardCols; c++ {
 		for r := 0; r <= boardRows-3; r++ {
 			p := b.g[c][r]
@@ -314,11 +321,22 @@ type Particle struct {
 	Size         float64
 }
 
+// Кнопка меню
+type Button struct {
+	X, Y, W, H float64
+	Image      *ebiten.Image
+	Hover      bool
+}
+
+func (b *Button) contains(mx, my float64) bool {
+	return mx >= b.X && mx <= b.X+b.W && my >= b.Y && my <= b.Y+b.H
+}
+
 type Game struct {
+	state      GameState
 	board      *Board
 	foods      []*ebiten.Image
 	particles  []*Particle
-	state      State
 	score      int
 	combo      int
 	drag       *Piece
@@ -331,34 +349,92 @@ type Game struct {
 	lastR1     int
 	lastC2     int
 	lastR2     int
+
+	// Меню
+	menuBg        *ebiten.Image
+	menuStars     *ebiten.Image
+	btnPlay       *Button
+	btnNewGame    *Button
+	btnOptions    *Button
+	btnExit       *Button
+	btnBack       *Button
+	btnPause      *Button
+	hoveredButton *Button
 }
 
 func NewGame() *Game {
 	rand.Seed(time.Now().UnixNano())
 	g := &Game{
-		board:     newBoard(),
+		state:     StateMenu,
 		foods:     make([]*ebiten.Image, foodCount),
 		particles: []*Particle{},
 	}
-	g.loadSprites()
+	g.loadAssets()
 	return g
 }
 
-func (g *Game) loadSprites() {
+func (g *Game) loadAssets() {
+	// Определяем базовый путь
+	execPath, _ := os.Getwd()
+	foodDir := filepath.Join(execPath, "assets", "food")
+	menuDir := filepath.Join(execPath, "assets", "menu")
+
+	// Еда
 	for i, name := range foodNames {
-		data, err := foodFS.ReadFile("assets/food/" + name + ".png")
+		path := filepath.Join(foodDir, name+".png")
+		img, err := loadPNG(path)
 		if err != nil {
+			log.Printf("Warning load %s: %v", name, err)
 			continue
 		}
-		img, err := png.Decode(bytes.NewReader(data))
-		if err != nil {
-			continue
-		}
-		g.foods[i] = ebiten.NewImageFromImage(img)
+		g.foods[i] = img
 	}
+
+	// Фон меню
+	if img, err := loadPNG(filepath.Join(menuDir, "stars back.png")); err == nil {
+		g.menuBg = img
+	}
+	if img, err := loadPNG(filepath.Join(menuDir, "stars.png")); err == nil {
+		g.menuStars = img
+	}
+
+	// Кнопки
+	g.btnPlay = &Button{X: 412, Y: 380, W: 200, H: 70}
+	g.btnNewGame = &Button{X: 412, Y: 470, W: 200, H: 60}
+	g.btnOptions = &Button{X: 412, Y: 550, W: 200, H: 60}
+	g.btnExit = &Button{X: 412, Y: 630, W: 200, H: 60}
+	g.btnBack = &Button{X: 20, Y: 680, W: 150, H: 50}
+	g.btnPause = &Button{X: 870, Y: 20, W: 120, H: 50}
+
+	g.loadButtonSprite(filepath.Join(menuDir, "play button.png"), g.btnPlay)
+	g.loadButtonSprite(filepath.Join(menuDir, "New Game Button.png"), g.btnNewGame)
+	g.loadButtonSprite(filepath.Join(menuDir, "Options Button.png"), g.btnOptions)
+	g.loadButtonSprite(filepath.Join(menuDir, "Exit Button.png"), g.btnExit)
+	g.loadButtonSprite(filepath.Join(menuDir, "Back Button.png"), g.btnBack)
+}
+
+func (g *Game) loadButtonSprite(path string, btn *Button) {
+	img, err := loadPNG(path)
+	if err != nil {
+		return
+	}
+	srcW := img.Bounds().Dx()
+	srcH := img.Bounds().Dy()
+	if srcW == 0 || srcH == 0 {
+		return
+	}
+	scaleX := btn.W / float64(srcW)
+	scaleY := btn.H / float64(srcH)
+
+	btnImg := ebiten.NewImage(int(btn.W), int(btn.H))
+	op := &ebiten.DrawImageOptions{}
+	op.GeoM.Scale(scaleX, scaleY)
+	btnImg.DrawImage(img, op)
+	btn.Image = btnImg
 }
 
 func (g *Game) Update() error {
+	// Частицы
 	for i := len(g.particles) - 1; i >= 0; i-- {
 		p := g.particles[i]
 		p.X += p.VX
@@ -368,6 +444,72 @@ func (g *Game) Update() error {
 		if p.Life <= 0 {
 			g.particles = append(g.particles[:i], g.particles[i+1:]...)
 		}
+	}
+
+	mx, my := ebiten.CursorPosition()
+	fx, fy := float64(mx), float64(my)
+
+	// Hover кнопок
+	g.hoveredButton = nil
+	if g.state == StateMenu {
+		for _, btn := range []*Button{g.btnPlay, g.btnNewGame, g.btnOptions, g.btnExit} {
+			if btn.contains(fx, fy) {
+				g.hoveredButton = btn
+			}
+		}
+	} else if g.state == StatePlaying || g.state == StatePaused {
+		if g.btnPause.contains(fx, fy) {
+			g.hoveredButton = g.btnPause
+		}
+		if g.btnBack.contains(fx, fy) {
+			g.hoveredButton = g.btnBack
+		}
+	}
+
+	// Клик по кнопкам
+	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
+		if g.state == StateMenu {
+			if g.btnPlay.contains(fx, fy) || g.btnNewGame.contains(fx, fy) {
+				g.startGame()
+			}
+			if g.btnExit.contains(fx, fy) {
+				// В реальной игре здесь выход
+				g.startGame()
+			}
+		} else if g.state == StatePlaying {
+			if g.btnPause.contains(fx, fy) {
+				g.state = StatePaused
+			}
+		} else if g.state == StatePaused {
+			if g.btnBack.contains(fx, fy) || g.btnPlay.contains(fx, fy) {
+				g.state = StatePlaying
+			}
+			if g.btnExit.contains(fx, fy) {
+				g.state = StateMenu
+				g.board = nil
+			}
+		}
+	}
+
+	// Игровая логика
+	if g.state == StatePlaying {
+		g.updateGame(fx, fy)
+	}
+
+	return nil
+}
+
+func (g *Game) startGame() {
+	g.state = StatePlaying
+	g.board = newBoard()
+	g.score = 0
+	g.combo = 0
+	g.particles = []*Particle{}
+}
+
+func (g *Game) updateGame(fx, fy float64) {
+	if g.board == nil {
+		return
 	}
 
 	for c := 0; c < boardCols; c++ {
@@ -380,57 +522,31 @@ func (g *Game) Update() error {
 	}
 
 	switch g.state {
-	case StateIdle:
-		g.input()
-	case StateSwapping:
+	case StatePlaying:
+		g.input(fx, fy)
 		if !g.board.isAnimating() {
 			m := g.board.findMatches()
 			if m > 0 {
 				g.combo++
-				g.state = StateRemoving
-			} else {
-				g.board.swap(g.lastC1, g.lastR1, g.lastC2, g.lastR2)
-				g.combo = 0
-				g.state = StateIdle
-			}
-			g.drag = nil
-			g.isDragging = false
-		}
-	case StateRemoving:
-		if !g.board.isAnimating() {
-			g.board.remove()
-			if g.board.drop() {
-				g.state = StateDropping
-			} else {
-				m := g.board.findMatches()
-				if m > 0 {
-					g.combo++
-					g.state = StateRemoving
-				} else {
-					g.combo = 0
-					g.state = StateIdle
-				}
-			}
-		}
-	case StateDropping:
-		if !g.board.isAnimating() {
-			m := g.board.findMatches()
-			if m > 0 {
-				g.combo++
-				g.state = StateRemoving
-			} else {
-				g.combo = 0
-				g.state = StateIdle
+				g.state = StatePlaying // temporarily stay in playing, go to removing
+				g.removeMatches(m)
 			}
 		}
 	}
-	return nil
 }
 
-func (g *Game) input() {
-	mx, my := ebiten.CursorPosition()
-	fx, fy := float64(mx), float64(my)
+func (g *Game) removeMatches(count int) {
+	baseScore := count * 100
+	comboBonus := int(float64(baseScore) * (1 + float64(g.combo-1)*0.5))
+	g.score += comboBonus
+	g.spawnParticles(count)
+	g.board.remove()
+	if g.board.drop() {
+		// wait for drop animation
+	}
+}
 
+func (g *Game) input(fx, fy float64) {
 	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
 		p := g.board.at(fx, fy)
 		if p != nil {
@@ -480,8 +596,17 @@ func (g *Game) input() {
 					g.lastR1 = g.drag.Row
 					g.lastC2 = tc
 					g.lastR2 = tr
-					g.board.swap(g.drag.Col, g.drag.Row, tc, tr)
-					g.state = StateSwapping
+					if g.board.swap(g.drag.Col, g.drag.Row, tc, tr) {
+						m := g.board.findMatches()
+						if m == 0 {
+							// Отмена
+							g.board.swap(g.lastC1, g.lastR1, g.lastC2, g.lastR2)
+							g.combo = 0
+						} else {
+							g.combo++
+							g.removeMatches(m)
+						}
+					}
 				}
 			}
 			g.drag.X = g.dragSX
@@ -513,7 +638,79 @@ func (g *Game) spawnParticles(count int) {
 }
 
 func (g *Game) Draw(screen *ebiten.Image) {
-	screen.Fill(color.RGBA{20, 20, 40, 255})
+	screen.Fill(color.RGBA{15, 15, 30, 255})
+
+	if g.state == StateMenu {
+		g.drawMenu(screen)
+	} else {
+		g.drawGame(screen)
+		if g.state == StatePaused {
+			g.drawPause(screen)
+		}
+	}
+}
+
+func (g *Game) drawMenu(screen *ebiten.Image) {
+	// Фон
+	if g.menuBg != nil {
+		op := &ebiten.DrawImageOptions{}
+		op.GeoM.Translate(0, 0)
+		screen.DrawImage(g.menuBg, op)
+	}
+	if g.menuStars != nil {
+		op := &ebiten.DrawImageOptions{}
+		op.GeoM.Translate(0, 0)
+		screen.DrawImage(g.menuStars, op)
+	}
+
+	// Заголовок
+	titlePanel := ebiten.NewImage(400, 80)
+	titlePanel.Fill(color.RGBA{30, 40, 70, 200})
+	op := &ebiten.DrawImageOptions{}
+	op.GeoM.Translate(312, 200)
+	screen.DrawImage(titlePanel, op)
+
+	titleBorder := ebiten.NewImage(400, 4)
+	titleBorder.Fill(color.RGBA{100, 180, 255, 255})
+	op2 := &ebiten.DrawImageOptions{}
+	op2.GeoM.Translate(312, 200)
+	screen.DrawImage(titleBorder, op2)
+
+	// Кнопки
+	g.drawButton(screen, g.btnPlay)
+	g.drawButton(screen, g.btnNewGame)
+	g.drawButton(screen, g.btnOptions)
+	g.drawButton(screen, g.btnExit)
+}
+
+func (g *Game) drawButton(screen *ebiten.Image, btn *Button) {
+	if btn == nil {
+		return
+	}
+	if btn.Image != nil {
+		op := &ebiten.DrawImageOptions{}
+		op.GeoM.Translate(btn.X, btn.Y)
+		if btn == g.hoveredButton {
+			op.ColorM.Scale(1.1, 1.1, 1.1, 1)
+		}
+		screen.DrawImage(btn.Image, op)
+	} else {
+		col := color.RGBA{60, 60, 100, 200}
+		if btn == g.hoveredButton {
+			col = color.RGBA{80, 80, 140, 255}
+		}
+		img := ebiten.NewImage(int(btn.W), int(btn.H))
+		img.Fill(col)
+		op := &ebiten.DrawImageOptions{}
+		op.GeoM.Translate(btn.X, btn.Y)
+		screen.DrawImage(img, op)
+	}
+}
+
+func (g *Game) drawGame(screen *ebiten.Image) {
+	if g.board == nil {
+		return
+	}
 
 	// Фон доски
 	bw := boardCols*(cellSize+cellPad) + 16
@@ -571,7 +768,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	}
 
 	// UI
-	g.drawUI(screen)
+	g.drawGameUI(screen)
 }
 
 func (g *Game) drawPiece(screen *ebiten.Image, p *Piece) {
@@ -591,15 +788,14 @@ func (g *Game) drawPiece(screen *ebiten.Image, p *Piece) {
 	screen.DrawImage(img, op)
 }
 
-func (g *Game) drawUI(screen *ebiten.Image) {
-	// Панель
-	panel := ebiten.NewImage(240, 260)
+func (g *Game) drawGameUI(screen *ebiten.Image) {
+	// Панель счёта
+	panel := ebiten.NewImage(240, 200)
 	panel.Fill(color.RGBA{25, 25, 45, 230})
 	op := &ebiten.DrawImageOptions{}
 	op.GeoM.Translate(20, 50)
 	screen.DrawImage(panel, op)
 
-	// Рамка
 	top := ebiten.NewImage(240, 3)
 	top.Fill(color.RGBA{80, 160, 255, 255})
 	op2 := &ebiten.DrawImageOptions{}
@@ -630,40 +826,41 @@ func (g *Game) drawUI(screen *ebiten.Image) {
 		screen.DrawImage(cp, op4)
 	}
 
-	// Уровень
-	lv := g.score/1000 + 1
-	lw := 60 + lv*30
-	if lw > 200 {
-		lw = 200
-	}
-	lp := ebiten.NewImage(lw, 25)
-	lp.Fill(color.RGBA{50, 100, 80, 200})
-	op5 := &ebiten.DrawImageOptions{}
-	op5.GeoM.Translate(40, 200)
-	screen.DrawImage(lp, op5)
+	// Кнопка паузы
+	g.drawButton(screen, g.btnPause)
+}
 
-	// Подсказка
-	hp := ebiten.NewImage(450, 30)
-	hp.Fill(color.RGBA{25, 25, 45, 180})
-	op6 := &ebiten.DrawImageOptions{}
-	op6.GeoM.Translate(280, 715)
-	screen.DrawImage(hp, op6)
+func (g *Game) drawPause(screen *ebiten.Image) {
+	// Затемнение
+	overlay := ebiten.NewImage(screenWidth, screenHeight)
+	overlay.Fill(color.RGBA{0, 0, 0, 150})
+	op := &ebiten.DrawImageOptions{}
+	op.GeoM.Translate(0, 0)
+	screen.DrawImage(overlay, op)
+
+	// Панель паузы
+	panel := ebiten.NewImage(300, 250)
+	panel.Fill(color.RGBA{30, 30, 50, 240})
+	op2 := &ebiten.DrawImageOptions{}
+	op2.GeoM.Translate(362, 260)
+	screen.DrawImage(panel, op2)
+
+	border := ebiten.NewImage(300, 3)
+	border.Fill(color.RGBA{100, 180, 255, 255})
+	op3 := &ebiten.DrawImageOptions{}
+	op3.GeoM.Translate(362, 260)
+	screen.DrawImage(border, op3)
+
+	// Кнопки в паузе
+	continueBtn := &Button{X: 412, Y: 320, W: 200, H: 60}
+	menuBtn := &Button{X: 412, Y: 400, W: 200, H: 60}
+
+	g.drawButton(screen, continueBtn)
+	g.drawButton(screen, menuBtn)
 }
 
 func (g *Game) Layout(ow, oh int) (int, int) {
 	return screenWidth, screenHeight
-}
-
-func itos(n int) string {
-	if n == 0 {
-		return "0"
-	}
-	var s string
-	for n > 0 {
-		s = string(rune('0'+n%10)) + s
-		n /= 10
-	}
-	return s
 }
 
 func main() {
