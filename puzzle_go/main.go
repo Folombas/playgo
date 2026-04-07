@@ -402,18 +402,22 @@ func (p *Particle) Update() bool {
 
 // ==================== ИГРА ====================
 type Game struct {
-	board        *Board
-	foods        []*ebiten.Image
-	particles    []*Particle
-	state        GameState
-	score        int
-	combo        int
-	selected     *FoodPiece
-	swapTarget   *FoodPiece
-	lastSwapC1   int
-	lastSwapR1   int
-	lastSwapC2   int
-	lastSwapR2   int
+	board         *Board
+	foods         []*ebiten.Image
+	particles     []*Particle
+	state         GameState
+	score         int
+	combo         int
+	dragging      *FoodPiece
+	dragStartX    float64
+	dragStartY    float64
+	dragOffsetX   float64
+	dragOffsetY   float64
+	isDragging    bool
+	lastSwapC1    int
+	lastSwapR1    int
+	lastSwapC2    int
+	lastSwapR2    int
 }
 
 func NewGame() *Game {
@@ -479,8 +483,8 @@ func (g *Game) Update() error {
 			} else {
 				// Отмена - меняем обратно
 				g.board.Swap(g.lastSwapC1, g.lastSwapR1, g.lastSwapC2, g.lastSwapR2)
-				g.selected = nil
-				g.swapTarget = nil
+				g.dragging = nil
+				g.isDragging = false
 				g.combo = 0
 				g.state = StateIdle
 			}
@@ -516,31 +520,86 @@ func (g *Game) Update() error {
 }
 
 func (g *Game) handleInput() {
-	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
-		mx, my := ebiten.CursorPosition()
-		piece := g.board.GetPieceAt(float64(mx), float64(my))
+	mx, my := ebiten.CursorPosition()
+	fx, fy := float64(mx), float64(my)
 
+	// Начало перетаскивания
+	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) && g.state == StateIdle {
+		piece := g.board.GetPieceAt(fx, fy)
 		if piece != nil {
-			if g.selected == nil {
-				g.selected = piece
-			} else if g.board.isAdjacent(g.selected.Col, g.selected.Row, piece.Col, piece.Row) && piece != g.selected {
-				// Сохраняем координаты для возможной отмены
-				g.lastSwapC1 = g.selected.Col
-				g.lastSwapR1 = g.selected.Row
-				g.lastSwapC2 = piece.Col
-				g.lastSwapR2 = piece.Row
-				
-				g.board.Swap(g.selected.Col, g.selected.Row, piece.Col, piece.Row)
-				g.selected = nil
-				g.state = StateSwapping
-			} else {
-				g.selected = piece
-			}
+			g.dragging = piece
+			g.dragStartX = fx
+			g.dragStartY = fy
+			g.dragOffsetX = piece.X
+			g.dragOffsetY = piece.Y
+			g.isDragging = false
 		}
 	}
 
-	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonRight) {
-		g.selected = nil
+	// Процесс перетаскивания
+	if ebiten.IsMouseButtonPressed(ebiten.MouseButtonLeft) && g.dragging != nil {
+		dx := fx - g.dragStartX
+		dy := fy - g.dragStartY
+
+		// Начинаем тащить если сдвинулись достаточно
+		if !g.isDragging && (dx*dx+dy*dy > 100) {
+			g.isDragging = true
+		}
+
+		if g.isDragging {
+			g.dragging.X = g.dragOffsetX + dx
+			g.dragging.Y = g.dragOffsetY + dy
+		}
+	}
+
+	// Конец перетаскивания
+	if inpututil.IsMouseButtonJustReleased(ebiten.MouseButtonLeft) && g.dragging != nil {
+		if g.isDragging {
+			// Определяем направление перетаскивания
+			dx := g.dragging.X - g.dragOffsetX
+			dy := g.dragging.Y - g.dragOffsetY
+
+			targetCol := g.dragging.Col
+			targetRow := g.dragging.Row
+
+			if dx*dx > dy*dy {
+				// Горизонтально
+				if dx > 0 {
+					targetCol++
+				} else {
+					targetCol--
+				}
+			} else {
+				// Вертикально
+				if dy > 0 {
+					targetRow++
+				} else {
+					targetRow--
+				}
+			}
+
+			// Проверяем что целевая клетка в пределах поля
+			if targetCol >= 0 && targetCol < boardCols && targetRow >= 0 && targetRow < boardRows {
+				target := g.board.GetPiece(targetCol, targetRow)
+				if target != nil {
+					// Сохраняем координаты для отмены
+					g.lastSwapC1 = g.dragging.Col
+					g.lastSwapR1 = g.dragging.Row
+					g.lastSwapC2 = targetCol
+					g.lastSwapR2 = targetRow
+
+					g.board.Swap(g.dragging.Col, g.dragging.Row, targetCol, targetRow)
+					g.state = StateSwapping
+				}
+			}
+
+			// Возвращаем на место
+			g.dragging.X = g.dragOffsetX
+			g.dragging.Y = g.dragOffsetY
+		}
+
+		g.dragging = nil
+		g.isDragging = false
 	}
 }
 
@@ -609,25 +668,32 @@ func (g *Game) drawBoard(screen *ebiten.Image) {
 }
 
 func (g *Game) drawFoods(screen *ebiten.Image) {
+	// Сначала все кроме перетаскиваемого
 	for c := 0; c < boardCols; c++ {
 		for r := 0; r < boardRows; r++ {
 			piece := g.board.GetPiece(c, r)
-			if piece == nil || piece.Alpha < 0.01 {
+			if piece == nil || piece.Alpha < 0.01 || piece == g.dragging {
 				continue
 			}
 
 			g.drawSingleFood(screen, piece)
 		}
 	}
+
+	// Перетаскиваемый поверх всех
+	if g.dragging != nil && g.dragging.Alpha > 0.01 {
+		g.drawSingleFood(screen, g.dragging)
+	}
 }
 
 func (g *Game) drawSingleFood(screen *ebiten.Image, piece *FoodPiece) {
-	if g.selected == piece {
-		highlight := ebiten.NewImage(cellSize+8, cellSize+8)
-		highlight.Fill(color.RGBA{255, 255, 255, 80})
+	// Подсветка для перетаскиваемого
+	if piece == g.dragging && g.isDragging {
+		highlight := ebiten.NewImage(cellSize+12, cellSize+12)
+		highlight.Fill(color.RGBA{255, 255, 255, 60})
 
 		op := &ebiten.DrawImageOptions{}
-		op.GeoM.Translate(piece.X-4, piece.Y-4)
+		op.GeoM.Translate(piece.X-6, piece.Y-6)
 		screen.DrawImage(highlight, op)
 	}
 
@@ -636,17 +702,27 @@ func (g *Game) drawSingleFood(screen *ebiten.Image, piece *FoodPiece) {
 		return
 	}
 
-	size := int(float64(cellSize) * piece.Scale)
+	scale := piece.Scale
+	if piece == g.dragging && g.isDragging {
+		scale = 1.2
+	}
+
+	size := int(float64(cellSize) * scale)
 	if size < 4 {
 		return
 	}
 
-	scale := float64(size) / float64(img.Bounds().Dx())
+	imgScale := float64(size) / float64(img.Bounds().Dx())
 
 	op := &ebiten.DrawImageOptions{}
-	op.GeoM.Scale(scale, scale)
+	op.GeoM.Scale(imgScale, imgScale)
 	op.GeoM.Translate(piece.X, piece.Y)
-	op.ColorM.Scale(1, 1, 1, piece.Alpha)
+
+	alpha := piece.Alpha
+	if piece == g.dragging && g.isDragging {
+		alpha = 0.85
+	}
+	op.ColorM.Scale(1, 1, 1, alpha)
 	screen.DrawImage(img, op)
 }
 
