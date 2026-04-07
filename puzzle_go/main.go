@@ -1,5 +1,4 @@
-// Crystal Cascade - Match-3 Game with Food Sprites
-// Go365 Challenge - Day 99
+// Food Match-3 - Go365 Challenge Day 99
 package main
 
 import (
@@ -8,7 +7,6 @@ import (
 	"image/color"
 	"image/png"
 	"log"
-	"math"
 	"math/rand"
 	"time"
 
@@ -20,227 +18,142 @@ import (
 //go:embed assets/food/*.png
 var foodFS embed.FS
 
-// ==================== КОНСТАНТЫ ====================
 const (
 	screenWidth  = 1024
 	screenHeight = 768
-
-	boardCols = 8
-	boardRows = 8
-	cellSize  = 64
-	cellPad   = 4
-
-	boardX = 280
-	boardY = 60
-
-	foodCount = 6
+	boardCols    = 8
+	boardRows    = 8
+	cellSize     = 60
+	cellPad      = 6
+	boardX       = 300
+	boardY       = 80
+	foodCount    = 6
 )
 
-// ==================== ЕДА ====================
-var foodNames = []string{
-	"apple",
-	"orange",
-	"banana",
-	"strawberry",
-	"grapes",
-	"cupcake",
-}
+var foodNames = []string{"apple", "orange", "banana", "strawberry", "grapes", "cupcake"}
 
 var foodColors = []color.RGBA{
-	{255, 50, 50, 255},
-	{255, 165, 0, 255},
-	{255, 255, 100, 255},
+	{255, 60, 60, 255},
+	{255, 170, 0, 255},
+	{255, 255, 80, 255},
 	{255, 100, 150, 255},
-	{150, 100, 255, 255},
+	{160, 100, 255, 255},
 	{255, 180, 220, 255},
 }
 
-var foodGlowColors = []color.RGBA{
-	{255, 100, 100, 150},
-	{255, 200, 100, 150},
-	{255, 255, 150, 150},
-	{255, 150, 200, 150},
-	{200, 150, 255, 150},
-	{255, 220, 240, 150},
-}
-
-// ==================== СОСТОЯНИЯ ====================
-type GameState int
+type State int
 
 const (
-	StateIdle GameState = iota
+	StateIdle State = iota
 	StateSwapping
-	StateChecking
 	StateRemoving
 	StateDropping
 )
 
-// ==================== ЕДА-КРИСТАЛЛ ====================
-type FoodPiece struct {
-	Type      int
-	Col       int
-	Row       int
-	X         float64
-	Y         float64
-	TargetX   float64
-	TargetY   float64
-	Alpha     float64
-	Scale     float64
-	Matched   bool
-	BobPhase  float64
-	GlowPhase float64
+type Piece struct {
+	Type    int
+	Col     int
+	Row     int
+	X       float64
+	Y       float64
+	TargetX float64
+	TargetY float64
+	Alpha   float64
+	Scale   float64
+	Matched bool
 }
 
-func NewFood(fType, col, row int, fromAbove bool) *FoodPiece {
-	x := float64(boardX + col*(cellSize+cellPad))
-	y := float64(boardY + row*(cellSize+cellPad))
-
+func newPiece(t, c, r int, fromAbove bool) *Piece {
+	x := float64(boardX + c*(cellSize+cellPad))
+	y := float64(boardY + r*(cellSize+cellPad))
 	if fromAbove {
-		y = float64(boardY - (cellSize+cellPad)*3)
+		y = float64(boardY - (cellSize+cellPad)*4)
 	}
-
-	return &FoodPiece{
-		Type:      fType,
-		Col:       col,
-		Row:       row,
-		X:         x,
-		Y:         y,
-		TargetX:   x,
-		TargetY:   y,
-		Alpha:     1.0,
-		Scale:     1.0,
-		BobPhase:  float64(rand.Intn(360)),
-		GlowPhase: float64(rand.Intn(360)),
-	}
+	return &Piece{Type: t, Col: c, Row: r, X: x, Y: y, TargetX: x, TargetY: y, Alpha: 1, Scale: 1}
 }
 
-func (f *FoodPiece) Update() bool {
-	dx := f.TargetX - f.X
-	dy := f.TargetY - f.Y
-
-	if dx*dx+dy*dy > 0.5 {
-		f.X += dx * 0.2
-		f.Y += dy * 0.2
+func (p *Piece) update() bool {
+	dx := p.TargetX - p.X
+	dy := p.TargetY - p.Y
+	if dx*dx+dy*dy > 0.25 {
+		p.X += dx * 0.25
+		p.Y += dy * 0.25
 		return true
 	}
-
-	f.X = f.TargetX
-	f.Y = f.TargetY
-
-	if f.Matched {
-		f.Scale *= 0.85
-		f.Alpha *= 0.8
-		return f.Alpha > 0.01
+	p.X = p.TargetX
+	p.Y = p.TargetY
+	if p.Matched {
+		p.Scale *= 0.8
+		p.Alpha *= 0.75
+		return p.Alpha > 0.02
 	}
-
-	// Анимация покачивания
-	f.BobPhase += 2
-	if f.BobPhase > 360 {
-		f.BobPhase -= 360
-	}
-	f.GlowPhase += 3
-	if f.GlowPhase > 360 {
-		f.GlowPhase -= 360
-	}
-
 	return false
 }
 
-func (f *FoodPiece) Contains(mx, my float64) bool {
-	size := float64(cellSize) * f.Scale / 2
-	cx := f.X + float64(cellSize)/2
-	cy := f.Y + float64(cellSize)/2
-	return mx >= cx-size && mx <= cx+size && my >= cy-size && my <= cy+size
+func (p *Piece) contains(mx, my float64) bool {
+	s := float64(cellSize) * p.Scale / 2
+	cx := p.X + float64(cellSize)/2
+	cy := p.Y + float64(cellSize)/2
+	return mx >= cx-s && mx <= cx+s && my >= cy-s && my <= cy+s
 }
 
-// ==================== ИГРОВОЕ ПОЛЕ ====================
 type Board struct {
-	pieces [][]*FoodPiece
+	g [][]*Piece
 }
 
-func NewBoard() *Board {
-	b := &Board{
-		pieces: make([][]*FoodPiece, boardCols),
-	}
-
+func newBoard() *Board {
+	b := &Board{g: make([][]*Piece, boardCols)}
 	for c := 0; c < boardCols; c++ {
-		b.pieces[c] = make([]*FoodPiece, boardRows)
+		b.g[c] = make([]*Piece, boardRows)
 	}
-
-	b.Fill()
+	b.fill()
 	return b
 }
 
-func (b *Board) Fill() {
+func (b *Board) fill() {
 	for c := 0; c < boardCols; c++ {
 		for r := 0; r < boardRows; r++ {
-			var fType int
+			var t int
 			for {
-				fType = rand.Intn(foodCount)
-				if !b.wouldMatch(c, r, fType) {
+				t = rand.Intn(foodCount)
+				if !b.wouldMatch(c, r, t) {
 					break
 				}
 			}
-			b.pieces[c][r] = NewFood(fType, c, r, false)
+			b.g[c][r] = newPiece(t, c, r, false)
 		}
 	}
 }
 
-func (b *Board) wouldMatch(col, row, fType int) bool {
-	count := 1
-	for c := col - 1; c >= 0 && b.pieces[c][row] != nil && b.pieces[c][row].Type == fType; c-- {
-		count++
+func (b *Board) wouldMatch(c, r, t int) bool {
+	n := 1
+	for i := c - 1; i >= 0 && b.g[i][r] != nil && b.g[i][r].Type == t; i-- {
+		n++
 	}
-	for c := col + 1; c < boardCols && b.pieces[c][row] != nil && b.pieces[c][row].Type == fType; c++ {
-		count++
+	for i := c + 1; i < boardCols && b.g[i][r] != nil && b.g[i][r].Type == t; i++ {
+		n++
 	}
-	if count >= 3 {
+	if n >= 3 {
 		return true
 	}
-
-	count = 1
-	for r := row - 1; r >= 0 && b.pieces[col][r] != nil && b.pieces[col][r].Type == fType; r-- {
-		count++
+	n = 1
+	for i := r - 1; i >= 0 && b.g[c][i] != nil && b.g[c][i].Type == t; i-- {
+		n++
 	}
-	for r := row + 1; r < boardRows && b.pieces[col][r] != nil && b.pieces[col][r].Type == fType; r++ {
-		count++
+	for i := r + 1; i < boardRows && b.g[c][i] != nil && b.g[c][i].Type == t; i++ {
+		n++
 	}
-	return count >= 3
+	return n >= 3
 }
 
-func (b *Board) GetPiece(col, row int) *FoodPiece {
-	if col < 0 || col >= boardCols || row < 0 || row >= boardRows {
+func (b *Board) get(c, r int) *Piece {
+	if c < 0 || c >= boardCols || r < 0 || r >= boardRows {
 		return nil
 	}
-	return b.pieces[col][row]
+	return b.g[c][r]
 }
 
-func (b *Board) Swap(col1, row1, col2, row2 int) {
-	if !b.isAdjacent(col1, row1, col2, row2) {
-		return
-	}
-
-	p1 := b.pieces[col1][row1]
-	p2 := b.pieces[col2][row2]
-
-	if p1 == nil || p2 == nil {
-		return
-	}
-
-	b.pieces[col1][row1] = p2
-	b.pieces[col2][row2] = p1
-
-	p1.Col, p1.Row = col2, row2
-	p2.Col, p2.Row = col1, row1
-
-	p1.TargetX = float64(boardX + col2*(cellSize+cellPad))
-	p1.TargetY = float64(boardY + row2*(cellSize+cellPad))
-
-	p2.TargetX = float64(boardX + col1*(cellSize+cellPad))
-	p2.TargetY = float64(boardY + row1*(cellSize+cellPad))
-}
-
-func (b *Board) isAdjacent(c1, r1, c2, r2 int) bool {
+func (b *Board) swap(c1, r1, c2, r2 int) bool {
 	dc := c1 - c2
 	dr := r1 - r2
 	if dc < 0 {
@@ -249,133 +162,132 @@ func (b *Board) isAdjacent(c1, r1, c2, r2 int) bool {
 	if dr < 0 {
 		dr = -dr
 	}
-	return (dc == 1 && dr == 0) || (dc == 0 && dr == 1)
+	if !((dc == 1 && dr == 0) || (dc == 0 && dr == 1)) {
+		return false
+	}
+	p1 := b.g[c1][r1]
+	p2 := b.g[c2][r2]
+	if p1 == nil || p2 == nil {
+		return false
+	}
+	b.g[c1][r1] = p2
+	b.g[c2][r2] = p1
+	p1.Col, p1.Row = c2, r2
+	p2.Col, p2.Row = c1, r1
+	p1.TargetX = float64(boardX + c2*(cellSize+cellPad))
+	p1.TargetY = float64(boardY + r2*(cellSize+cellPad))
+	p2.TargetX = float64(boardX + c1*(cellSize+cellPad))
+	p2.TargetY = float64(boardY + r1*(cellSize+cellPad))
+	return true
 }
 
-func (b *Board) FindMatches() [][]*FoodPiece {
-	var matches [][]*FoodPiece
+func (b *Board) findMatches() int {
 	matched := make(map[[2]int]bool)
+	count := 0
 
 	for r := 0; r < boardRows; r++ {
 		for c := 0; c <= boardCols-3; c++ {
-			piece := b.pieces[c][r]
-			if piece == nil || piece.Matched {
+			p := b.g[c][r]
+			if p == nil || p.Matched {
 				continue
 			}
-
-			match := []*FoodPiece{piece}
-			for cc := c + 1; cc < boardCols && b.pieces[cc][r] != nil && b.pieces[cc][r].Type == piece.Type; cc++ {
-				match = append(match, b.pieces[cc][r])
+			match := []*Piece{p}
+			for cc := c + 1; cc < boardCols && b.g[cc][r] != nil && b.g[cc][r].Type == p.Type; cc++ {
+				match = append(match, b.g[cc][r])
 			}
-
 			if len(match) >= 3 {
-				for _, p := range match {
-					key := [2]int{p.Col, p.Row}
-					if !matched[key] {
-						matched[key] = true
-						p.Matched = true
+				for _, m := range match {
+					k := [2]int{m.Col, m.Row}
+					if !matched[k] {
+						matched[k] = true
+						m.Matched = true
+						count++
 					}
 				}
-				matches = append(matches, match)
 			}
 		}
 	}
 
 	for c := 0; c < boardCols; c++ {
 		for r := 0; r <= boardRows-3; r++ {
-			piece := b.pieces[c][r]
-			if piece == nil || piece.Matched {
+			p := b.g[c][r]
+			if p == nil || p.Matched {
 				continue
 			}
-
-			match := []*FoodPiece{piece}
-			for rr := r + 1; rr < boardRows && b.pieces[c][rr] != nil && b.pieces[c][rr].Type == piece.Type; rr++ {
-				match = append(match, b.pieces[c][rr])
+			match := []*Piece{p}
+			for rr := r + 1; rr < boardRows && b.g[c][rr] != nil && b.g[c][rr].Type == p.Type; rr++ {
+				match = append(match, b.g[c][rr])
 			}
-
 			if len(match) >= 3 {
-				for _, p := range match {
-					key := [2]int{p.Col, p.Row}
-					if !matched[key] {
-						matched[key] = true
-						p.Matched = true
+				for _, m := range match {
+					k := [2]int{m.Col, m.Row}
+					if !matched[k] {
+						matched[k] = true
+						m.Matched = true
+						count++
 					}
 				}
-				matches = append(matches, match)
-			}
-		}
-	}
-
-	return matches
-}
-
-func (b *Board) RemoveMatched() int {
-	count := 0
-	for c := 0; c < boardCols; c++ {
-		for r := 0; r < boardRows; r++ {
-			if b.pieces[c][r] != nil && b.pieces[c][r].Matched {
-				b.pieces[c][r] = nil
-				count++
 			}
 		}
 	}
 	return count
 }
 
-func (b *Board) Drop() bool {
-	dropped := false
-
+func (b *Board) remove() {
 	for c := 0; c < boardCols; c++ {
-		emptyRow := -1
+		for r := 0; r < boardRows; r++ {
+			if b.g[c][r] != nil && b.g[c][r].Matched {
+				b.g[c][r] = nil
+			}
+		}
+	}
+}
 
+func (b *Board) drop() bool {
+	dropped := false
+	for c := 0; c < boardCols; c++ {
+		empty := -1
 		for r := boardRows - 1; r >= 0; r-- {
-			if b.pieces[c][r] == nil {
-				if emptyRow == -1 {
-					emptyRow = r
+			if b.g[c][r] == nil {
+				if empty == -1 {
+					empty = r
 				}
 				continue
 			}
-
-			if emptyRow != -1 {
-				piece := b.pieces[c][r]
-				b.pieces[c][emptyRow] = piece
-				b.pieces[c][r] = nil
-
-				piece.Row = emptyRow
-				piece.TargetY = float64(boardY + emptyRow*(cellSize+cellPad))
-
-				emptyRow--
+			if empty != -1 {
+				p := b.g[c][r]
+				b.g[c][empty] = p
+				b.g[c][r] = nil
+				p.Row = empty
+				p.TargetY = float64(boardY + empty*(cellSize+cellPad))
+				empty--
 				dropped = true
 			}
 		}
-
-		for r := emptyRow; r >= 0; r-- {
-			fType := rand.Intn(foodCount)
-			piece := NewFood(fType, c, r, true)
-			piece.TargetY = float64(boardY + r*(cellSize+cellPad))
-			b.pieces[c][r] = piece
+		for r := empty; r >= 0; r-- {
+			t := rand.Intn(foodCount)
+			p := newPiece(t, c, r, true)
+			p.TargetY = float64(boardY + r*(cellSize+cellPad))
+			b.g[c][r] = p
 			dropped = true
 		}
 	}
-
 	return dropped
 }
 
-func (b *Board) IsAnimating() bool {
+func (b *Board) isAnimating() bool {
 	for c := 0; c < boardCols; c++ {
 		for r := 0; r < boardRows; r++ {
-			piece := b.pieces[c][r]
-			if piece == nil {
+			p := b.g[c][r]
+			if p == nil {
 				continue
 			}
-
-			dx := piece.TargetX - piece.X
-			dy := piece.TargetY - piece.Y
-			if dx*dx+dy*dy > 1 {
+			dx := p.TargetX - p.X
+			dy := p.TargetY - p.Y
+			if dx*dx+dy*dy > 0.5 {
 				return true
 			}
-
-			if piece.Matched && piece.Alpha > 0.01 {
+			if p.Matched && p.Alpha > 0.02 {
 				return true
 			}
 		}
@@ -383,249 +295,127 @@ func (b *Board) IsAnimating() bool {
 	return false
 }
 
-func (b *Board) GetPieceAt(mx, my float64) *FoodPiece {
+func (b *Board) at(mx, my float64) *Piece {
 	for c := 0; c < boardCols; c++ {
 		for r := 0; r < boardRows; r++ {
-			piece := b.pieces[c][r]
-			if piece != nil && piece.Contains(mx, my) {
-				return piece
+			p := b.g[c][r]
+			if p != nil && p.contains(mx, my) {
+				return p
 			}
 		}
 	}
 	return nil
 }
 
-// ==================== ЧАСТИЦЫ ====================
 type Particle struct {
-	X, Y     float64
-	VX, VY   float64
-	Life     float64
-	MaxLife  float64
-	Color    color.RGBA
-	Size     float64
-	Type     string
-	Rotation float64
-	RotSpeed float64
+	X, Y, VX, VY float64
+	Life         float64
+	Color        color.RGBA
+	Size         float64
 }
 
-func NewParticle(x, y float64, col color.RGBA, ptype string) *Particle {
-	angle := rand.Float64() * math.Pi * 2
-	speed := 2 + rand.Float64()*6
-
-	return &Particle{
-		X:        x,
-		Y:        y,
-		VX:       math.Cos(angle) * speed,
-		VY:       math.Sin(angle)*speed - 2,
-		Life:     1.0,
-		MaxLife:  1.0,
-		Color:    col,
-		Size:     float64(3 + rand.Intn(6)),
-		Type:     ptype,
-		Rotation: rand.Float64() * math.Pi * 2,
-		RotSpeed: (rand.Float64() - 0.5) * 0.2,
-	}
-}
-
-func (p *Particle) Update() bool {
-	p.X += p.VX
-	p.Y += p.VY
-	p.VY += 0.15
-	p.VX *= 0.98
-	p.Rotation += p.RotSpeed
-	p.Life -= 0.015
-	return p.Life > 0
-}
-
-// ==================== ЭФФЕКТЫ ТЕКСТА ====================
-type FloatingText struct {
-	X, Y  float64
-	Text  string
-	Life  float64
-	Color color.RGBA
-	Size  float64
-}
-
-func NewFloatingText(x, y float64, text string, col color.RGBA) *FloatingText {
-	return &FloatingText{
-		X:     x,
-		Y:     y,
-		Text:  text,
-		Life:  1.0,
-		Color: col,
-		Size:  20,
-	}
-}
-
-func (ft *FloatingText) Update() bool {
-	ft.Y -= 1.5
-	ft.Life -= 0.012
-	return ft.Life > 0
-}
-
-// ==================== ЭФФЕКТ ВСПЫШКИ ====================
-type FlashEffect struct {
-	X, Y  float64
-	Life  float64
-	MaxR  float64
-	Color color.RGBA
-}
-
-func NewFlashEffect(x, y float64, col color.RGBA) *FlashEffect {
-	return &FlashEffect{
-		X:     x,
-		Y:     y,
-		Life:  1.0,
-		MaxR:  80,
-		Color: col,
-	}
-}
-
-func (fe *FlashEffect) Update() bool {
-	fe.Life -= 0.05
-	return fe.Life > 0
-}
-
-// ==================== ИГРА ====================
 type Game struct {
-	board         *Board
-	foods         []*ebiten.Image
-	particles     []*Particle
-	floatingTexts []*FloatingText
-	flashEffects  []*FlashEffect
-	state         GameState
-	score         int
-	combo         int
-	dragging      *FoodPiece
-	dragStartX    float64
-	dragStartY    float64
-	dragOffsetX   float64
-	dragOffsetY   float64
-	isDragging    bool
-	lastSwapC1    int
-	lastSwapR1    int
-	lastSwapC2    int
-	lastSwapR2    int
-	gameTime      float64
+	board      *Board
+	foods      []*ebiten.Image
+	particles  []*Particle
+	state      State
+	score      int
+	combo      int
+	drag       *Piece
+	dragOX     float64
+	dragOY     float64
+	dragSX     float64
+	dragSY     float64
+	isDragging bool
+	lastC1     int
+	lastR1     int
+	lastC2     int
+	lastR2     int
 }
 
 func NewGame() *Game {
 	rand.Seed(time.Now().UnixNano())
-
 	g := &Game{
-		board:         NewBoard(),
-		foods:         make([]*ebiten.Image, foodCount),
-		particles:     make([]*Particle, 0),
-		floatingTexts: make([]*FloatingText, 0),
-		flashEffects:  make([]*FlashEffect, 0),
-		state:         StateIdle,
+		board:     newBoard(),
+		foods:     make([]*ebiten.Image, foodCount),
+		particles: []*Particle{},
 	}
-
-	g.loadFoodSprites()
+	g.loadSprites()
 	return g
 }
 
-func (g *Game) loadFoodSprites() {
+func (g *Game) loadSprites() {
 	for i, name := range foodNames {
-		path := "assets/food/" + name + ".png"
-		data, err := foodFS.ReadFile(path)
+		data, err := foodFS.ReadFile("assets/food/" + name + ".png")
 		if err != nil {
-			log.Printf("Warning: could not load %s: %v", name, err)
 			continue
 		}
-
 		img, err := png.Decode(bytes.NewReader(data))
 		if err != nil {
-			log.Printf("Warning: could not decode %s: %v", name, err)
 			continue
 		}
-
 		g.foods[i] = ebiten.NewImageFromImage(img)
 	}
 }
 
 func (g *Game) Update() error {
-	g.gameTime += 0.016
-
-	// Обновление частиц
 	for i := len(g.particles) - 1; i >= 0; i-- {
-		if !g.particles[i].Update() {
+		p := g.particles[i]
+		p.X += p.VX
+		p.Y += p.VY
+		p.VY += 0.2
+		p.Life -= 0.02
+		if p.Life <= 0 {
 			g.particles = append(g.particles[:i], g.particles[i+1:]...)
 		}
 	}
 
-	// Обновление плавающего текста
-	for i := len(g.floatingTexts) - 1; i >= 0; i-- {
-		if !g.floatingTexts[i].Update() {
-			g.floatingTexts = append(g.floatingTexts[:i], g.floatingTexts[i+1:]...)
-		}
-	}
-
-	// Обновление вспышек
-	for i := len(g.flashEffects) - 1; i >= 0; i-- {
-		if !g.flashEffects[i].Update() {
-			g.flashEffects = append(g.flashEffects[:i], g.flashEffects[i+1:]...)
-		}
-	}
-
-	// Обновление кристаллов
 	for c := 0; c < boardCols; c++ {
 		for r := 0; r < boardRows; r++ {
-			piece := g.board.GetPiece(c, r)
-			if piece != nil {
-				piece.Update()
+			p := g.board.get(c, r)
+			if p != nil {
+				p.update()
 			}
 		}
 	}
 
-	// Машина состояий
 	switch g.state {
 	case StateIdle:
-		g.handleInput()
-
+		g.input()
 	case StateSwapping:
-		if !g.board.IsAnimating() {
-			matches := g.board.FindMatches()
-			if len(matches) > 0 {
+		if !g.board.isAnimating() {
+			m := g.board.findMatches()
+			if m > 0 {
 				g.combo++
 				g.state = StateRemoving
 			} else {
-				g.board.Swap(g.lastSwapC1, g.lastSwapR1, g.lastSwapC2, g.lastSwapR2)
-				g.dragging = nil
-				g.isDragging = false
+				g.board.swap(g.lastC1, g.lastR1, g.lastC2, g.lastR2)
 				g.combo = 0
 				g.state = StateIdle
 			}
+			g.drag = nil
+			g.isDragging = false
 		}
-
 	case StateRemoving:
-		if !g.board.IsAnimating() {
-			count := g.board.RemoveMatched()
-			if count > 0 {
-				baseScore := count * 100
-				comboBonus := int(float64(baseScore) * (1 + float64(g.combo-1)*0.5))
-				g.score += comboBonus
-
-				// Эффекты при удалении
-				g.spawnMatchParticles(count)
-				g.spawnFloatingText(count, comboBonus)
-
-				// Вспышка для больших комбо
-				if g.combo >= 2 {
-					g.flashEffects = append(g.flashEffects,
-						NewFlashEffect(float64(boardX+boardCols*(cellSize+cellPad)/2),
-							float64(boardY+boardRows*(cellSize+cellPad)/2),
-							color.RGBA{255, 255, 200, 100}))
+		if !g.board.isAnimating() {
+			g.board.remove()
+			if g.board.drop() {
+				g.state = StateDropping
+			} else {
+				m := g.board.findMatches()
+				if m > 0 {
+					g.combo++
+					g.state = StateRemoving
+				} else {
+					g.combo = 0
+					g.state = StateIdle
 				}
 			}
-			g.board.Drop()
-			g.state = StateDropping
 		}
-
 	case StateDropping:
-		if !g.board.IsAnimating() {
-			matches := g.board.FindMatches()
-			if len(matches) > 0 {
+		if !g.board.isAnimating() {
+			m := g.board.findMatches()
+			if m > 0 {
 				g.combo++
 				g.state = StateRemoving
 			} else {
@@ -634,505 +424,233 @@ func (g *Game) Update() error {
 			}
 		}
 	}
-
 	return nil
 }
 
-func (g *Game) handleInput() {
+func (g *Game) input() {
 	mx, my := ebiten.CursorPosition()
 	fx, fy := float64(mx), float64(my)
 
-	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) && g.state == StateIdle {
-		piece := g.board.GetPieceAt(fx, fy)
-		if piece != nil {
-			g.dragging = piece
-			g.dragStartX = fx
-			g.dragStartY = fy
-			g.dragOffsetX = piece.X
-			g.dragOffsetY = piece.Y
+	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
+		p := g.board.at(fx, fy)
+		if p != nil {
+			g.drag = p
+			g.dragOX = fx
+			g.dragOY = fy
+			g.dragSX = p.X
+			g.dragSY = p.Y
 			g.isDragging = false
 		}
 	}
 
-	if ebiten.IsMouseButtonPressed(ebiten.MouseButtonLeft) && g.dragging != nil {
-		dx := fx - g.dragStartX
-		dy := fy - g.dragStartY
-
-		if !g.isDragging && (dx*dx+dy*dy > 100) {
+	if ebiten.IsMouseButtonPressed(ebiten.MouseButtonLeft) && g.drag != nil {
+		dx := fx - g.dragOX
+		dy := fy - g.dragOY
+		if !g.isDragging && (dx*dx+dy*dy > 200) {
 			g.isDragging = true
 		}
-
 		if g.isDragging {
-			g.dragging.X = g.dragOffsetX + dx
-			g.dragging.Y = g.dragOffsetY + dy
+			g.drag.X = g.dragSX + dx
+			g.drag.Y = g.dragSY + dy
 		}
 	}
 
-	if inpututil.IsMouseButtonJustReleased(ebiten.MouseButtonLeft) && g.dragging != nil {
+	if inpututil.IsMouseButtonJustReleased(ebiten.MouseButtonLeft) && g.drag != nil {
 		if g.isDragging {
-			dx := g.dragging.X - g.dragOffsetX
-			dy := g.dragging.Y - g.dragOffsetY
-
-			targetCol := g.dragging.Col
-			targetRow := g.dragging.Row
-
+			dx := g.drag.X - g.dragSX
+			dy := g.drag.Y - g.dragSY
+			tc, tr := g.drag.Col, g.drag.Row
 			if dx*dx > dy*dy {
 				if dx > 0 {
-					targetCol++
+					tc++
 				} else {
-					targetCol--
+					tc--
 				}
 			} else {
 				if dy > 0 {
-					targetRow++
+					tr++
 				} else {
-					targetRow--
+					tr--
 				}
 			}
-
-			if targetCol >= 0 && targetCol < boardCols && targetRow >= 0 && targetRow < boardRows {
-				target := g.board.GetPiece(targetCol, targetRow)
+			if tc >= 0 && tc < boardCols && tr >= 0 && tr < boardRows {
+				target := g.board.get(tc, tr)
 				if target != nil {
-					g.lastSwapC1 = g.dragging.Col
-					g.lastSwapR1 = g.dragging.Row
-					g.lastSwapC2 = targetCol
-					g.lastSwapR2 = targetRow
-
-					g.board.Swap(g.dragging.Col, g.dragging.Row, targetCol, targetRow)
+					g.lastC1 = g.drag.Col
+					g.lastR1 = g.drag.Row
+					g.lastC2 = tc
+					g.lastR2 = tr
+					g.board.swap(g.drag.Col, g.drag.Row, tc, tr)
 					g.state = StateSwapping
 				}
 			}
-
-			g.dragging.X = g.dragOffsetX
-			g.dragging.Y = g.dragOffsetY
+			g.drag.X = g.dragSX
+			g.drag.Y = g.dragSY
 		}
-
-		g.dragging = nil
+		g.drag = nil
 		g.isDragging = false
 	}
 }
 
-func (g *Game) spawnMatchParticles(count int) {
-	for i := 0; i < count*12; i++ {
+func (g *Game) spawnParticles(count int) {
+	for i := 0; i < count*6; i++ {
 		c := rand.Intn(boardCols)
 		r := rand.Intn(boardRows)
-		piece := g.board.GetPiece(c, r)
-		if piece != nil {
-			col := foodColors[piece.Type]
-			x := float64(boardX + c*(cellSize+cellPad) + cellSize/2)
-			y := float64(boardY + r*(cellSize+cellPad) + cellSize/2)
-
-			// Искры
-			g.particles = append(g.particles, NewParticle(x, y, col, "spark"))
-
-			// Звёздочки
-			if rand.Float64() > 0.5 {
-				g.particles = append(g.particles, NewParticle(x, y,
-					color.RGBA{255, 255, 200, 255}, "star"))
-			}
+		p := g.board.get(c, r)
+		if p != nil {
+			col := foodColors[p.Type]
+			g.particles = append(g.particles, &Particle{
+				X:     float64(boardX+c*(cellSize+cellPad)+cellSize/2),
+				Y:     float64(boardY+r*(cellSize+cellPad)+cellSize/2),
+				VX:    float64(rand.Intn(7)-3) * 1.5,
+				VY:    float64(rand.Intn(7)-3) * 1.5 - 2,
+				Life:  1,
+				Color: col,
+				Size:  float64(3 + rand.Intn(4)),
+			})
 		}
 	}
-}
-
-func (g *Game) spawnFloatingText(count int, score int) {
-	cx := boardX + boardCols*(cellSize+cellPad)/2
-	cy := boardY + boardRows*(cellSize+cellPad)/2
-
-	text := ""
-	if g.combo > 1 {
-		text = "COMBO x" + itos(g.combo) + "!"
-	} else {
-		text = "+" + itos(score)
-	}
-
-	col := color.RGBA{255, 255, 100, 255}
-	if g.combo >= 3 {
-		col = color.RGBA{255, 200, 50, 255}
-	}
-	if g.combo >= 5 {
-		col = color.RGBA{255, 100, 100, 255}
-	}
-
-	g.floatingTexts = append(g.floatingTexts,
-		NewFloatingText(float64(cx), float64(cy), text, col))
 }
 
 func (g *Game) Draw(screen *ebiten.Image) {
-	g.drawBackground(screen)
-	g.drawBoard(screen)
-	g.drawFlashEffects(screen)
-	g.drawFoods(screen)
-	g.drawParticles(screen)
-	g.drawFloatingTexts(screen)
-	g.drawUI(screen)
-}
+	screen.Fill(color.RGBA{20, 20, 40, 255})
 
-func (g *Game) drawBackground(screen *ebiten.Image) {
-	// Градиентный фон
-	for y := 0; y < screenHeight; y++ {
-		ratio := float64(y) / float64(screenHeight)
-		r := uint8(10 + float64(20)*ratio)
-		gr := uint8(15 + float64(25)*ratio)
-		b := uint8(30 + float64(40)*ratio)
-
-		line := ebiten.NewImage(screenWidth, 1)
-		line.Fill(color.RGBA{r, gr, b, 255})
-
-		op := &ebiten.DrawImageOptions{}
-		op.GeoM.Translate(0, float64(y))
-		screen.DrawImage(line, op)
-	}
-
-	// Анимированные звёзды
-	for i := 0; i < 60; i++ {
-		x := float64((i*137 + 50) % screenWidth)
-		y := float64((i*251 + 30) % screenHeight)
-		twinkle := 0.5 + 0.5*math.Sin(g.gameTime*2+float64(i))
-		brightness := uint8(80 + 175*twinkle)
-		size := 1 + int(twinkle)
-
-		for dx := 0; dx < size; dx++ {
-			for dy := 0; dy < size; dy++ {
-				ebitenutil.DrawLine(screen, x+float64(dx), y+float64(dy),
-					x+float64(dx), y+float64(dy),
-					color.RGBA{brightness, brightness, brightness, 255})
-			}
-		}
-	}
-}
-
-func (g *Game) drawBoard(screen *ebiten.Image) {
-	w := boardCols*(cellSize+cellPad) + 20
-	h := boardRows*(cellSize+cellPad) + 20
-
-	// Фон с градиентом
-	board := ebiten.NewImage(w, h)
-	board.Fill(color.RGBA{20, 30, 40, 240})
-
+	// Фон доски
+	bw := boardCols*(cellSize+cellPad) + 16
+	bh := boardRows*(cellSize+cellPad) + 16
+	bg := ebiten.NewImage(bw, bh)
+	bg.Fill(color.RGBA{30, 30, 50, 250})
 	op := &ebiten.DrawImageOptions{}
-	op.GeoM.Translate(float64(boardX-10), float64(boardY-10))
-	screen.DrawImage(board, op)
+	op.GeoM.Translate(float64(boardX-8), float64(boardY-8))
+	screen.DrawImage(bg, op)
 
-	// Светящаяся рамка
-	border := ebiten.NewImage(w, 4)
-	border.Fill(color.RGBA{100, 200, 255, 255})
-
+	// Рамка
+	border := ebiten.NewImage(bw, 3)
+	border.Fill(color.RGBA{80, 160, 255, 255})
 	op2 := &ebiten.DrawImageOptions{}
-	op2.GeoM.Translate(float64(boardX-10), float64(boardY-12))
+	op2.GeoM.Translate(float64(boardX-8), float64(boardY-10))
 	screen.DrawImage(border, op2)
 
 	// Сетка
 	for c := 0; c <= boardCols; c++ {
 		x := float64(boardX + c*(cellSize+cellPad) - cellPad/2)
 		ebitenutil.DrawLine(screen, x, float64(boardY), x, float64(boardY+boardRows*(cellSize+cellPad)),
-			color.RGBA{40, 60, 80, 150})
+			color.RGBA{50, 50, 80, 120})
 	}
 	for r := 0; r <= boardRows; r++ {
 		y := float64(boardY + r*(cellSize+cellPad) - cellPad/2)
 		ebitenutil.DrawLine(screen, float64(boardX), y, float64(boardX+boardCols*(cellSize+cellPad)), y,
-			color.RGBA{40, 60, 80, 150})
+			color.RGBA{50, 50, 80, 120})
 	}
-}
 
-func (g *Game) drawFoods(screen *ebiten.Image) {
-	// Сначала все кроме перетаскиваемого
+	// Еда
 	for c := 0; c < boardCols; c++ {
 		for r := 0; r < boardRows; r++ {
-			piece := g.board.GetPiece(c, r)
-			if piece == nil || piece.Alpha < 0.01 || piece == g.dragging {
+			p := g.board.get(c, r)
+			if p == nil || p.Alpha < 0.02 || p == g.drag {
 				continue
 			}
-
-			g.drawSingleFood(screen, piece)
+			g.drawPiece(screen, p)
 		}
 	}
-
-	// Перетаскиваемый поверх всех
-	if g.dragging != nil && g.dragging.Alpha > 0.01 {
-		g.drawSingleFood(screen, g.dragging)
+	if g.drag != nil && g.drag.Alpha > 0.02 {
+		g.drawPiece(screen, g.drag)
 	}
+
+	// Частицы
+	for _, p := range g.particles {
+		s := int(p.Size * p.Life)
+		if s < 1 {
+			continue
+		}
+		img := ebiten.NewImage(s, s)
+		img.Fill(color.RGBA{p.Color.R, p.Color.G, p.Color.B, uint8(p.Life * 255)})
+		opp := &ebiten.DrawImageOptions{}
+		opp.GeoM.Translate(p.X-float64(s)/2, p.Y-float64(s)/2)
+		screen.DrawImage(img, opp)
+	}
+
+	// UI
+	g.drawUI(screen)
 }
 
-func (g *Game) drawSingleFood(screen *ebiten.Image, piece *FoodPiece) {
-	img := g.foods[piece.Type]
+func (g *Game) drawPiece(screen *ebiten.Image, p *Piece) {
+	img := g.foods[p.Type]
 	if img == nil {
 		return
 	}
-
-	// Свечение вокруг еды (пульсирующее)
-	glowIntensity := 0.5 + 0.5*math.Sin(piece.GlowPhase*math.Pi/180)
-	glowSize := int(5 + 3*glowIntensity)
-
-	if piece != g.dragging || !g.isDragging {
-		glow := ebiten.NewImage(cellSize+glowSize*2, cellSize+glowSize*2)
-		glowColor := foodGlowColors[piece.Type]
-		glowColor.A = uint8(float64(glowColor.A) * glowIntensity * piece.Alpha)
-		glow.Fill(glowColor)
-
-		op := &ebiten.DrawImageOptions{}
-		op.GeoM.Translate(piece.X-float64(glowSize), piece.Y-float64(glowSize))
-		op.ColorM.Scale(1, 1, 1, piece.Alpha)
-		screen.DrawImage(glow, op)
-	}
-
-	// Подсветка для перетаскиваемого
-	if piece == g.dragging && g.isDragging {
-		highlight := ebiten.NewImage(cellSize+16, cellSize+16)
-		highlight.Fill(color.RGBA{255, 255, 255, 100})
-
-		op := &ebiten.DrawImageOptions{}
-		op.GeoM.Translate(piece.X-8, piece.Y-8)
-		screen.DrawImage(highlight, op)
-	}
-
-	scale := piece.Scale
-	if piece == g.dragging && g.isDragging {
-		scale = 1.2
-	}
-
-	// Покачивание для не-перетаскиваемых
-	bobOffset := 0.0
-	if piece != g.dragging {
-		bobOffset = math.Sin(piece.BobPhase*math.Pi/180) * 2
-	}
-
-	size := int(float64(cellSize) * scale)
-	if size < 4 {
+	s := int(float64(cellSize) * p.Scale)
+	if s < 4 {
 		return
 	}
-
-	imgScale := float64(size) / float64(img.Bounds().Dx())
-
+	sc := float64(s) / float64(img.Bounds().Dx())
 	op := &ebiten.DrawImageOptions{}
-	op.GeoM.Scale(imgScale, imgScale)
-	op.GeoM.Translate(piece.X, piece.Y+bobOffset)
-
-	alpha := piece.Alpha
-	if piece == g.dragging && g.isDragging {
-		alpha = 0.85
-	}
-	op.ColorM.Scale(1, 1, 1, alpha)
+	op.GeoM.Scale(sc, sc)
+	op.GeoM.Translate(p.X, p.Y)
+	op.ColorM.Scale(1, 1, 1, p.Alpha)
 	screen.DrawImage(img, op)
 }
 
-func (g *Game) drawParticles(screen *ebiten.Image) {
-	for _, p := range g.particles {
-		size := int(p.Size * p.Life)
-		if size < 1 {
-			continue
-		}
-
-		if p.Type == "star" {
-			// Рисуем звёздочку
-			g.drawStarParticle(screen, p)
-		} else {
-			// Обычная частица
-			particle := ebiten.NewImage(size, size)
-			alpha := uint8(p.Life * 255)
-			particle.Fill(color.RGBA{p.Color.R, p.Color.G, p.Color.B, alpha})
-
-			op := &ebiten.DrawImageOptions{}
-			op.GeoM.Translate(p.X-float64(size)/2, p.Y-float64(size)/2)
-			op.GeoM.Rotate(p.Rotation)
-			screen.DrawImage(particle, op)
-		}
-	}
-}
-
-func (g *Game) drawStarParticle(screen *ebiten.Image, p *Particle) {
-	size := int(p.Size * p.Life * 1.5)
-	if size < 2 {
-		return
-	}
-
-	// Создаём звёздочку
-	star := ebiten.NewImage(size, size)
-
-	// Рисуем звезду
-	center := size / 2
-	alpha := uint8(p.Life * 255)
-	col := color.RGBA{255, 255, 200, alpha}
-
-	for i := 0; i < 5; i++ {
-		angle := float64(i)*math.Pi*2/5 - math.Pi/2
-		x := center + int(float64(center)*0.8*math.Cos(angle))
-		y := center + int(float64(center)*0.8*math.Sin(angle))
-		ebitenutil.DrawLine(star, float64(center), float64(center),
-			float64(x), float64(y), col)
-	}
-
-	op := &ebiten.DrawImageOptions{}
-	op.GeoM.Translate(p.X-float64(size)/2, p.Y-float64(size)/2)
-	op.GeoM.Rotate(p.Rotation)
-	screen.DrawImage(star, op)
-}
-
-func (g *Game) drawFlashEffects(screen *ebiten.Image) {
-	for _, fe := range g.flashEffects {
-		radius := fe.MaxR * (1 - fe.Life)
-		alpha := uint8(fe.Life * 150)
-
-		// Кольцо вспышки
-		segments := 32
-		for i := 0; i < segments; i++ {
-			angle1 := float64(i) * math.Pi * 2 / float64(segments)
-			angle2 := float64(i+1) * math.Pi * 2 / float64(segments)
-
-			x1 := fe.X + radius*math.Cos(angle1)
-			y1 := fe.Y + radius*math.Sin(angle1)
-			x2 := fe.X + radius*math.Cos(angle2)
-			y2 := fe.Y + radius*math.Sin(angle2)
-
-			ebitenutil.DrawLine(screen, x1, y1, x2, y2,
-				color.RGBA{fe.Color.R, fe.Color.G, fe.Color.B, alpha})
-		}
-	}
-}
-
-func (g *Game) drawFloatingTexts(screen *ebiten.Image) {
-	for _, ft := range g.floatingTexts {
-		if ft.Life <= 0 {
-			continue
-		}
-
-		// Тень текста
-		shadow := ebiten.NewImage(200, 30)
-		shadow.Fill(color.RGBA{0, 0, 0, uint8(ft.Life * 200)})
-
-		op := &ebiten.DrawImageOptions{}
-		op.GeoM.Translate(ft.X-98, ft.Y+2)
-		screen.DrawImage(shadow, op)
-
-		// Сам текст (пока прямоугольник с текстом внутри)
-		textBg := ebiten.NewImage(200, 30)
-		textBg.Fill(color.RGBA{ft.Color.R, ft.Color.G, ft.Color.B, uint8(ft.Life * 255)})
-
-		op2 := &ebiten.DrawImageOptions{}
-		op2.GeoM.Translate(ft.X-100, ft.Y)
-		screen.DrawImage(textBg, op2)
-	}
-}
-
 func (g *Game) drawUI(screen *ebiten.Image) {
-	// Панель счёта с тенью
-	shadow := ebiten.NewImage(244, 304)
-	shadow.Fill(color.RGBA{0, 0, 0, 100})
-
+	// Панель
+	panel := ebiten.NewImage(240, 260)
+	panel.Fill(color.RGBA{25, 25, 45, 230})
 	op := &ebiten.DrawImageOptions{}
-	op.GeoM.Translate(22, 42)
-	screen.DrawImage(shadow, op)
+	op.GeoM.Translate(20, 50)
+	screen.DrawImage(panel, op)
 
-	panel := ebiten.NewImage(240, 300)
-	panel.Fill(color.RGBA{15, 25, 35, 230})
-
+	// Рамка
+	top := ebiten.NewImage(240, 3)
+	top.Fill(color.RGBA{80, 160, 255, 255})
 	op2 := &ebiten.DrawImageOptions{}
-	op2.GeoM.Translate(20, 40)
-	screen.DrawImage(panel, op2)
-
-	// Градиентная рамка панели
-	topBorder := ebiten.NewImage(240, 4)
-	topBorder.Fill(color.RGBA{100, 200, 255, 255})
-
-	op3 := &ebiten.DrawImageOptions{}
-	op3.GeoM.Translate(20, 40)
-	screen.DrawImage(topBorder, op3)
-
-	// Заголовок с эффектом
-	titlePanel := ebiten.NewImage(200, 40)
-	titlePanel.Fill(color.RGBA{30, 50, 70, 200})
-
-	op4 := &ebiten.DrawImageOptions{}
-	op4.GeoM.Translate(40, 70)
-	screen.DrawImage(titlePanel, op4)
-
-	titleBorder := ebiten.NewImage(200, 3)
-	titleBorder.Fill(color.RGBA{100, 200, 255, 255})
-
-	op5 := &ebiten.DrawImageOptions{}
-	op5.GeoM.Translate(40, 70)
-	screen.DrawImage(titleBorder, op5)
+	op2.GeoM.Translate(20, 50)
+	screen.DrawImage(top, op2)
 
 	// Очки
-	scoreWidth := 180
+	sw := 180
 	if g.score > 10000 {
-		scoreWidth = 220
+		sw = 220
 	}
-	scorePanel := ebiten.NewImage(scoreWidth, 35)
-	scorePanel.Fill(color.RGBA{40, 100, 140, 200})
+	sp := ebiten.NewImage(sw, 30)
+	sp.Fill(color.RGBA{40, 100, 140, 200})
+	op3 := &ebiten.DrawImageOptions{}
+	op3.GeoM.Translate(40, 100)
+	screen.DrawImage(sp, op3)
 
-	op6 := &ebiten.DrawImageOptions{}
-	op6.GeoM.Translate(40, 140)
-	screen.DrawImage(scorePanel, op6)
-
-	// Комбо с пульсацией
+	// Комбо
 	if g.combo > 1 {
-		comboWidth := 120 + g.combo*20
-		if comboWidth > 220 {
-			comboWidth = 220
+		cw := 100 + g.combo*20
+		if cw > 220 {
+			cw = 220
 		}
-		comboPanel := ebiten.NewImage(comboWidth, 30)
-		comboPanel.Fill(color.RGBA{200, 150, 50, 200})
-
-		op7 := &ebiten.DrawImageOptions{}
-		op7.GeoM.Translate(40, 190)
-		screen.DrawImage(comboPanel, op7)
-
-		// Эффект свечения для комбо
-		glowIntensity := 0.5 + 0.5*math.Sin(g.gameTime*5)
-		glowAlpha := uint8(glowIntensity * 100)
-		comboGlow := ebiten.NewImage(comboWidth+10, 40)
-		comboGlow.Fill(color.RGBA{255, 200, 100, glowAlpha})
-
-		op7g := &ebiten.DrawImageOptions{}
-		op7g.GeoM.Translate(35, 185)
-		screen.DrawImage(comboGlow, op7g)
+		cp := ebiten.NewImage(cw, 30)
+		cp.Fill(color.RGBA{180, 150, 50, 200})
+		op4 := &ebiten.DrawImageOptions{}
+		op4.GeoM.Translate(40, 150)
+		screen.DrawImage(cp, op4)
 	}
 
 	// Уровень
-	level := g.score/1000 + 1
-	levelWidth := 60 + level*30
-	if levelWidth > 200 {
-		levelWidth = 200
+	lv := g.score/1000 + 1
+	lw := 60 + lv*30
+	if lw > 200 {
+		lw = 200
 	}
-	levelPanel := ebiten.NewImage(levelWidth, 30)
-	levelPanel.Fill(color.RGBA{50, 120, 80, 200})
-
-	op8 := &ebiten.DrawImageOptions{}
-	op8.GeoM.Translate(40, 240)
-	screen.DrawImage(levelPanel, op8)
+	lp := ebiten.NewImage(lw, 25)
+	lp.Fill(color.RGBA{50, 100, 80, 200})
+	op5 := &ebiten.DrawImageOptions{}
+	op5.GeoM.Translate(40, 200)
+	screen.DrawImage(lp, op5)
 
 	// Подсказка
-	hintPanel := ebiten.NewImage(500, 35)
-	hintPanel.Fill(color.RGBA{15, 25, 35, 180})
-
-	op9 := &ebiten.DrawImageOptions{}
-	op9.GeoM.Translate(260, 710)
-	screen.DrawImage(hintPanel, op9)
-
-	hintBorder := ebiten.NewImage(500, 2)
-	hintBorder.Fill(color.RGBA{150, 200, 250, 150})
-
-	op10 := &ebiten.DrawImageOptions{}
-	op10.GeoM.Translate(260, 710)
-	screen.DrawImage(hintBorder, op10)
-
-	// Логотип
-	logoPanel := ebiten.NewImage(180, 30)
-	logoPanel.Fill(color.RGBA{20, 40, 60, 180})
-
-	op11 := &ebiten.DrawImageOptions{}
-	op11.GeoM.Translate(820, 20)
-	screen.DrawImage(logoPanel, op11)
-
-	logoBorder := ebiten.NewImage(180, 2)
-	logoBorder.Fill(color.RGBA{100, 200, 255, 200})
-
-	op12 := &ebiten.DrawImageOptions{}
-	op12.GeoM.Translate(820, 20)
-	screen.DrawImage(logoBorder, op12)
+	hp := ebiten.NewImage(450, 30)
+	hp.Fill(color.RGBA{25, 25, 45, 180})
+	op6 := &ebiten.DrawImageOptions{}
+	op6.GeoM.Translate(280, 715)
+	screen.DrawImage(hp, op6)
 }
 
-func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
+func (g *Game) Layout(ow, oh int) (int, int) {
 	return screenWidth, screenHeight
 }
 
@@ -1140,23 +658,19 @@ func itos(n int) string {
 	if n == 0 {
 		return "0"
 	}
-
-	var result string
+	var s string
 	for n > 0 {
-		result = string(rune('0'+n%10)) + result
+		s = string(rune('0'+n%10)) + s
 		n /= 10
 	}
-	return result
+	return s
 }
 
 func main() {
 	ebiten.SetWindowSize(screenWidth, screenHeight)
-	ebiten.SetWindowTitle("Food Match-3 - Go365 Challenge")
+	ebiten.SetWindowTitle("Food Match-3 - Go365")
 	ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
-
-	game := NewGame()
-
-	if err := ebiten.RunGame(game); err != nil {
+	if err := ebiten.RunGame(NewGame()); err != nil {
 		log.Fatal(err)
 	}
 }
