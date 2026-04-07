@@ -100,16 +100,16 @@ func NewFood(fType, col, row int, fromAbove bool) *FoodPiece {
 	}
 
 	return &FoodPiece{
-		Type:     fType,
-		Col:      col,
-		Row:      row,
-		X:        x,
-		Y:        y,
-		TargetX:  x,
-		TargetY:  y,
-		Alpha:    1.0,
-		Scale:    1.0,
-		BobPhase: float64(rand.Intn(360)),
+		Type:      fType,
+		Col:       col,
+		Row:       row,
+		X:         x,
+		Y:         y,
+		TargetX:   x,
+		TargetY:   y,
+		Alpha:     1.0,
+		Scale:     1.0,
+		BobPhase:  float64(rand.Intn(360)),
 		GlowPhase: float64(rand.Intn(360)),
 	}
 }
@@ -397,13 +397,13 @@ func (b *Board) GetPieceAt(mx, my float64) *FoodPiece {
 
 // ==================== ЧАСТИЦЫ ====================
 type Particle struct {
-	X, Y    float64
-	VX, VY  float64
-	Life    float64
-	MaxLife float64
-	Color   color.RGBA
-	Size    float64
-	Type    string
+	X, Y     float64
+	VX, VY   float64
+	Life     float64
+	MaxLife  float64
+	Color    color.RGBA
+	Size     float64
+	Type     string
 	Rotation float64
 	RotSpeed float64
 }
@@ -416,7 +416,7 @@ func NewParticle(x, y float64, col color.RGBA, ptype string) *Particle {
 		X:        x,
 		Y:        y,
 		VX:       math.Cos(angle) * speed,
-		VY:       math.Sin(angle) * speed - 2,
+		VY:       math.Sin(angle)*speed - 2,
 		Life:     1.0,
 		MaxLife:  1.0,
 		Color:    col,
@@ -439,11 +439,11 @@ func (p *Particle) Update() bool {
 
 // ==================== ЭФФЕКТЫ ТЕКСТА ====================
 type FloatingText struct {
-	X, Y    float64
-	Text    string
-	Life    float64
-	Color   color.RGBA
-	Size    float64
+	X, Y  float64
+	Text  string
+	Life  float64
+	Color color.RGBA
+	Size  float64
 }
 
 func NewFloatingText(x, y float64, text string, col color.RGBA) *FloatingText {
@@ -506,7 +506,7 @@ type Game struct {
 	lastSwapR1    int
 	lastSwapC2    int
 	lastSwapR2    int
-	time          float64
+	gameTime      float64
 }
 
 func NewGame() *Game {
@@ -545,7 +545,7 @@ func (g *Game) loadFoodSprites() {
 }
 
 func (g *Game) Update() error {
-	g.time += 0.016
+	g.gameTime += 0.016
 
 	// Обновление частиц
 	for i := len(g.particles) - 1; i >= 0; i-- {
@@ -612,9 +612,9 @@ func (g *Game) Update() error {
 
 				// Вспышка для больших комбо
 				if g.combo >= 2 {
-					g.flashEffects = append(g.flashEffects, 
-						NewFlashEffect(float64(boardX+boardCols*(cellSize+cellPad)/2), 
-							float64(boardY+boardRows*(cellSize+cellPad)/2), 
+					g.flashEffects = append(g.flashEffects,
+						NewFlashEffect(float64(boardX+boardCols*(cellSize+cellPad)/2),
+							float64(boardY+boardRows*(cellSize+cellPad)/2),
 							color.RGBA{255, 255, 200, 100}))
 				}
 			}
@@ -721,13 +721,13 @@ func (g *Game) spawnMatchParticles(count int) {
 			col := foodColors[piece.Type]
 			x := float64(boardX + c*(cellSize+cellPad) + cellSize/2)
 			y := float64(boardY + r*(cellSize+cellPad) + cellSize/2)
-			
+
 			// Искры
 			g.particles = append(g.particles, NewParticle(x, y, col, "spark"))
-			
+
 			// Звёздочки
 			if rand.Float64() > 0.5 {
-				g.particles = append(g.particles, NewParticle(x, y, 
+				g.particles = append(g.particles, NewParticle(x, y,
 					color.RGBA{255, 255, 200, 255}, "star"))
 			}
 		}
@@ -737,14 +737,14 @@ func (g *Game) spawnMatchParticles(count int) {
 func (g *Game) spawnFloatingText(count int, score int) {
 	cx := boardX + boardCols*(cellSize+cellPad)/2
 	cy := boardY + boardRows*(cellSize+cellPad)/2
-	
+
 	text := ""
 	if g.combo > 1 {
 		text = "COMBO x" + itos(g.combo) + "!"
 	} else {
 		text = "+" + itos(score)
 	}
-	
+
 	col := color.RGBA{255, 255, 100, 255}
 	if g.combo >= 3 {
 		col = color.RGBA{255, 200, 50, 255}
@@ -752,8 +752,8 @@ func (g *Game) spawnFloatingText(count int, score int) {
 	if g.combo >= 5 {
 		col = color.RGBA{255, 100, 100, 255}
 	}
-	
-	g.floatingTexts = append(g.floatingTexts, 
+
+	g.floatingTexts = append(g.floatingTexts,
 		NewFloatingText(float64(cx), float64(cy), text, col))
 }
 
@@ -774,10 +774,10 @@ func (g *Game) drawBackground(screen *ebiten.Image) {
 		r := uint8(10 + float64(20)*ratio)
 		gr := uint8(15 + float64(25)*ratio)
 		b := uint8(30 + float64(40)*ratio)
-		
+
 		line := ebiten.NewImage(screenWidth, 1)
 		line.Fill(color.RGBA{r, gr, b, 255})
-		
+
 		op := &ebiten.DrawImageOptions{}
 		op.GeoM.Translate(0, float64(y))
 		screen.DrawImage(line, op)
@@ -785,15 +785,15 @@ func (g *Game) drawBackground(screen *ebiten.Image) {
 
 	// Анимированные звёзды
 	for i := 0; i < 60; i++ {
-		x := float64((i * 137 + 50) % screenWidth)
-		y := float64((i * 251 + 30) % screenHeight)
-		twinkle := 0.5 + 0.5*math.Sin(g.time*2+float64(i))
+		x := float64((i*137 + 50) % screenWidth)
+		y := float64((i*251 + 30) % screenHeight)
+		twinkle := 0.5 + 0.5*math.Sin(g.gameTime*2+float64(i))
 		brightness := uint8(80 + 175*twinkle)
 		size := 1 + int(twinkle)
-		
+
 		for dx := 0; dx < size; dx++ {
 			for dy := 0; dy < size; dy++ {
-				ebitenutil.DrawLine(screen, x+float64(dx), y+float64(dy), 
+				ebitenutil.DrawLine(screen, x+float64(dx), y+float64(dy),
 					x+float64(dx), y+float64(dy),
 					color.RGBA{brightness, brightness, brightness, 255})
 			}
@@ -862,7 +862,7 @@ func (g *Game) drawSingleFood(screen *ebiten.Image, piece *FoodPiece) {
 	// Свечение вокруг еды (пульсирующее)
 	glowIntensity := 0.5 + 0.5*math.Sin(piece.GlowPhase*math.Pi/180)
 	glowSize := int(5 + 3*glowIntensity)
-	
+
 	if piece != g.dragging || !g.isDragging {
 		glow := ebiten.NewImage(cellSize+glowSize*2, cellSize+glowSize*2)
 		glowColor := foodGlowColors[piece.Type]
@@ -947,17 +947,17 @@ func (g *Game) drawStarParticle(screen *ebiten.Image, p *Particle) {
 
 	// Создаём звёздочку
 	star := ebiten.NewImage(size, size)
-	
+
 	// Рисуем звезду
 	center := size / 2
 	alpha := uint8(p.Life * 255)
 	col := color.RGBA{255, 255, 200, alpha}
-	
+
 	for i := 0; i < 5; i++ {
-		angle := float64(i) * math.Pi * 2 / 5 - math.Pi/2
+		angle := float64(i)*math.Pi*2/5 - math.Pi/2
 		x := center + int(float64(center)*0.8*math.Cos(angle))
 		y := center + int(float64(center)*0.8*math.Sin(angle))
-		ebitenutil.DrawLine(star, float64(center), float64(center), 
+		ebitenutil.DrawLine(star, float64(center), float64(center),
 			float64(x), float64(y), col)
 	}
 
@@ -971,19 +971,19 @@ func (g *Game) drawFlashEffects(screen *ebiten.Image) {
 	for _, fe := range g.flashEffects {
 		radius := fe.MaxR * (1 - fe.Life)
 		alpha := uint8(fe.Life * 150)
-		
+
 		// Кольцо вспышки
 		segments := 32
 		for i := 0; i < segments; i++ {
 			angle1 := float64(i) * math.Pi * 2 / float64(segments)
 			angle2 := float64(i+1) * math.Pi * 2 / float64(segments)
-			
+
 			x1 := fe.X + radius*math.Cos(angle1)
 			y1 := fe.Y + radius*math.Sin(angle1)
 			x2 := fe.X + radius*math.Cos(angle2)
 			y2 := fe.Y + radius*math.Sin(angle2)
-			
-			ebitenutil.DrawLine(screen, x1, y1, x2, y2, 
+
+			ebitenutil.DrawLine(screen, x1, y1, x2, y2,
 				color.RGBA{fe.Color.R, fe.Color.G, fe.Color.B, alpha})
 		}
 	}
@@ -994,19 +994,19 @@ func (g *Game) drawFloatingTexts(screen *ebiten.Image) {
 		if ft.Life <= 0 {
 			continue
 		}
-		
+
 		// Тень текста
 		shadow := ebiten.NewImage(200, 30)
 		shadow.Fill(color.RGBA{0, 0, 0, uint8(ft.Life * 200)})
-		
+
 		op := &ebiten.DrawImageOptions{}
 		op.GeoM.Translate(ft.X-98, ft.Y+2)
 		screen.DrawImage(shadow, op)
-		
+
 		// Сам текст (пока прямоугольник с текстом внутри)
 		textBg := ebiten.NewImage(200, 30)
 		textBg.Fill(color.RGBA{ft.Color.R, ft.Color.G, ft.Color.B, uint8(ft.Life * 255)})
-		
+
 		op2 := &ebiten.DrawImageOptions{}
 		op2.GeoM.Translate(ft.X-100, ft.Y)
 		screen.DrawImage(textBg, op2)
@@ -1017,7 +1017,7 @@ func (g *Game) drawUI(screen *ebiten.Image) {
 	// Панель счёта с тенью
 	shadow := ebiten.NewImage(244, 304)
 	shadow.Fill(color.RGBA{0, 0, 0, 100})
-	
+
 	op := &ebiten.DrawImageOptions{}
 	op.GeoM.Translate(22, 42)
 	screen.DrawImage(shadow, op)
@@ -1076,13 +1076,13 @@ func (g *Game) drawUI(screen *ebiten.Image) {
 		op7 := &ebiten.DrawImageOptions{}
 		op7.GeoM.Translate(40, 190)
 		screen.DrawImage(comboPanel, op7)
-		
+
 		// Эффект свечения для комбо
-		glowIntensity := 0.5 + 0.5*math.Sin(g.time*5)
+		glowIntensity := 0.5 + 0.5*math.Sin(g.gameTime*5)
 		glowAlpha := uint8(glowIntensity * 100)
 		comboGlow := ebiten.NewImage(comboWidth+10, 40)
 		comboGlow.Fill(color.RGBA{255, 200, 100, glowAlpha})
-		
+
 		op7g := &ebiten.DrawImageOptions{}
 		op7g.GeoM.Translate(35, 185)
 		screen.DrawImage(comboGlow, op7g)
@@ -1140,7 +1140,7 @@ func itos(n int) string {
 	if n == 0 {
 		return "0"
 	}
-	
+
 	var result string
 	for n > 0 {
 		result = string(rune('0'+n%10)) + result
