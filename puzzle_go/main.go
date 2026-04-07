@@ -71,6 +71,7 @@ type Piece struct {
 	Alpha   float64
 	Scale   float64
 	Matched bool
+	Special int // 0=none, 1=bomb, 2=rainbow, 3=row-clear, 4=col-clear
 }
 
 func newPiece(t, c, r int, fromAbove bool) *Piece {
@@ -191,9 +192,11 @@ func (b *Board) swap(c1, r1, c2, r2 int) bool {
 	return true
 }
 
-func (b *Board) findMatches() int {
+func (b *Board) findMatches() (int, bool) {
 	matched := make(map[[2]int]bool)
 	count := 0
+	specialCreated := false
+
 	for r := 0; r < boardRows; r++ {
 		for c := 0; c <= boardCols-3; c++ {
 			p := b.g[c][r]
@@ -205,13 +208,11 @@ func (b *Board) findMatches() int {
 				match = append(match, b.g[cc][r])
 			}
 			if len(match) >= 3 {
+				if len(match) == 4 && b.g[c+1][r] != nil { b.g[c+1][r].Special = 1; specialCreated = true }
+				if len(match) >= 5 && b.g[c+2][r] != nil { b.g[c+2][r].Special = 2; specialCreated = true }
 				for _, m := range match {
 					k := [2]int{m.Col, m.Row}
-					if !matched[k] {
-						matched[k] = true
-						m.Matched = true
-						count++
-					}
+					if !matched[k] { matched[k] = true; m.Matched = true; count++ }
 				}
 			}
 		}
@@ -227,25 +228,50 @@ func (b *Board) findMatches() int {
 				match = append(match, b.g[c][rr])
 			}
 			if len(match) >= 3 {
+				if len(match) == 4 && b.g[c][r+1] != nil { b.g[c][r+1].Special = 1; specialCreated = true }
+				if len(match) >= 5 && b.g[c][r+2] != nil { b.g[c][r+2].Special = 2; specialCreated = true }
 				for _, m := range match {
 					k := [2]int{m.Col, m.Row}
-					if !matched[k] {
-						matched[k] = true
-						m.Matched = true
-						count++
-					}
+					if !matched[k] { matched[k] = true; m.Matched = true; count++ }
 				}
 			}
 		}
 	}
-	return count
+	return count, specialCreated
 }
 
 func (b *Board) remove() {
 	for c := 0; c < boardCols; c++ {
 		for r := 0; r < boardRows; r++ {
 			if b.g[c][r] != nil && b.g[c][r].Matched {
+				// Activate special effects before removing
+				p := b.g[c][r]
+				if p.Special == 1 { b.explodeBomb(c, r) } // Bomb
+				if p.Special == 2 { b.activateRainbow(c, r, p.Type) } // Rainbow
 				b.g[c][r] = nil
+			}
+		}
+	}
+}
+
+// Bomb explosion - clear 3x3 area
+func (b *Board) explodeBomb(c, r int) {
+	for dc := -1; dc <= 1; dc++ {
+		for dr := -1; dr <= 1; dr++ {
+			nc, nr := c+dc, r+dr
+			if nc >= 0 && nc < boardCols && nr >= 0 && nr < boardRows && b.g[nc][nr] != nil {
+				b.g[nc][nr].Matched = true
+			}
+		}
+	}
+}
+
+// Rainbow - clears all pieces of the type it was swapped with
+func (b *Board) activateRainbow(c, r int, targetType int) {
+	for cc := 0; cc < boardCols; cc++ {
+		for rr := 0; rr < boardRows; rr++ {
+			if b.g[cc][rr] != nil && b.g[cc][rr].Type == targetType {
+				b.g[cc][rr].Matched = true
 			}
 		}
 	}
@@ -558,7 +584,7 @@ func (g *Game) updateGame(fx, fy float64) {
 	case StatePlaying:
 		g.input(fx, fy)
 		if !g.board.isAnimating() {
-			m := g.board.findMatches()
+			m, _ := g.board.findMatches()
 			if m > 0 {
 				g.combo++
 				g.state = StatePlaying // temporarily stay in playing, go to removing
@@ -574,6 +600,9 @@ func (g *Game) removeMatches(count int) {
 	g.score += comboBonus
 	g.spawnParticles(count)
 	g.board.remove()
+
+	// Extra particles for special pieces (bombs/rainbows)
+	g.spawnExplosion(boardX+boardCols*(cellSize+cellPad)/2, boardY+boardRows*(cellSize+cellPad)/2, 50)
 
 	// Screen shake для комбо
 	if g.combo >= 2 {
@@ -651,7 +680,7 @@ func (g *Game) input(fx, fy float64) {
 					g.lastC2 = tc
 					g.lastR2 = tr
 					if g.board.swap(g.drag.Col, g.drag.Row, tc, tr) {
-						m := g.board.findMatches()
+						m, _ := g.board.findMatches()
 						if m == 0 {
 							// Отмена
 							g.board.swap(g.lastC1, g.lastR1, g.lastC2, g.lastR2)
@@ -690,6 +719,23 @@ func (g *Game) spawnParticles(count int) {
 				Size:  float64(3 + rand.Intn(4)),
 			})
 		}
+	}
+}
+
+// Explosion effect at specific position
+func (g *Game) spawnExplosion(x, y float64, count int) {
+	for i := 0; i < count; i++ {
+		angle := float64(i) * 6.2832 / float64(count)
+		speed := float64(2 + rand.Intn(6))
+		g.particles = append(g.particles, &Particle{
+			X:     x,
+			Y:     y,
+			VX:    math.Cos(angle) * speed,
+			VY:    math.Sin(angle) * speed - 1,
+			Life:  1,
+			Color: color.RGBA{255, uint8(100 + rand.Intn(155)), 50, 255},
+			Size:  float64(4 + rand.Intn(6)),
+		})
 	}
 }
 
@@ -876,6 +922,38 @@ func (g *Game) drawPiece(screen *ebiten.Image, p *Piece) {
 	op.GeoM.Translate(p.X, p.Y)
 	op.ColorM.Scale(1, 1, 1, p.Alpha)
 	screen.DrawImage(img, op)
+
+	// Special piece indicators
+	if p.Special > 0 {
+		// Glow effect
+		glowSize := 8
+		glowColor := color.RGBA{255, 255, 255, 150}
+		if p.Special == 1 { glowColor = color.RGBA{255, 100, 50, 200} } // Bomb - orange
+		if p.Special == 2 { glowColor = color.RGBA{200, 100, 255, 200} } // Rainbow - purple
+		glow := ebiten.NewImage(s+glowSize*2, s+glowSize*2)
+		glow.Fill(glowColor)
+		gop := &ebiten.DrawImageOptions{}
+		gop.GeoM.Translate(p.X-float64(glowSize), p.Y-float64(glowSize))
+		gop.ColorM.Scale(1, 1, 1, 0.3+p.Alpha*0.3)
+		screen.DrawImage(glow, gop)
+
+		// Icon for special
+		if p.Special == 1 {
+			// Bomb circle
+			bomb := ebiten.NewImage(s/2, s/2)
+			bomb.Fill(color.RGBA{255, 80, 50, 255})
+			bop := &ebiten.DrawImageOptions{}
+			bop.GeoM.Translate(p.X+float64(s)/4, p.Y+float64(s)/4)
+			screen.DrawImage(bomb, bop)
+		} else if p.Special == 2 {
+			// Rainbow star
+			rainbow := ebiten.NewImage(s/2, s/2)
+			rainbow.Fill(color.RGBA{200, 100, 255, 255})
+			rop := &ebiten.DrawImageOptions{}
+			rop.GeoM.Translate(p.X+float64(s)/4, p.Y+float64(s)/4)
+			screen.DrawImage(rainbow, rop)
+		}
+	}
 }
 
 func (g *Game) drawGameUI(screen *ebiten.Image) {
