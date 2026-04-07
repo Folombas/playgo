@@ -1,103 +1,181 @@
-// Package audio — процедурная генерация звуков для match-3.
 package audio
 
 import (
 	"bytes"
-	"encoding/binary"
-	"math"
-	"math/rand"
+	"embed"
+	"io"
+	"log"
+	"sync"
 
 	"github.com/hajimehoshi/ebiten/v2/audio"
 )
 
-const sampleRate = 44100
+//go:embed assets/sounds/*
+var soundsFS embed.FS
 
-// Manager хранит аудио контекст и все звуки.
-type Manager struct {
-	ctx    *audio.Context
-	Match  *audio.Player
-	Swap   *audio.Player
-	Bad    *audio.Player
-	Combo  *audio.Player
-	Win    *audio.Player
+// AudioManager управляет звуками и музыкой
+type AudioManager struct {
+	audioContext *audio.Context
+	musicPlayer  *audio.Player
+	sounds       map[string]*audio.Player
+	mu           sync.RWMutex
+	volume       float64
 }
 
-// NewManager создаёт менеджер и генерирует все звуки.
-func NewManager() *Manager {
-	m := &Manager{}
-	m.ctx = audio.NewContext(sampleRate)
-	m.Match = m.newPlayer(arp(0.2, []float64{523, 659, 784}))
-	m.Swap = m.newPlayer(tone(0.1, 440))
-	m.Bad = m.newPlayer(noise(0.15))
-	m.Combo = m.newPlayer(arp(0.3, []float64{523, 659, 784, 1047}))
-	m.Win = m.newPlayer(arp(0.5, []float64{523, 659, 784, 1047, 1319}))
-	return m
-}
-
-func (m *Manager) newPlayer(samples []int16) *audio.Player {
-	p, _ := audio.NewPlayer(m.ctx, bytes.NewReader(mkWAV(samples)))
-	return p
-}
-
-// Play перезапускает и играет звук. Безопасен при nil.
-func Play(p *audio.Player) {
-	if p == nil { return }
-	p.Rewind()
-	p.Play()
-}
-
-func mkWAV(s []int16) []byte {
-	buf := &bytes.Buffer{}
-	w := func(data interface{}) { binary.Write(buf, binary.LittleEndian, data) }
-	w([]byte("RIFF"))
-	w(uint32(36 + len(s)*2))
-	w([]byte("WAVE"))
-	w([]byte("fmt "))
-	w(uint32(16))
-	w(uint16(1))
-	w(uint16(1))
-	w(uint32(sampleRate))
-	w(uint32(sampleRate * 2))
-	w(uint16(2))
-	w(uint16(16))
-	w([]byte("data"))
-	w(uint32(len(s) * 2))
-	for _, v := range s { w(v) }
-	return buf.Bytes()
-}
-
-func tone(dur float64, freq float64) []int16 {
-	n := int(float64(sampleRate) * dur)
-	s := make([]int16, n)
-	for i := 0; i < n; i++ {
-		t := float64(i) / float64(sampleRate)
-		s[i] = int16(math.Sin(2*math.Pi*freq*t) * 32767 * 0.5)
+// NewAudioManager создает новый аудио менеджер
+func NewAudioManager() *AudioManager {
+	am := &AudioManager{
+		sounds: make(map[string]*audio.Player),
+		volume: 0.5,
 	}
-	return s
-}
 
-func noise(dur float64) []int16 {
-	n := int(float64(sampleRate) * dur)
-	s := make([]int16, n)
-	for i := 0; i < n; i++ {
-		s[i] = int16((rand.Float64()*2 - 1) * 32767 * 0.3)
+	// Инициализация аудио контекста (44100 Hz)
+	context, err := audio.NewContext(44100)
+	if err != nil {
+		log.Printf("Warning: audio context error: %v", err)
+		return am
 	}
-	return s
+
+	am.audioContext = context
+	return am
 }
 
-func arp(dur float64, fs []float64) []int16 {
-	n := int(float64(sampleRate) * dur)
-	s := make([]int16, n)
-	seg := n / len(fs)
-	for idx, f := range fs {
-		start := idx * seg
-		end := start + seg
-		if idx == len(fs)-1 { end = n }
-		for i := start; i < end; i++ {
-			t := float64(i-start) / float64(seg)
-			env := 1.0 - t
-			s[i] = int16(math.Sin(2*math.Pi*f*float64(i)/float64(sampleRate)) * 32767 * 0.3 * env)
+// Load загружает звуки
+func (am *AudioManager) Load() error {
+	if am.audioContext == nil {
+		return nil
+	}
+
+	// Загрузка звуков совпадений
+	for i := 1; i <= 5; i++ {
+		filename := "assets/sounds/match_0" + string(rune('0'+i)) + ".wav"
+		player, err := am.loadWAV(filename)
+		if err != nil {
+			log.Printf("Warning: could not load %s: %v", filename, err)
+			continue
 		}
+		am.sounds["match_"+string(rune('0'+i))] = player
 	}
-	return s
+
+	// Загрузка звука выбора
+	selectPlayer, err := am.loadWAV("assets/sounds/select.wav")
+	if err == nil {
+		am.sounds["select"] = selectPlayer
+	}
+
+	// Загрузка фоновой музыки
+	bgmPlayer, err := am.loadMP3("assets/sounds/bgm.mp3")
+	if err == nil {
+		am.musicPlayer = bgmPlayer
+	}
+
+	log.Printf("Loaded %d sounds", len(am.sounds))
+	return nil
 }
+
+func (am *AudioManager) loadWAV(path string) (*audio.Player, error) {
+	data, err := soundsFS.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+
+	reader := bytes.NewReader(data)
+	player, err := am.audioContext.NewPlayer(reader)
+	if err != nil {
+		return nil, err
+	}
+
+	return player, nil
+}
+
+func (am *AudioManager) loadMP3(path string) (*audio.Player, error) {
+	data, err := soundsFS.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+
+	reader := bytes.NewReader(data)
+	player, err := am.audioContext.NewPlayerFromReader(reader)
+	if err != nil {
+		return nil, err
+	}
+
+	player.SetVolume(am.volume)
+	return player, nil
+}
+
+// PlayMatchSound воспроизводит звук совпадения
+func (am *AudioManager) PlayMatchSound(combo int) {
+	if am.audioContext == nil {
+		return
+	}
+
+	am.mu.RLock()
+	defer am.mu.RUnlock()
+
+	// Выбор звука в зависимости от комбо
+	soundKey := "match_01"
+	if combo > 1 && combo <= 5 {
+		soundKey = "match_0" + string(rune('0'+combo))
+	}
+
+	if player, ok := am.sounds[soundKey]; ok {
+		player.Rewind()
+		player.Play()
+	}
+}
+
+// PlaySelectSound воспроизводит звук выделения
+func (am *AudioManager) PlaySelectSound() {
+	if am.audioContext == nil {
+		return
+	}
+
+	am.mu.RLock()
+	defer am.mu.RUnlock()
+
+	if player, ok := am.sounds["select"]; ok {
+		player.Rewind()
+		player.Play()
+	}
+}
+
+// PlayBGM запускает фоновую музыку
+func (am *AudioManager) PlayBGM() {
+	if am.audioContext == nil || am.musicPlayer == nil {
+		return
+	}
+
+	am.musicPlayer.SetVolume(am.volume)
+	am.musicPlayer.Rewind()
+	am.musicPlayer.Play()
+}
+
+// StopBGM останавливает фоновую музыку
+func (am *AudioManager) StopBGM() {
+	if am.musicPlayer != nil {
+		am.musicPlayer.Pause()
+	}
+}
+
+// SetVolume устанавливает громкость
+func (am *AudioManager) SetVolume(vol float64) {
+	am.mu.Lock()
+	defer am.mu.Unlock()
+	
+	am.volume = vol
+	
+	if am.musicPlayer != nil {
+		am.musicPlayer.SetVolume(vol)
+	}
+}
+
+// Close закрывает аудио контекст
+func (am *AudioManager) Close() {
+	if am.audioContext != nil {
+		am.audioContext.Close()
+	}
+}
+
+// Ensure io import is used
+var _ io.Reader

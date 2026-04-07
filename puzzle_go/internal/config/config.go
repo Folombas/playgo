@@ -1,38 +1,49 @@
-// Package config содержит все константы и конфигурацию игры.
 package config
 
-// Board dimensions
 const (
-	Cols  = 8
-	Rows  = 8
-	Tile  = 64
-	GemTypes = 6
-	MatchMin = 3
+	// Размеры окна
+	ScreenWidth  = 1280
+	ScreenHeight = 720
+
+	// Размеры игрового поля
+	BoardCols = 8
+	BoardRows = 8
+
+	// Размеры ячеек
+	CellSize = 64
+	CellPadding = 4
+
+	// Позиция игрового поля на экране
+	BoardOffsetX = 400
+	BoardOffsetY = 40
+
+	// Анимации
+	AnimationDuration = 0.2 // секунды
+	SwapDuration      = 0.15
+	FallDuration      = 0.3
+	MatchDuration     = 0.25
+
+	// Очки
+	BaseMatchScore    = 100
+	ComboMultiplier   = 1.5
+	RainbowMatchScore = 500
+
+	// Типы кристаллов
+	CrystalTypes = 6
+
+	// Специальные элементы
+	Match4Reward = "bomb"     // 4 в ряд
+	Match5Reward = "rainbow"  // 5 в ряд
+	LShapeReward = "beam_h"   // L/T форма горизонтальная
+	TShapeReward = "beam_v"   // L/T форма вертикальная
 )
 
-// Layout
-const (
-	BoardOffX = 32
-	BoardOffY = 80
-	HUD       = 60
-	WinW      = Cols*Tile + BoardOffX*2
-	WinH      = Rows*Tile + BoardOffY + HUD
-)
-
-// Gameplay
-const (
-	TargetScore  = 5000
-	CascadeDelay = 25 // frames before cascade check
-)
-
-// Game states
-type State int
-
-const (
-	StateMenu State = iota
-	StatePlay
-	StatePause
-	StateOptions
-	StateWin
-	StateNoMoves
-)
+// Цвета кристаллов (для генерации)
+var CrystalColors = []string{
+	"red",
+	"blue",
+	"green",
+	"yellow",
+	"violet",
+	"orange",
+}

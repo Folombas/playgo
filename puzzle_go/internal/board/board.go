@@ -1,178 +1,344 @@
-// Package board содержит логику игровой доски: поиск совпадений,
-// гравитация, заполнение, проверка ходов, перемешивание.
 package board
 
 import (
 	"math/rand"
 
 	"github.com/playgo/puzzle_go/internal/config"
+	"github.com/playgo/puzzle_go/internal/entity"
 )
 
-// WouldMatchAt проверяет, создаст ли размещение type в (r,c) совпадение.
-func WouldMatchAt(b [config.Rows][config.Cols]int, r, c, t int) bool {
-	cnt := 1
-	for i := c - 1; i >= 0 && b[r][i] == t; i-- { cnt++ }
-	for i := c + 1; i < config.Cols && b[r][i] == t; i++ { cnt++ }
-	if cnt >= config.MatchMin { return true }
-	cnt = 1
-	for i := r - 1; i >= 0 && b[i][c] == t; i-- { cnt++ }
-	for i := r + 1; i < config.Rows && b[i][c] == t; i++ { cnt++ }
-	return cnt >= config.MatchMin
+// Board представляет игровое поле
+type Board struct {
+	Crystals [][]*entity.Crystal
+	Width    int
+	Height   int
 }
 
-// FindMatches находит все совпадающие группы на доске.
-// Возвращает map[[2]int]bool где ключ — позиция {row, col}.
-func FindMatches(b [config.Rows][config.Cols]int) map[[2]int]bool {
+// NewBoard создает новое игровое поле
+func NewBoard() *Board {
+	b := &Board{
+		Crystals: make([][]*entity.Crystal, config.BoardCols),
+		Width:    config.BoardCols,
+		Height:   config.BoardRows,
+	}
+
+	// Инициализация столбцов
+	for col := 0; col < config.BoardCols; col++ {
+		b.Crystals[col] = make([]*entity.Crystal, config.BoardRows)
+	}
+
+	// Заполнение без начальных совпадений
+	b.fillWithoutMatches()
+
+	return b
+}
+
+// fillWithoutMatches заполняет поле без начальных совпадений
+func (b *Board) fillWithoutMatches() {
+	for col := 0; col < b.Width; col++ {
+		for row := 0; row < b.Height; row++ {
+			var crystalType entity.CrystalType
+			for {
+				crystalType = entity.CrystalType(rand.Intn(config.CrystalTypes))
+				
+				// Проверка на совпадения с соседями
+				if !b.wouldCreateMatch(col, row, crystalType) {
+					break
+				}
+			}
+
+			b.Crystals[col][row] = entity.NewCrystal(crystalType, col, row)
+		}
+	}
+}
+
+// wouldCreateMatch проверяет, создаст ли данный тип совпадение
+func (b *Board) wouldCreateMatch(col, row int, crystalType entity.CrystalType) bool {
+	// Проверка горизонтали
+	matchCount := 1
+	
+	// Влево
+	for c := col - 1; c >= 0 && b.Crystals[c][row] != nil && b.Crystals[c][row].Type == crystalType; c-- {
+		matchCount++
+	}
+	
+	// Вправо
+	for c := col + 1; c < b.Width && b.Crystals[c][row] != nil && b.Crystals[c][row].Type == crystalType; c++ {
+		matchCount++
+	}
+
+	if matchCount >= 3 {
+		return true
+	}
+
+	// Проверка вертикали
+	matchCount = 1
+	
+	// Вверх
+	for r := row - 1; r >= 0 && b.Crystals[col][r] != nil && b.Crystals[col][r].Type == crystalType; r-- {
+		matchCount++
+	}
+	
+	// Вниз
+	for r := row + 1; r < b.Height && b.Crystals[col][r] != nil && b.Crystals[col][r].Type == crystalType; r++ {
+		matchCount++
+	}
+
+	return matchCount >= 3
+}
+
+// GetCrystal возвращает кристалл по координатам
+func (b *Board) GetCrystal(col, row int) *entity.Crystal {
+	if col < 0 || col >= b.Width || row < 0 || row >= b.Height {
+		return nil
+	}
+	return b.Crystals[col][row]
+}
+
+// SetCrystal устанавливает кристалл по координатам
+func (b *Board) SetCrystal(col, row int, crystal *entity.Crystal) {
+	if col >= 0 && col < b.Width && row >= 0 && row < b.Height {
+		b.Crystals[col][row] = crystal
+	}
+}
+
+// Swap меняет местами два кристалла
+func (b *Board) Swap(col1, row1, col2, row2 int) bool {
+	// Проверка на соседство
+	if !b.areAdjacent(col1, row1, col2, row2) {
+		return false
+	}
+
+	// Обмен в массиве
+	crystal1 := b.Crystals[col1][row1]
+	crystal2 := b.Crystals[col2][row2]
+
+	b.Crystals[col1][row1] = crystal2
+	b.Crystals[col2][row2] = crystal1
+
+	// Обновление позиций
+	crystal1.Col, crystal1.Row = col2, row2
+	crystal2.Col, crystal2.Row = col1, row1
+
+	crystal1.SetTarget(col2, row2)
+	crystal2.SetTarget(col1, row1)
+
+	return true
+}
+
+// areAdjacent проверяет, являются ли ячейки соседними
+func (b *Board) areAdjacent(col1, row1, col2, row2 int) bool {
+	colDiff := abs(col1 - col2)
+	rowDiff := abs(row1 - row2)
+	return (colDiff == 1 && rowDiff == 0) || (colDiff == 0 && rowDiff == 1)
+}
+
+func abs(x int) int {
+	if x < 0 {
+		return -x
+	}
+	return x
+}
+
+// FindAllMatches находит все совпадения на поле
+func (b *Board) FindAllMatches() [][]*entity.Crystal {
+	var allMatches [][]*entity.Crystal
 	matched := make(map[[2]int]bool)
 
-	// Horizontal
-	for r := 0; r < config.Rows; r++ {
-		for c := 0; c <= config.Cols-config.MatchMin; c++ {
-			t := b[r][c]
-			if t < 0 { continue }
-			match := true
-			for i := 1; i < config.MatchMin; i++ {
-				if b[r][c+i] != t { match = false; break }
+	// Поиск горизонтальных совпадений
+	for row := 0; row < b.Height; row++ {
+		for col := 0; col <= b.Width-3; col++ {
+			crystal := b.Crystals[col][row]
+			if crystal == nil || crystal.IsMatched {
+				continue
 			}
-			if match {
-				for i := 0; i < config.MatchMin; i++ {
-					matched[[2]int{r, c+i}] = true
+
+			match := b.findHorizontalMatch(col, row)
+			if len(match) >= 3 {
+				for _, c := range match {
+					key := [2]int{c.Col, c.Row}
+					if !matched[key] {
+						matched[key] = true
+						c.IsMatched = true
+					}
 				}
+				allMatches = append(allMatches, match)
 			}
 		}
 	}
 
-	// Vertical
-	for c := 0; c < config.Cols; c++ {
-		for r := 0; r <= config.Rows-config.MatchMin; r++ {
-			t := b[r][c]
-			if t < 0 { continue }
-			match := true
-			for i := 1; i < config.MatchMin; i++ {
-				if b[r+i][c] != t { match = false; break }
+	// Поиск вертикальных совпадений
+	for col := 0; col < b.Width; col++ {
+		for row := 0; row <= b.Height-3; row++ {
+			crystal := b.Crystals[col][row]
+			if crystal == nil || crystal.IsMatched {
+				continue
 			}
-			if match {
-				for i := 0; i < config.MatchMin; i++ {
-					matched[[2]int{r+i, c}] = true
+
+			match := b.findVerticalMatch(col, row)
+			if len(match) >= 3 {
+				for _, c := range match {
+					key := [2]int{c.Col, c.Row}
+					if !matched[key] {
+						matched[key] = true
+						c.IsMatched = true
+					}
 				}
+				allMatches = append(allMatches, match)
 			}
 		}
 	}
 
-	return matched
+	return allMatches
 }
 
-// ApplyGravity сдвигает все гемы вниз, возвращает список смещённых позиций.
-func ApplyGravity(b *[config.Rows][config.Cols]int) [][2]int {
-	moved := make([][2]int, 0)
-	for c := 0; c < config.Cols; c++ {
-		wr := config.Rows - 1
-		for r := config.Rows - 1; r >= 0; r-- {
-			if (*b)[r][c] >= 0 {
-				if r != wr {
-					(*b)[wr][c] = (*b)[r][c]
-					(*b)[r][c] = -1
-					moved = append(moved, [2]int{wr, c})
+// findHorizontalMatch находит горизонтальное совпадение
+func (b *Board) findHorizontalMatch(col, row int) []*entity.Crystal {
+	crystal := b.Crystals[col][row]
+	if crystal == nil {
+		return nil
+	}
+
+	match := []*entity.Crystal{crystal}
+
+	// Влево
+	for c := col - 1; c >= 0 && b.Crystals[c][row] != nil && b.Crystals[c][row].Type == crystal.Type; c-- {
+		match = append([]*entity.Crystal{b.Crystals[c][row]}, match...)
+	}
+
+	// Вправо
+	for c := col + 1; c < b.Width && b.Crystals[c][row] != nil && b.Crystals[c][row].Type == crystal.Type; c++ {
+		match = append(match, b.Crystals[c][row])
+	}
+
+	return match
+}
+
+// findVerticalMatch находит вертикальное совпадение
+func (b *Board) findVerticalMatch(col, row int) []*entity.Crystal {
+	crystal := b.Crystals[col][row]
+	if crystal == nil {
+		return nil
+	}
+
+	match := []*entity.Crystal{crystal}
+
+	// Вверх
+	for r := row - 1; r >= 0 && b.Crystals[col][r] != nil && b.Crystals[col][r].Type == crystal.Type; r-- {
+		match = append([]*entity.Crystal{b.Crystals[col][r]}, match...)
+	}
+
+	// Вниз
+	for r := row + 1; r < b.Height && b.Crystals[col][r] != nil && b.Crystals[col][r].Type == crystal.Type; r++ {
+		match = append(match, b.Crystals[col][r])
+	}
+
+	return match
+}
+
+// ApplyGravity применяет гравитацию к кристаллам
+func (b *Board) ApplyGravity() []*entity.Crystal {
+	var fallingCrystals []*entity.Crystal
+
+	for col := 0; col < b.Width; col++ {
+		emptyRow := -1
+
+		// Идем снизу вверх
+		for row := b.Height - 1; row >= 0; row-- {
+			if b.Crystals[col][row] == nil {
+				if emptyRow == -1 {
+					emptyRow = row
 				}
-				wr--
+				continue
+			}
+
+			if b.Crystals[col][row].IsMatched {
+				b.Crystals[col][row] = nil
+				if emptyRow == -1 {
+					emptyRow = row
+				}
+				continue
+			}
+
+			// Если есть пустые ячейки ниже, сдвигаем кристалл вниз
+			if emptyRow != -1 {
+				crystal := b.Crystals[col][row]
+				b.Crystals[col][emptyRow] = crystal
+				b.Crystals[col][row] = nil
+
+				crystal.Row = emptyRow
+				crystal.SetTarget(col, emptyRow)
+				crystal.IsFalling = true
+
+				fallingCrystals = append(fallingCrystals, crystal)
+
+				emptyRow--
+			}
+		}
+
+		// Заполняем пустые ячейки новыми кристаллами сверху
+		for row := emptyRow; row >= 0; row-- {
+			crystalType := entity.CrystalType(rand.Intn(config.CrystalTypes))
+			newCrystal := entity.NewCrystal(crystalType, col, row)
+			
+			// Начальная позиция выше экрана
+			newCrystal.Y = float64(config.BoardOffsetY + (row - 3)*(config.CellSize+config.CellPadding))
+			newCrystal.IsFalling = true
+			
+			b.Crystals[col][row] = newCrystal
+			fallingCrystals = append(fallingCrystals, newCrystal)
+		}
+	}
+
+	return fallingCrystals
+}
+
+// RemoveMatched удаляет все совпавшие кристаллы
+func (b *Board) RemoveMatched() int {
+	count := 0
+
+	for col := 0; col < b.Width; col++ {
+		for row := 0; row < b.Height; row++ {
+			if b.Crystals[col][row] != nil && b.Crystals[col][row].IsMatched {
+				b.Crystals[col][row] = nil
+				count++
 			}
 		}
 	}
-	return moved
+
+	return count
 }
 
-// FillEmpty заполняет пустые (-1) клетки случайными гемами.
-func FillEmpty(b *[config.Rows][config.Cols]int) [][2]int {
-	filled := make([][2]int, 0)
-	for c := 0; c < config.Cols; c++ {
-		for r := 0; r < config.Rows; r++ {
-			if (*b)[r][c] < 0 {
-				(*b)[r][c] = rand.Intn(config.GemTypes)
-				filled = append(filled, [2]int{r, c})
+// GetCrystalAtPosition возвращает кристалл по экранным координатам
+func (b *Board) GetCrystalAtPosition(mx, my float64) *entity.Crystal {
+	for col := 0; col < b.Width; col++ {
+		for row := 0; row < b.Height; row++ {
+			crystal := b.Crystals[col][row]
+			if crystal != nil && crystal.Contains(mx, my) {
+				return crystal
 			}
 		}
 	}
-	return filled
+	return nil
 }
 
-// HasValidMoves проверяет есть ли возможные ходы (свапы создающие совпадения).
-func HasValidMoves(b [config.Rows][config.Cols]int) bool {
-	for r := 0; r < config.Rows; r++ {
-		for c := 0; c < config.Cols; c++ {
-			// Swap right
-			if c+1 < config.Cols {
-				b[r][c], b[r][c+1] = b[r][c+1], b[r][c]
-				if len(FindMatches(b)) > 0 { return true }
-				b[r][c], b[r][c+1] = b[r][c+1], b[r][c]
-			}
-			// Swap down
-			if r+1 < config.Rows {
-				b[r][c], b[r+1][c] = b[r+1][c], b[r][c]
-				if len(FindMatches(b)) > 0 { return true }
-				b[r][c], b[r+1][c] = b[r+1][c], b[r][c]
+// IsAnimating проверяет, есть ли активные анимации
+func (b *Board) IsAnimating() bool {
+	for col := 0; col < b.Width; col++ {
+		for row := 0; row < b.Height; row++ {
+			crystal := b.Crystals[col][row]
+			if crystal != nil {
+				// Проверяем, достиг ли кристалл целевой позиции
+				dx := crystal.X - crystal.TargetX
+				dy := crystal.Y - crystal.TargetY
+				if dx*dx+dy*dy > 0.1 {
+					return true
+				}
+				if crystal.IsMatched && crystal.Alpha > 0.01 {
+					return true
+				}
 			}
 		}
 	}
 	return false
-}
-
-// ShuffleBoard перемешивает доску пока не будет совпадений и будут валидные ходы.
-func ShuffleBoard(b *[config.Rows][config.Cols]int) {
-	for {
-		flat := make([]int, 0, config.Rows*config.Cols)
-		for r := 0; r < config.Rows; r++ {
-			for c := 0; c < config.Cols; c++ {
-				flat = append(flat, (*b)[r][c])
-			}
-		}
-		rand.Shuffle(len(flat), func(i, j int) { flat[i], flat[j] = flat[j], flat[i] })
-		idx := 0
-		for r := 0; r < config.Rows; r++ {
-			for c := 0; c < config.Cols; c++ {
-				(*b)[r][c] = flat[idx]
-				idx++
-			}
-		}
-
-		// Remove any existing matches
-		matches := FindMatches(*b)
-		if len(matches) == 0 && HasValidMoves(*b) {
-			return
-		}
-		// Clear matches and try again
-		for pos := range matches {
-			(*b)[pos[0]][pos[1]] = rand.Intn(config.GemTypes)
-		}
-	}
-}
-
-// FillBoard заполняет доску без начальных совпадений.
-func FillBoard(b *[config.Rows][config.Cols]int) {
-	for r := 0; r < config.Rows; r++ {
-		for c := 0; c < config.Cols; c++ {
-			for {
-				(*b)[r][c] = rand.Intn(config.GemTypes)
-				if !WouldMatchAt(*b, r, c, (*b)[r][c]) {
-					break
-				}
-			}
-		}
-	}
-}
-
-// Swap меняет местами два гема.
-func Swap(b *[config.Rows][config.Cols]int, r1, c1, r2, c2 int) {
-	(*b)[r1][c1], (*b)[r2][c2] = (*b)[r2][c2], (*b)[r1][c1]
-}
-
-// ClearMatches удаляет совпавшие гемы (устанавливает в -1).
-func ClearMatches(b *[config.Rows][config.Cols]int, matches map[[2]int]bool) {
-	for pos := range matches {
-		(*b)[pos[0]][pos[1]] = -1
-	}
-}
-
-// Pos2Coords преобразует позицию в map в row, col.
-func Pos2Coords(pos [2]int) (int, int) {
-	return pos[0], pos[1]
 }

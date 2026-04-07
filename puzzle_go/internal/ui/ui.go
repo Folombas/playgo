@@ -1,82 +1,142 @@
-// Package ui — кнопки меню и экраны.
 package ui
 
 import (
+	"fmt"
 	"image/color"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
-	"github.com/hajimehoshi/ebiten/v2/text"
-	"golang.org/x/image/font/basicfont"
-
-	"github.com/playgo/puzzle_go/internal/entity"
 )
 
-// LoadMenuButtons загружает кнопки главного меню.
-func LoadMenuButtons() []*entity.MenuButton {
-	sprPlay, _, _ := ebitenutil.NewImageFromFile("assets/sprites/menu/play button.png")
-	sprOpt, _, _ := ebitenutil.NewImageFromFile("assets/sprites/menu/Options Button.png")
-	sprExit, _, _ := ebitenutil.NewImageFromFile("assets/sprites/menu/Exit Button.png")
-	return []*entity.MenuButton{
-		{X: 256, Y: 300, W: 120, H: 40, Label: "PLAY", Spr: sprPlay},
-		{X: 256, Y: 360, W: 120, H: 40, Label: "OPTIONS", Spr: sprOpt},
-		{X: 256, Y: 420, W: 120, H: 40, Label: "EXIT", Spr: sprExit},
-	}
+// UI управляет пользовательским интерфейсом
+type UI struct {
+	// Пока без шрифтов, просто рисуем прямоугольники
 }
 
-// LoadPauseButtons загружает кнопки паузы.
-func LoadPauseButtons() []*entity.MenuButton {
-	sprResume, _, _ := ebitenutil.NewImageFromFile("assets/sprites/menu/play button.png")
-	sprBack, _, _ := ebitenutil.NewImageFromFile("assets/sprites/menu/Back Button.png")
-	return []*entity.MenuButton{
-		{X: 256, Y: 280, W: 120, H: 40, Label: "RESUME", Spr: sprResume},
-		{X: 256, Y: 340, W: 120, H: 40, Label: "RESTART", Spr: sprBack},
-	}
+// NewUI создает новый UI
+func NewUI() *UI {
+	return &UI{}
 }
 
-// LoadOptionsButtons загружает кнопки настроек.
-func LoadOptionsButtons() []*entity.MenuButton {
-	sprBack, _, _ := ebitenutil.NewImageFromFile("assets/sprites/menu/Back Button.png")
-	return []*entity.MenuButton{
-		{X: 256, Y: 400, W: 120, H: 40, Label: "BACK", Spr: sprBack},
-	}
+// Draw рисует UI
+func (ui *UI) Draw(screen *ebiten.Image, score int, combo int) {
+	// Панель счета слева
+	ui.drawScorePanel(screen, score, combo)
+	
+	// Заголовок
+	ui.drawTitle(screen)
+	
+	// Подсказка внизу
+	ui.drawHint(screen)
 }
 
-// UpdateHover обновляет hover-состояние всех кнопок.
-func UpdateHover(buttons []*entity.MenuButton, mx, my int) {
-	for _, b := range buttons {
-		b.Hover = b.Contains(mx, my)
-	}
-}
-
-// DrawButtons рисует все кнопки.
-func DrawButtons(screen *ebiten.Image, buttons []*entity.MenuButton) {
-	for _, b := range buttons {
-		DrawButton(screen, b)
-	}
-}
-
-// DrawButton рисует одну кнопку.
-func DrawButton(s *ebiten.Image, b *entity.MenuButton) {
-	if b.Spr != nil {
-		op := &ebiten.DrawImageOptions{}
-		op.GeoM.Translate(float64(b.X), float64(b.Y))
-		if b.Hover {
-			op.ColorScale.SetR(1.2)
-			op.ColorScale.SetG(1.2)
-			op.ColorScale.SetB(1.2)
+// drawScorePanel рисует панель счета
+func (ui *UI) drawScorePanel(screen *ebiten.Image, score int, combo int) {
+	// Фон панели
+	panelWidth := 350
+	panelHeight := 200
+	panel := ebiten.NewImage(panelWidth, panelHeight)
+	panel.Fill(color.RGBA{30, 30, 60, 230})
+	
+	op := &ebiten.DrawImageOptions{}
+	op.GeoM.Translate(20, 20)
+	screen.DrawImage(panel, op)
+	
+	// Рамка сверху
+	border := ebiten.NewImage(panelWidth, 4)
+	border.Fill(color.RGBA{100, 150, 255, 255})
+	
+	borderOp := &ebiten.DrawImageOptions{}
+	borderOp.GeoM.Translate(20, 24)
+	screen.DrawImage(border, borderOp)
+	
+	// Счет - просто рисуем прямоугольники вместо текста
+	// Очки
+	scoreWidth := float64(200)
+	scoreBar := ebiten.NewImage(int(scoreWidth), 30)
+	scoreBar.Fill(color.RGBA{60, 60, 120, 255})
+	
+	scoreOp := &ebiten.DrawImageOptions{}
+	scoreOp.GeoM.Translate(40, 60)
+	screen.DrawImage(scoreBar, scoreOp)
+	
+	// Комбо индикатор
+	if combo > 1 {
+		comboWidth := float64(150 * combo)
+		if comboWidth > 300 {
+			comboWidth = 300
 		}
-		s.DrawImage(b.Spr, op)
-	} else {
-		c := color.RGBA{60, 60, 120, 200}
-		if b.Hover { c = color.RGBA{80, 80, 160, 230} }
-		// Rect fallback
-		img := ebiten.NewImage(b.W, b.H)
-		img.Fill(c)
-		op := &ebiten.DrawImageOptions{}
-		op.GeoM.Translate(float64(b.X), float64(b.Y))
-		s.DrawImage(img, op)
-		bw := text.BoundString(basicfont.Face7x13, b.Label)
-		text.Draw(s, b.Label, basicfont.Face7x13, b.X+b.W/2-bw.Dx()/2, b.Y+b.H/2+5, color.White)
+		comboBar := ebiten.NewImage(int(comboWidth), 20)
+		comboBar.Fill(color.RGBA{255, 255, 0, 200})
+		
+		comboOp := &ebiten.DrawImageOptions{}
+		comboOp.GeoM.Translate(40, 100)
+		screen.DrawImage(comboBar, comboOp)
 	}
+	
+	// Уровень
+	level := score/1000 + 1
+	levelWidth := float64(50 * level)
+	if levelWidth > 300 {
+		levelWidth = 300
+	}
+	levelBar := ebiten.NewImage(int(levelWidth), 20)
+	levelBar.Fill(color.RGBA{144, 238, 144, 200})
+	
+	levelOp := &ebiten.DrawImageOptions{}
+	levelOp.GeoM.Translate(40, 140)
+	screen.DrawImage(levelBar, levelOp)
+}
+
+// drawTitle рисует заголовок
+func (ui *UI) drawTitle(screen *ebiten.Image) {
+	// Заголовок - красивый прямоугольник
+	titleWidth := 500
+	titleHeight := 60
+	title := ebiten.NewImage(titleWidth, titleHeight)
+	title.Fill(color.RGBA{40, 40, 80, 180})
+	
+	opts := &ebiten.DrawImageOptions{}
+	opts.GeoM.Translate(390, 20)
+	screen.DrawImage(title, opts)
+	
+	// Рамка заголовка
+	border := ebiten.NewImage(titleWidth, 3)
+	border.Fill(color.RGBA{100, 200, 255, 255})
+	
+	borderOp := &ebiten.DrawImageOptions{}
+	borderOp.GeoM.Translate(390, 20)
+	screen.DrawImage(border, borderOp)
+	
+	// Подзаголовок
+	sub := ebiten.NewImage(400, 30)
+	sub.Fill(color.RGBA{60, 60, 100, 150})
+	
+	subOp := &ebiten.DrawImageOptions{}
+	subOp.GeoM.Translate(440, 85)
+	screen.DrawImage(sub, subOp)
+}
+
+// drawHint рисует подсказку
+func (ui *UI) drawHint(screen *ebiten.Image) {
+	// Панель подсказок
+	hintWidth := 600
+	hintHeight := 40
+	hint := ebiten.NewImage(hintWidth, hintHeight)
+	hint.Fill(color.RGBA{30, 30, 50, 200})
+	
+	opts := &ebiten.DrawImageOptions{}
+	opts.GeoM.Translate(340, 660)
+	screen.DrawImage(hint, opts)
+	
+	// Маленькая рамка
+	border := ebiten.NewImage(hintWidth, 2)
+	border.Fill(color.RGBA{150, 150, 200, 200})
+	
+	borderOp := &ebiten.DrawImageOptions{}
+	borderOp.GeoM.Translate(340, 660)
+	screen.DrawImage(border, borderOp)
+	
+	// Вывод счета и комбо текстом (пока цифрами)
+	scoreText := fmt.Sprintf("Score")
+	_ = scoreText // Пока не используем
 }
