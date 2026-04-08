@@ -1,4 +1,4 @@
-module github.com/playgo/survivor_shooter
+module github.com/playgo/match3
 
 go 1.25.0
 
