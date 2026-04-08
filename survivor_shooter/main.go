@@ -241,7 +241,7 @@ func NewGame() *Game {
 }
 
 func (g *Game) loadAssets() {
-	// Load sprite sheets
+	// Load sprite sheets with nil checks
 	g.IdleSheet = loadSprite("idle_spritesheet.png")
 	g.RunSheet = loadSprite("run_spritesheet.png")
 	g.IdleFireSheet = loadSprite("idle-fire_spritesheet.png")
@@ -249,19 +249,29 @@ func (g *Game) loadAssets() {
 	g.DeathSheet = loadSprite("death_spritesheet.png")
 	g.JumpSheet = loadSprite("jump_spritesheet.png")
 
-	// Create player animations
+	// Initialize animation structs
+	g.Player.Anim = &Animation{TickSpeed: 6}
+	g.Player.FireAnim = &Animation{TickSpeed: 6}
+
+	// Create player animations from run sheet
 	if g.RunSheet != nil {
 		w := g.RunSheet.Bounds().Dx()
 		h := g.RunSheet.Bounds().Dy()
 		cols := 8
+		if cols > w/16 {
+			cols = w / 16 // min tile size 16
+		}
 		rows := 2
+		if rows > h/16 {
+			rows = h / 16
+		}
 		tileW := w / cols
 		tileH := h / rows
 
 		// Run animation (first row)
 		for i := 0; i < cols; i++ {
 			frame := cropTilesheet(g.RunSheet, i, cols, tileW, tileH)
-			if frame != nil {
+			if frame != nil && frame.Bounds().Dx() > 0 && frame.Bounds().Dy() > 0 {
 				// Scale up
 				scaled := ebiten.NewImage(tileW*2, tileH*2)
 				op := &ebiten.DrawImageOptions{}
@@ -270,18 +280,20 @@ func (g *Game) loadAssets() {
 				g.Player.Anim.Frames = append(g.Player.Anim.Frames, scaled)
 			}
 		}
-		g.Player.Anim.TickSpeed = 6
 
 		// Fire animation
 		if g.RunFireSheet != nil {
 			w2 := g.RunFireSheet.Bounds().Dx()
 			cols2 := 8
+			if cols2 > w2/16 {
+				cols2 = w2 / 16
+			}
 			tileW2 := w2 / cols2
-			tileH2 := g.RunFireSheet.Bounds().Dy() / 2
+			tileH2 := g.RunFireSheet.Bounds().Dy() / rows
 
 			for i := 0; i < cols2; i++ {
 				frame := cropTilesheet(g.RunFireSheet, i, cols2, tileW2, tileH2)
-				if frame != nil {
+				if frame != nil && frame.Bounds().Dx() > 0 && frame.Bounds().Dy() > 0 {
 					scaled := ebiten.NewImage(tileW2*2, tileH2*2)
 					op := &ebiten.DrawImageOptions{}
 					op.GeoM.Scale(2, 2)
@@ -289,8 +301,15 @@ func (g *Game) loadAssets() {
 					g.Player.FireAnim.Frames = append(g.Player.FireAnim.Frames, scaled)
 				}
 			}
-			g.Player.FireAnim.TickSpeed = 6
 		}
+	}
+
+	// If no animations loaded, create fallback
+	if len(g.Player.Anim.Frames) == 0 {
+		g.Player.Anim.Frames = append(g.Player.Anim.Frames, createFallbackPlayer())
+	}
+	if len(g.Player.FireAnim.Frames) == 0 {
+		g.Player.FireAnim.Frames = append(g.Player.FireAnim.Frames, createFallbackFire())
 	}
 
 	// Create zombie enemies
@@ -303,6 +322,54 @@ func (g *Game) loadAssets() {
 	for _, c := range colors {
 		g.ZombieImgs = append(g.ZombieImgs, createZombieSprite(c))
 	}
+}
+
+func createFallbackPlayer() *ebiten.Image {
+	img := image.NewRGBA(image.Rect(0, 0, 64, 64))
+	// Body
+	for y := 20; y < 56; y++ {
+		for x := 20; x < 44; x++ {
+			img.Set(x, y, color.RGBA{60, 120, 200, 255})
+		}
+	}
+	// Head
+	for y := 4; y < 22; y++ {
+		for x := 22; x < 42; x++ {
+			dx := float64(x-32)
+			dy := float64(y-13)
+			if dx*dx+dy*dy <= 64 {
+				img.Set(x, y, color.RGBA{255, 200, 160, 255})
+			}
+		}
+	}
+	return ebiten.NewImageFromImage(img)
+}
+
+func createFallbackFire() *ebiten.Image {
+	img := image.NewRGBA(image.Rect(0, 0, 64, 64))
+	// Body
+	for y := 20; y < 56; y++ {
+		for x := 20; x < 44; x++ {
+			img.Set(x, y, color.RGBA{200, 80, 40, 255})
+		}
+	}
+	// Head
+	for y := 4; y < 22; y++ {
+		for x := 22; x < 42; x++ {
+			dx := float64(x-32)
+			dy := float64(y-13)
+			if dx*dx+dy*dy <= 64 {
+				img.Set(x, y, color.RGBA{255, 160, 100, 255})
+			}
+		}
+	}
+	// Muzzle flash
+	for y := 0; y < 10; y++ {
+		for x := 28; x < 36; x++ {
+			img.Set(x, y, color.RGBA{255, 220, 80, 255})
+		}
+	}
+	return ebiten.NewImageFromImage(img)
 }
 
 func createZombieSprite(c color.RGBA) *ebiten.Image {
