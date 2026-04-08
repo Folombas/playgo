@@ -316,7 +316,7 @@ func (b *Board) wouldMatch(c, r int, t GemType) bool {
 	for i := r - 1; i >= 0 && b.Grid[c][i] != nil && b.Grid[c][i].Type == t; i-- {
 		count++
 	}
-	for i := r + 1; r < BoardRows && b.Grid[c][i] != nil && b.Grid[c][i].Type == t; i++ {
+	for i := r + 1; i < BoardRows && b.Grid[c][i] != nil && b.Grid[c][i].Type == t; i++ {
 		count++
 	}
 	return count >= 3
