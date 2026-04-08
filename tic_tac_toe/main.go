@@ -7,8 +7,11 @@ package main
 import (
 	"bytes"
 	"embed"
+	"encoding/json"
+	"fmt"
 	"image"
 	"image/color"
+	"image/png"
 	"log"
 	"math"
 	"math/rand"
@@ -24,8 +27,49 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/vector"
 )
 
-//go:embed assets/sounds/*.ogg
-var soundFS embed.FS
+//go:embed assets/sounds/*.ogg assets/sprites/*.png
+var assetFS embed.FS
+
+// ============================================================================
+// ДОСТИЖЕНИЯ
+// ============================================================================
+
+type Achievement struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Unlocked    bool   `json:"unlocked"`
+	Icon        string `json:"icon"`
+}
+
+type PlayerStats struct {
+	TotalGames   int  `json:"total_games"`
+	Wins         int  `json:"wins"`
+	Losses       int  `json:"losses"`
+	Draws        int  `json:"draws"`
+	WinStreak    int  `json:"win_streak"`
+	BestStreak   int  `json:"best_streak"`
+	FirstWin     bool `json:"first_win"`
+	TenWins      bool `json:"ten_wins"`
+	FirstLoss    bool `json:"first_loss"`
+	Unbeatable   bool `json:"unbeatable"` // 5 побед подряд
+	Achievements []Achievement `json:"achievements"`
+}
+
+func DefaultStats() *PlayerStats {
+	return &PlayerStats{
+		Achievements: []Achievement{
+			{"first_game", "Первая игра", "Сыграть первую игру", false, "🎮"},
+			{"first_win", "Первая победа", "Выиграть первую игру", false, "🏆"},
+			{"ten_wins", "Десять побед", "Выиграть 10 игр", false, "⭐"},
+			{"win_streak_3", "Серия 3", "Выиграть 3 игры подряд", false, "🔥"},
+			{"win_streak_5", "Серия 5", "Выиграть 5 игр подряд", false, "💎"},
+			{"first_draw", "Ничья!", "Сыграть вничью", false, "🤝"},
+			{"ten_draws", "Мастер ничьих", "10 ничьих", false, "🎯"},
+			{"beat_hard", "Победить сложного AI", "Выиграть на сложном уровне", false, "👑"},
+		},
+	}
+}
 
 // ============================================================================
 // КОНСТАНТЫ
@@ -60,6 +104,7 @@ const (
 	StatePlaying
 	StateWin
 	StateDraw
+	StateAchievements
 )
 
 type AIDifficulty int
@@ -371,6 +416,15 @@ type Game struct {
 	clickPlayer   *audio.Player
 	winPlayer     *audio.Player
 	losePlayer    *audio.Player
+	
+	// Sprites
+	SpriteX      *ebiten.Image
+	SpriteO      *ebiten.Image
+	
+	// Stats & Achievements
+	Stats        *PlayerStats
+	NewAchievement *Achievement
+	AchieveTimer float64
 }
 
 func NewGame() *Game {
@@ -384,10 +438,17 @@ func NewGame() *Game {
 		HoverRow: -1,
 		HoverCol: -1,
 		AIDifficulty: AIHard,
+		Stats:    DefaultStats(),
 	}
 	
 	// Init audio
 	g.initAudio()
+	
+	// Load sprites
+	g.loadSprites()
+	
+	// Load stats
+	g.loadStats()
 	
 	// Init stars
 	for i := 0; i < 60; i++ {
@@ -415,7 +476,7 @@ func (g *Game) initAudio() {
 
 func (g *Game) loadSound(filename string) *audio.Player {
 	// Try embedded FS first
-	data, err := soundFS.ReadFile("assets/sounds/" + filename)
+	data, err := assetFS.ReadFile("assets/sounds/" + filename)
 	if err != nil {
 		// Fallback to file system
 		execPath, _ := os.Getwd()
@@ -463,6 +524,116 @@ func (g *Game) playSound(name string) {
 	}
 }
 
+func (g *Game) loadSprites() {
+	// Load X sprite (red gem)
+	if data, err := assetFS.ReadFile("assets/sprites/gem_red.png"); err == nil {
+		img, _ := pngDecode(bytes.NewReader(data))
+		g.SpriteX = img
+	}
+	
+	// Load O sprite (blue gem)
+	if data, err := assetFS.ReadFile("assets/sprites/gem_blue.png"); err == nil {
+		img, _ := pngDecode(bytes.NewReader(data))
+		g.SpriteO = img
+	}
+}
+
+func pngDecode(r *bytes.Reader) (*ebiten.Image, error) {
+	img, err := png.Decode(r)
+	if err != nil {
+		return nil, err
+	}
+	return ebiten.NewImageFromImage(img), nil
+}
+
+func (g *Game) loadStats() {
+	execPath, _ := os.Getwd()
+	path := filepath.Join(execPath, "stats.json")
+	
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return // File doesn't exist, use defaults
+	}
+	
+	if err := json.Unmarshal(data, g.Stats); err != nil {
+		log.Printf("Warning: Could not parse stats: %v", err)
+	}
+	
+	// Ensure achievements exist
+	if len(g.Stats.Achievements) == 0 {
+		g.Stats = DefaultStats()
+	}
+}
+
+func (g *Game) saveStats() {
+	execPath, _ := os.Getwd()
+	path := filepath.Join(execPath, "stats.json")
+	
+	data, err := json.MarshalIndent(g.Stats, "", "  ")
+	if err != nil {
+		return
+	}
+	
+	os.WriteFile(path, data, 0644)
+}
+
+func (g *Game) checkAchievements() {
+	s := g.Stats
+	
+	// First game
+	if !g.getAchievement("first_game").Unlocked {
+		g.unlockAchievement("first_game")
+	}
+	
+	// First win
+	if s.Wins >= 1 && !g.getAchievement("first_win").Unlocked {
+		g.unlockAchievement("first_win")
+	}
+	
+	// Ten wins
+	if s.Wins >= 10 && !g.getAchievement("ten_wins").Unlocked {
+		g.unlockAchievement("ten_wins")
+	}
+	
+	// Win streak 3
+	if s.WinStreak >= 3 && !g.getAchievement("win_streak_3").Unlocked {
+		g.unlockAchievement("win_streak_3")
+	}
+	
+	// Win streak 5
+	if s.WinStreak >= 5 && !g.getAchievement("win_streak_5").Unlocked {
+		g.unlockAchievement("win_streak_5")
+	}
+	
+	// First draw
+	if s.Draws >= 1 && !g.getAchievement("first_draw").Unlocked {
+		g.unlockAchievement("first_draw")
+	}
+	
+	// Ten draws
+	if s.Draws >= 10 && !g.getAchievement("ten_draws").Unlocked {
+		g.unlockAchievement("ten_draws")
+	}
+}
+
+func (g *Game) getAchievement(id string) *Achievement {
+	for i := range g.Stats.Achievements {
+		if g.Stats.Achievements[i].ID == id {
+			return &g.Stats.Achievements[i]
+		}
+	}
+	return nil
+}
+
+func (g *Game) unlockAchievement(id string) {
+	ach := g.getAchievement(id)
+	if ach != nil && !ach.Unlocked {
+		ach.Unlocked = true
+		g.NewAchievement = ach
+		g.AchieveTimer = 3.0
+	}
+}
+
 func (g *Game) Update() error {
 	g.GameTime += 1.0 / 60.0
 	
@@ -488,6 +659,14 @@ func (g *Game) Update() error {
 		p.Life -= 1.0 / 60.0
 		if p.Life <= 0 {
 			g.Particles = append(g.Particles[:i], g.Particles[i+1:]...)
+		}
+	}
+	
+	// Update achievement display timer
+	if g.AchieveTimer > 0 {
+		g.AchieveTimer -= 1.0 / 60.0
+		if g.AchieveTimer <= 0 {
+			g.NewAchievement = nil
 		}
 	}
 	
@@ -546,9 +725,27 @@ func (g *Game) Update() error {
 						g.WinCells = cells
 						g.playSound("win")
 						g.spawnWinParticles(cells)
+						
+						// Update stats
+						g.Stats.TotalGames++
+						g.Stats.Wins++
+						g.Stats.WinStreak++
+						if g.Stats.WinStreak > g.Stats.BestStreak {
+							g.Stats.BestStreak = g.Stats.WinStreak
+						}
+						if g.AIDifficulty == AIHard {
+							g.Stats.Unbeatable = true
+						}
+						g.checkAchievements()
+						g.saveStats()
 					} else if g.Board.IsFull() {
 						g.State = StateDraw
 						g.Draws++
+						g.Stats.TotalGames++
+						g.Stats.Draws++
+						g.Stats.WinStreak = 0
+						g.checkAchievements()
+						g.saveStats()
 					} else {
 						g.Turn = CellO
 						g.AI_Thinking = true
@@ -557,20 +754,38 @@ func (g *Game) Update() error {
 				}
 			}
 			
+		case StateAchievements:
+			// Back button
+			btnX := ScreenW/2 - 100
+			btnY := 750
+			if fmx >= float64(btnX) && fmx <= float64(btnX+200) &&
+			   fmy >= float64(btnY) && fmy <= float64(btnY+60) {
+				g.playSound("click")
+				g.State = StateMenu
+			}
+			
 		case StateWin, StateDraw:
 			// Restart button
 			btnX := ScreenW/2 - 100
-			btnY := 650
+			btnY := 530
 			if fmx >= float64(btnX) && fmx <= float64(btnX+200) &&
 			   fmy >= float64(btnY) && fmy <= float64(btnY+60) {
 				g.playSound("click")
 				g.startGame()
 			}
 			
-			// Menu button
-			btnY2 := 730
+			// Achievements button
+			btnY2 := 610
 			if fmx >= float64(btnX) && fmx <= float64(btnX+200) &&
 			   fmy >= float64(btnY2) && fmy <= float64(btnY2+60) {
+				g.playSound("click")
+				g.State = StateAchievements
+			}
+			
+			// Menu button
+			btnY3 := 690
+			if fmx >= float64(btnX) && fmx <= float64(btnX+200) &&
+			   fmy >= float64(btnY3) && fmy <= float64(btnY3+60) {
 				g.playSound("click")
 				g.State = StateMenu
 			}
@@ -593,6 +808,13 @@ func (g *Game) Update() error {
 					g.WinCells = cells
 					g.playSound("lose")
 					g.spawnWinParticles(cells)
+					
+					// Update stats
+					g.Stats.TotalGames++
+					g.Stats.Losses++
+					g.Stats.WinStreak = 0
+					g.checkAchievements()
+					g.saveStats()
 				} else if g.Board.IsFull() {
 					g.State = StateDraw
 					g.Draws++
@@ -698,6 +920,13 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	case StateWin, StateDraw:
 		g.drawGame(screen)
 		g.drawResult(screen)
+	case StateAchievements:
+		g.drawAchievements(screen)
+	}
+	
+	// Achievement notification
+	if g.NewAchievement != nil && g.AchieveTimer > 0 {
+		g.drawAchievementNotification(screen)
 	}
 	
 	// Particles
@@ -786,10 +1015,7 @@ func (g *Game) drawGame(screen *ebiten.Image) {
 		screen.DrawImage(lineV, op)
 	}
 	
-	// Cells
-	xImg := createXImage(CellSize-20, color.RGBA{100, 200, 255, 255})
-	oImg := createOImage(CellSize-20, color.RGBA{255, 100, 150, 255})
-	
+	// Gems - использу спрайты если есть, иначе процедурные
 	for r := 0; r < GridSize; r++ {
 		for c := 0; c < GridSize; c++ {
 			cell := g.Board.Grid[r][c]
@@ -804,35 +1030,78 @@ func (g *Game) drawGame(screen *ebiten.Image) {
 				screen.DrawImage(hoverImg, op)
 			}
 			
-			if cell == CellX {
-				op := &ebiten.DrawImageOptions{}
-				op.GeoM.Translate(
-					float64(GridX+c*CellSize+10),
-					float64(GridY+r*CellSize+10),
-				)
-				op.GeoM.Scale(g.CellAnims[r][c], g.CellAnims[r][c])
-				screen.DrawImage(xImg, op)
-			} else if cell == CellO {
-				op := &ebiten.DrawImageOptions{}
-				op.GeoM.Translate(
-					float64(GridX+c*CellSize+10),
-					float64(GridY+r*CellSize+10),
-				)
-				op.GeoM.Scale(g.CellAnims[r][c], g.CellAnims[r][c])
-				screen.DrawImage(oImg, op)
+			if cell == CellX || cell == CellO {
+				sprite := g.SpriteX
+				if cell == CellO {
+					sprite = g.SpriteO
+				}
+				
+				if sprite != nil {
+					// Используем спрайт
+					op := &ebiten.DrawImageOptions{}
+					scale := float64(CellSize-10) / float64(sprite.Bounds().Dx()) * g.CellAnims[r][c]
+					op.GeoM.Scale(scale, scale)
+					op.GeoM.Translate(
+						float64(GridX+c*CellSize+5),
+						float64(GridY+r*CellSize+5),
+					)
+					screen.DrawImage(sprite, op)
+				} else {
+					// Fallback на процедурную графику
+					img := createXImage(CellSize-20, color.RGBA{100, 200, 255, 255})
+					if cell == CellO {
+						img = createOImage(CellSize-20, color.RGBA{255, 100, 150, 255})
+					}
+					op := &ebiten.DrawImageOptions{}
+					op.GeoM.Translate(
+						float64(GridX+c*CellSize+10),
+						float64(GridY+r*CellSize+10),
+					)
+					op.GeoM.Scale(g.CellAnims[r][c], g.CellAnims[r][c])
+					screen.DrawImage(img, op)
+				}
 			}
 		}
 	}
 	
 	// Win line highlight
 	if g.State == StateWin && len(g.WinCells) > 0 {
-		for _, cell := range g.WinCells {
-			winImg := ebiten.NewImage(CellSize, CellSize)
-			vector.DrawFilledRect(winImg, 8, 8, float32(CellSize-16), float32(CellSize-16), color.RGBA{255, 215, 0, 80}, false)
+		// Animated glow
+		glowAlpha := uint8(100 + 80*math.Sin(g.GameTime*5))
+		
+		// Draw line through winning cells
+		if len(g.WinCells) == 3 {
+			x1 := float64(GridX + g.WinCells[0][1]*CellSize + CellSize/2)
+			y1 := float64(GridY + g.WinCells[0][0]*CellSize + CellSize/2)
+			x2 := float64(GridX + g.WinCells[2][1]*CellSize + CellSize/2)
+			y2 := float64(GridY + g.WinCells[2][0]*CellSize + CellSize/2)
 			
-			op := &ebiten.DrawImageOptions{}
-			op.GeoM.Translate(float64(GridX+cell[1]*CellSize), float64(GridY+cell[0]*CellSize))
-			screen.DrawImage(winImg, op)
+			// Thick glowing line
+			vector.StrokeLine(screen, float32(x1), float32(y1), float32(x2), float32(y2), 8, color.RGBA{255, 215, 0, glowAlpha}, false)
+			vector.StrokeLine(screen, float32(x1), float32(y1), float32(x2), float32(y2), 4, color.RGBA{255, 255, 255, 200}, false)
+		}
+		
+		// Confetti particles for winning cells
+		if rand.Float64() < 0.3 {
+			cell := g.WinCells[rand.Intn(len(g.WinCells))]
+			cx := float64(GridX + cell[1]*CellSize + CellSize/2)
+			cy := float64(GridY + cell[0]*CellSize + CellSize/2)
+			
+			g.Particles = append(g.Particles, Particle{
+				X: cx + (rand.Float64()-0.5)*float64(CellSize),
+				Y: cy,
+				VX: (rand.Float64() - 0.5) * 4,
+				VY: -2 - rand.Float64()*3,
+				Life: 1.0,
+				MaxLife: 1.0,
+				Color: []color.RGBA{
+					{255, 215, 0, 255},
+					{255, 100, 150, 255},
+					{100, 200, 255, 255},
+					{100, 255, 100, 255},
+				}[rand.Intn(4)],
+				Size: 3 + rand.Float64()*4,
+			})
 		}
 	}
 	
@@ -854,29 +1123,119 @@ func (g *Game) drawGame(screen *ebiten.Image) {
 
 func (g *Game) drawResult(screen *ebiten.Image) {
 	// Overlay
-	overlay := ebiten.NewImage(ScreenW, 300)
+	overlay := ebiten.NewImage(ScreenW, 400)
 	overlay.Fill(color.RGBA{10, 12, 25, 220})
 	
 	op := &ebiten.DrawImageOptions{}
-	op.GeoM.Translate(0, 450)
+	op.GeoM.Translate(0, 380)
 	screen.DrawImage(overlay, op)
 	
 	// Result text
 	if g.State == StateWin {
-		// Check who won
 		wonX, _ := g.Board.CheckWin(CellX)
 		if wonX {
-			ebitenutil.DebugPrintAt(screen, "🎉 ВЫ ПОБЕДИЛИ!", ScreenW/2-120, 500)
+			ebitenutil.DebugPrintAt(screen, "🎉 ВЫ ПОБЕДИЛИ!", ScreenW/2-120, 420)
 		} else {
-			ebitenutil.DebugPrintAt(screen, "😔 AI ПОБЕДИЛ", ScreenW/2-110, 500)
+			ebitenutil.DebugPrintAt(screen, "😔 AI ПОБЕДИЛ", ScreenW/2-110, 420)
 		}
 	} else {
-		ebitenutil.DebugPrintAt(screen, "🤝 НИЧЬЯ!", ScreenW/2-80, 500)
+		ebitenutil.DebugPrintAt(screen, "🤝 НИЧЬЯ!", ScreenW/2-80, 420)
 	}
 	
+	// Stats
+	ebitenutil.DebugPrintAt(screen, fmt.Sprintf("Игр: %d | Побед: %d | Поражений: %d | Ничьих: %d",
+		g.Stats.TotalGames, g.Stats.Wins, g.Stats.Losses, g.Stats.Draws), 60, 460)
+	ebitenutil.DebugPrintAt(screen, fmt.Sprintf("Лучшая серия: %d | Winrate: %.0f%%",
+		g.Stats.BestStreak, winrate(g.Stats)), 120, 485)
+	
 	// Buttons
-	g.drawButton(screen, "🔄  ЕЩЁ РАЗ", ScreenW/2-100, 650, 200, 60)
-	g.drawButton(screen, "←  МЕНЮ", ScreenW/2-100, 730, 200, 60)
+	g.drawButton(screen, "🔄  ЕЩЁ РАЗ", ScreenW/2-100, 530, 200, 60)
+	g.drawButton(screen, "🏆 ДОСТИЖЕНИЯ", ScreenW/2-100, 610, 200, 60)
+	g.drawButton(screen, "←  МЕНЮ", ScreenW/2-100, 690, 200, 60)
+}
+
+func winrate(s *PlayerStats) float64 {
+	if s.TotalGames == 0 {
+		return 0
+	}
+	return float64(s.Wins) / float64(s.TotalGames) * 100
+}
+
+func (g *Game) drawAchievements(screen *ebiten.Image) {
+	// Background
+	vector.DrawFilledRect(screen, 0, 0, ScreenW, ScreenH, color.RGBA{15, 18, 35, 255}, false)
+	
+	// Title
+	ebitenutil.DebugPrintAt(screen, "🏆 ДОСТИЖЕНИЯ", ScreenW/2-110, 40)
+	
+	// Stats summary
+	ebitenutil.DebugPrintAt(screen, fmt.Sprintf("Игр: %d | Побед: %d | Winrate: %.0f%% | Серия: %d",
+		g.Stats.TotalGames, g.Stats.Wins, winrate(g.Stats), g.Stats.BestStreak), 100, 80)
+	
+	// Achievements list
+	unlocked := 0
+	for i, ach := range g.Stats.Achievements {
+		y := 130 + i*70
+		
+		// Background
+		bgColor := color.RGBA{30, 35, 60, 200}
+		if ach.Unlocked {
+			bgColor = color.RGBA{40, 60, 40, 220}
+			unlocked++
+		}
+		
+		panel := ebiten.NewImage(ScreenW-40, 60)
+		vector.DrawFilledRect(panel, 0, 0, float32(ScreenW-40), 60, bgColor, false)
+		
+		op := &ebiten.DrawImageOptions{}
+		op.GeoM.Translate(20, float64(y))
+		screen.DrawImage(panel, op)
+		
+		// Icon and text
+		icon := "🔒"
+		if ach.Unlocked {
+			icon = ach.Icon
+		}
+		ebitenutil.DebugPrintAt(screen, fmt.Sprintf("%s %s", icon, ach.Name), 40, y+8)
+		ebitenutil.DebugPrintAt(screen, ach.Description, 80, y+32)
+	}
+	
+	// Counter
+	ebitenutil.DebugPrintAt(screen, fmt.Sprintf("%d/%d разблокировано", unlocked, len(g.Stats.Achievements)), ScreenW/2-100, 130+len(g.Stats.Achievements)*70+20)
+	
+	// Back button
+	g.drawButton(screen, "← НАЗАД", ScreenW/2-100, 750, 200, 60)
+}
+
+func (g *Game) drawAchievementNotification(screen *ebiten.Image) {
+	if g.NewAchievement == nil {
+		return
+	}
+	
+	alpha := 255
+	if g.AchieveTimer < 0.5 {
+		alpha = int(g.AchieveTimer / 0.5 * 255)
+	}
+	
+	// Notification panel
+	panel := ebiten.NewImage(350, 70)
+	panel.Fill(color.RGBA{40, 80, 40, uint8(alpha)})
+	
+	op := &ebiten.DrawImageOptions{}
+	op.GeoM.Translate(float64(ScreenW/2-175), 20)
+	screen.DrawImage(panel, op)
+	
+	// Border
+	border := ebiten.NewImage(350, 3)
+	border.Fill(color.RGBA{100, 255, 100, uint8(alpha)})
+	
+	op2 := &ebiten.DrawImageOptions{}
+	op2.GeoM.Translate(float64(ScreenW/2-175), 20)
+	screen.DrawImage(border, op2)
+	
+	// Text
+	ebitenutil.DebugPrintAt(screen, fmt.Sprintf("🏆 %s: %s", g.NewAchievement.Icon, g.NewAchievement.Name), ScreenW/2-150, 28)
+	ebitenutil.DebugPrintAt(screen, g.NewAchievement.Description, ScreenW/2-150, 52)
 }
 
 func (g *Game) drawButton(screen *ebiten.Image, text string, x, y, w, h int) {
