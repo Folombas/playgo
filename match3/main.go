@@ -6,13 +6,17 @@
 package main
 
 import (
+	"bytes"
+	"embed"
 	"fmt"
 	"image"
 	"image/color"
+	"image/png"
 	"log"
 	"math"
 	"math/rand"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -26,16 +30,19 @@ import (
 // ============================================================================
 
 const (
-	ScreenW      = 600
-	ScreenH      = 900
-	Cols         = 8
-	Rows         = 10
-	CellSize     = 52
+	ScreenW      = 500
+	ScreenH      = 800
+	Cols         = 6
+	Rows         = 6
+	CellSize     = 64
 	CellGap      = 4
 	BoardX       = (ScreenW - Cols*(CellSize+CellGap)) / 2
-	BoardY       = 180
+	BoardY       = 200
 	AnimDuration = 0.2
 )
+
+//go:embed assets/gems/*.png
+var gemFS embed.FS
 
 // ============================================================================
 // ЦВЕТА
@@ -57,16 +64,17 @@ var (
 )
 
 var gemPalettes = []struct {
+	name  string
 	base, light, dark color.RGBA
 }{
-	{color.RGBA{230, 60, 60, 255}, color.RGBA{255, 120, 120, 255}, color.RGBA{180, 30, 30, 255}},    // Red
-	{color.RGBA{60, 120, 255, 255}, color.RGBA{120, 170, 255, 255}, color.RGBA{30, 80, 200, 255}},    // Blue
-	{color.RGBA{60, 220, 100, 255}, color.RGBA{130, 255, 160, 255}, color.RGBA{30, 170, 70, 255}},    // Green
-	{color.RGBA{255, 220, 60, 255}, color.RGBA{255, 255, 140, 255}, color.RGBA{200, 170, 30, 255}},    // Yellow
-	{color.RGBA{180, 60, 255, 255}, color.RGBA{220, 140, 255, 255}, color.RGBA{130, 30, 200, 255}},    // Purple
-	{color.RGBA{255, 150, 60, 255}, color.RGBA{255, 200, 130, 255}, color.RGBA{200, 110, 30, 255}},    // Orange
-	{color.RGBA{60, 220, 230, 255}, color.RGBA{140, 255, 255, 255}, color.RGBA{30, 170, 180, 255}},    // Cyan
-	{color.RGBA{255, 120, 180, 255}, color.RGBA{255, 180, 220, 255}, color.RGBA{200, 80, 140, 255}},   // Pink
+	{"peach", color.RGBA{255, 150, 80, 255}, color.RGBA{255, 200, 140, 255}, color.RGBA{200, 110, 50, 255}},
+	{"blueberry", color.RGBA{60, 80, 200, 255}, color.RGBA{120, 140, 240, 255}, color.RGBA{30, 50, 150, 255}},
+	{"plum", color.RGBA{160, 50, 180, 255}, color.RGBA{200, 120, 220, 255}, color.RGBA{110, 30, 130, 255}},
+	{"raspberry", color.RGBA{220, 50, 80, 255}, color.RGBA{255, 120, 140, 255}, color.RGBA{170, 30, 50, 255}},
+	{"grape", color.RGBA{120, 60, 200, 255}, color.RGBA{170, 120, 240, 255}, color.RGBA{80, 30, 150, 255}},
+	{"kiwi", color.RGBA{80, 180, 50, 255}, color.RGBA{140, 220, 100, 255}, color.RGBA{50, 130, 30, 255}},
+	{"cherry", color.RGBA{220, 30, 50, 255}, color.RGBA{255, 100, 100, 255}, color.RGBA{170, 20, 30, 255}},
+	{"coconut", color.RGBA{200, 180, 140, 255}, color.RGBA{240, 220, 190, 255}, color.RGBA{150, 130, 100, 255}},
 }
 
 // ============================================================================
@@ -176,48 +184,42 @@ func lerp(a, b, t float64) float64 {
 	return a + (b - a) * t
 }
 
-func createGemSprite(gemType GemType, size int) *ebiten.Image {
-	p := gemPalettes[gemType]
-	img := image.NewRGBA(image.Rect(0, 0, size, size))
-	center := size / 2
-
-	for y := 0; y < size; y++ {
-		for x := 0; x < size; x++ {
-			dx := float64(x - center)
-			dy := float64(y - center)
-			dist := math.Sqrt(dx*dx + dy*dy)
-			radius := float64(size/2 - 3)
-
-			if dist <= radius {
-				// Градиент от светлого к тёмному
-				t := dist / radius
-				r := uint8(lerp(float64(p.light.R), float64(p.dark.R), t))
-				g := uint8(lerp(float64(p.light.G), float64(p.dark.G), t))
-				b := uint8(lerp(float64(p.light.B), float64(p.dark.B), t))
-
-				// Блик сверху-слева
-				highlightX := float64(-center) * 0.35
-				highlightY := float64(-center) * 0.35
-				hDist := math.Sqrt((dx-highlightX)*(dx-highlightX) + (dy-highlightY)*(dy-highlightY))
-				if hDist < radius*0.4 {
-					h := 1.0 - hDist/(radius*0.4)
-					r = uint8(math.Min(255, float64(r)+h*80))
-					g = uint8(math.Min(255, float64(g)+h*80))
-					b = uint8(math.Min(255, float64(b)+h*80))
-				}
-
-				img.Set(x, y, color.RGBA{r, g, b, 255})
-			}
-
-			// Обводка
-			if dist > radius-2 && dist <= radius {
-				alpha := uint8((dist - (radius - 2)) / 2 * 200)
-				img.Set(x, y, color.RGBA{255, 255, 255, alpha})
-			}
-		}
+func loadFoodSprite(foodName string, size int) *ebiten.Image {
+	// Try embedded FS first
+	data, err := gemFS.ReadFile("assets/gems/" + foodName + ".png")
+	if err == nil {
+		return decodeAndScale(data, size)
 	}
 
-	return ebiten.NewImageFromImage(img)
+	// Try filesystem
+	execPath, _ := os.Getwd()
+	path := filepath.Join(execPath, "assets", "gems", foodName+".png")
+	data, err = os.ReadFile(path)
+	if err != nil {
+		return nil
+	}
+	return decodeAndScale(data, size)
+}
+
+func decodeAndScale(data []byte, targetSize int) *ebiten.Image {
+	img, err := png.Decode(bytes.NewReader(data))
+	if err != nil {
+		return nil
+	}
+	srcW := img.Bounds().Dx()
+	srcH := img.Bounds().Dy()
+	if srcW == 0 || srcH == 0 {
+		return nil
+	}
+	scale := float64(targetSize) / float64(srcW)
+	if float64(srcH)*scale > float64(targetSize) {
+		scale = float64(targetSize) / float64(srcH)
+	}
+	resized := ebiten.NewImage(int(float64(srcW)*scale), int(float64(srcH)*scale))
+	op := &ebiten.DrawImageOptions{}
+	op.GeoM.Scale(scale, scale)
+	resized.DrawImage(ebiten.NewImageFromImage(img), op)
+	return resized
 }
 
 // ============================================================================
@@ -475,9 +477,14 @@ func NewGame() *Game {
 		TargetScore: 5000,
 	}
 
-	// Create gem sprites
+	// Create gem sprites from food images
 	for i := 0; i < int(GemCount); i++ {
-		g.GemImages[GemType(i)] = createGemSprite(GemType(i), CellSize)
+		sprite := loadFoodSprite(gemPalettes[i].name, CellSize)
+		if sprite == nil {
+			// Fallback: create colored placeholder
+			sprite = createPlaceholder(gemPalettes[i].light, CellSize)
+		}
+		g.GemImages[GemType(i)] = sprite
 	}
 
 	// Stars
@@ -686,6 +693,21 @@ func (g *Game) Update() error {
 	return nil
 }
 
+func createPlaceholder(c color.RGBA, size int) *ebiten.Image {
+	img := image.NewRGBA(image.Rect(0, 0, size, size))
+	center := size / 2
+	for y := 0; y < size; y++ {
+		for x := 0; x < size; x++ {
+			dx := float64(x - center)
+			dy := float64(y - center)
+			if dx*dx+dy*dy <= float64(center*center) {
+				img.Set(x, y, c)
+			}
+		}
+	}
+	return ebiten.NewImageFromImage(img)
+}
+
 func (g *Game) startGame() {
 	g.State = StatePlaying
 	g.Board = NewBoard()
@@ -783,7 +805,10 @@ func (g *Game) drawMenu(screen *ebiten.Image) {
 
 	// Decorative gems
 	for i := 0; i < 5; i++ {
-		gem := createGemSprite(GemType(i), 40)
+		gem := loadFoodSprite(gemPalettes[i].name, 40)
+		if gem == nil {
+			gem = createPlaceholder(gemPalettes[i].light, 40)
+		}
 		op3 := &ebiten.DrawImageOptions{}
 		op3.GeoM.Translate(float64(ScreenW/2-120+i*60), 370)
 		screen.DrawImage(gem, op3)
