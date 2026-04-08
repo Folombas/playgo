@@ -1,4 +1,4 @@
-module github.com/playgo/shooter2d
+module github.com/playgo/platformer_shooter
 
 go 1.25.0
 
