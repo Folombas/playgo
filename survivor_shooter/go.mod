@@ -1,4 +1,4 @@
-module github.com/playgo/space_shooter
+module github.com/playgo/survivor_shooter
 
 go 1.25.0
 
