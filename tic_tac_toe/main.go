@@ -1,22 +1,31 @@
-// Крестики-Нолики - Go365 Challenge Day 100
-// Современная игра с красивыми эффектами и AI
+// Крестики-Нолики - Go365 Challenge Day 101
+// Улучшенная версия: ЗВУКИ + УРОВНИ СЛОЖНОСТИ AI
 // 8 апреля 2026
 
 package main
 
 import (
+	"bytes"
+	"embed"
 	"image"
 	"image/color"
 	"log"
 	"math"
 	"math/rand"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/hajimehoshi/ebiten/v2/audio"
+	"github.com/hajimehoshi/ebiten/v2/audio/vorbis"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"github.com/hajimehoshi/ebiten/v2/vector"
 )
+
+//go:embed assets/sounds/*.ogg
+var soundFS embed.FS
 
 // ============================================================================
 // КОНСТАНТЫ
@@ -52,6 +61,16 @@ const (
 	StateWin
 	StateDraw
 )
+
+type AIDifficulty int
+
+const (
+	AIEasy AIDifficulty = iota
+	AIMedium
+	AIHard
+)
+
+var aiNames = []string{"Лёгкий", "Средний", "Сложный"}
 
 type Particle struct {
 	X, Y       float64
@@ -231,8 +250,19 @@ func (b *Board) CellAt(mx, my float64) (int, int, bool) {
 	return -1, -1, false
 }
 
-// AI - Minimax algorithm
-func (b *Board) BestMove() (int, int) {
+// AI - Minimax algorithm с уровнями сложности
+func (b *Board) BestMove(difficulty AIDifficulty) (int, int) {
+	// Easy: 40% random moves
+	if difficulty == AIEasy && rand.Float64() < 0.4 {
+		return b.RandomMove()
+	}
+	
+	// Medium: 20% random moves
+	if difficulty == AIMedium && rand.Float64() < 0.2 {
+		return b.RandomMove()
+	}
+	
+	// Hard: always best move (minimax)
 	bestScore := -999
 	bestR, bestC := -1, -1
 	
@@ -252,6 +282,22 @@ func (b *Board) BestMove() (int, int) {
 	}
 	
 	return bestR, bestC
+}
+
+func (b *Board) RandomMove() (int, int) {
+	var moves [][2]int
+	for r := 0; r < GridSize; r++ {
+		for c := 0; c < GridSize; c++ {
+			if b.Grid[r][c] == CellEmpty {
+				moves = append(moves, [2]int{r, c})
+			}
+		}
+	}
+	if len(moves) == 0 {
+		return -1, -1
+	}
+	move := moves[rand.Intn(len(moves))]
+	return move[0], move[1]
 }
 
 func (b *Board) minimax(depth int, isMaximizing bool) int {
@@ -318,6 +364,13 @@ type Game struct {
 	
 	AI_Thinking bool
 	AITimer    float64
+	AIDifficulty AIDifficulty
+	
+	// Audio
+	audioContext  *audio.Context
+	clickPlayer   *audio.Player
+	winPlayer     *audio.Player
+	losePlayer    *audio.Player
 }
 
 func NewGame() *Game {
@@ -330,7 +383,11 @@ func NewGame() *Game {
 		Particles: []Particle{},
 		HoverRow: -1,
 		HoverCol: -1,
+		AIDifficulty: AIHard,
 	}
+	
+	// Init audio
+	g.initAudio()
 	
 	// Init stars
 	for i := 0; i < 60; i++ {
@@ -344,6 +401,66 @@ func NewGame() *Game {
 	}
 	
 	return g
+}
+
+func (g *Game) initAudio() {
+	// Create audio context
+	g.audioContext = audio.NewContext(44100)
+	
+	// Load sounds
+	g.clickPlayer = g.loadSound("click.ogg")
+	g.winPlayer = g.loadSound("win.ogg")
+	g.losePlayer = g.loadSound("lose.ogg")
+}
+
+func (g *Game) loadSound(filename string) *audio.Player {
+	// Try embedded FS first
+	data, err := soundFS.ReadFile("assets/sounds/" + filename)
+	if err != nil {
+		// Fallback to file system
+		execPath, _ := os.Getwd()
+		soundPath := filepath.Join(execPath, "assets", "sounds", filename)
+		data, err = os.ReadFile(soundPath)
+		if err != nil {
+			log.Printf("Warning: Could not load sound %s: %v", filename, err)
+			return nil
+		}
+	}
+	
+	// Decode OGG
+	stream, err := vorbis.DecodeWithSampleRate(44100, bytes.NewReader(data))
+	if err != nil {
+		log.Printf("Warning: Could not decode sound %s: %v", filename, err)
+		return nil
+	}
+	
+	player, err := g.audioContext.NewPlayer(stream)
+	if err != nil {
+		log.Printf("Warning: Could not create player for %s: %v", filename, err)
+		return nil
+	}
+	
+	return player
+}
+
+func (g *Game) playSound(name string) {
+	switch name {
+	case "click":
+		if g.clickPlayer != nil {
+			g.clickPlayer.Rewind()
+			g.clickPlayer.Play()
+		}
+	case "win":
+		if g.winPlayer != nil {
+			g.winPlayer.Rewind()
+			g.winPlayer.Play()
+		}
+	case "lose":
+		if g.losePlayer != nil {
+			g.losePlayer.Rewind()
+			g.losePlayer.Play()
+		}
+	}
 }
 
 func (g *Game) Update() error {
@@ -399,13 +516,26 @@ func (g *Game) Update() error {
 			btnY := 500
 			if fmx >= float64(btnX) && fmx <= float64(btnX+200) &&
 			   fmy >= float64(btnY) && fmy <= float64(btnY+60) {
+				g.playSound("click")
 				g.startGame()
+			}
+			
+			// Difficulty buttons
+			for i := 0; i < 3; i++ {
+				dbtnX := ScreenW/2 - 160 + i*110
+				dbtnY := 580
+				if fmx >= float64(dbtnX) && fmx <= float64(dbtnX+100) &&
+				   fmy >= float64(dbtnY) && fmy <= float64(dbtnY+45) {
+					g.playSound("click")
+					g.AIDifficulty = AIDifficulty(i)
+				}
 			}
 			
 		case StatePlaying:
 			if g.Turn == CellX && !g.AI_Thinking {
 				r, c, ok := g.Board.CellAt(fmx, fmy)
 				if ok && g.Board.Grid[r][c] == CellEmpty {
+					g.playSound("click")
 					g.Board.Grid[r][c] = CellX
 					g.CellAnims[r][c] = 0.3
 					g.spawnCellParticles(r, c, CellX)
@@ -414,6 +544,7 @@ func (g *Game) Update() error {
 						g.State = StateWin
 						g.ScoreX++
 						g.WinCells = cells
+						g.playSound("win")
 						g.spawnWinParticles(cells)
 					} else if g.Board.IsFull() {
 						g.State = StateDraw
@@ -432,6 +563,7 @@ func (g *Game) Update() error {
 			btnY := 650
 			if fmx >= float64(btnX) && fmx <= float64(btnX+200) &&
 			   fmy >= float64(btnY) && fmy <= float64(btnY+60) {
+				g.playSound("click")
 				g.startGame()
 			}
 			
@@ -439,6 +571,7 @@ func (g *Game) Update() error {
 			btnY2 := 730
 			if fmx >= float64(btnX) && fmx <= float64(btnX+200) &&
 			   fmy >= float64(btnY2) && fmy <= float64(btnY2+60) {
+				g.playSound("click")
 				g.State = StateMenu
 			}
 		}
@@ -448,7 +581,7 @@ func (g *Game) Update() error {
 	if g.AI_Thinking {
 		g.AITimer -= 1.0 / 60.0
 		if g.AITimer <= 0 {
-			r, c := g.Board.BestMove()
+			r, c := g.Board.BestMove(g.AIDifficulty)
 			if r >= 0 && c >= 0 {
 				g.Board.Grid[r][c] = CellO
 				g.CellAnims[r][c] = 0.3
@@ -458,6 +591,7 @@ func (g *Game) Update() error {
 					g.State = StateWin
 					g.ScoreO++
 					g.WinCells = cells
+					g.playSound("lose")
 					g.spawnWinParticles(cells)
 				} else if g.Board.IsFull() {
 					g.State = StateDraw
@@ -587,35 +721,50 @@ func (g *Game) Draw(screen *ebiten.Image) {
 
 func (g *Game) drawMenu(screen *ebiten.Image) {
 	// Title
-	ebitenutil.DebugPrintAt(screen, "КРЕСТИКИ-НОЛИКИ", ScreenW/2-140, 280)
+	ebitenutil.DebugPrintAt(screen, "КРЕСТИКИ-НОЛИКИ", ScreenW/2-140, 250)
 	
 	// Subtitle
-	ebitenutil.DebugPrintAt(screen, "Go365 Challenge - Day 100", ScreenW/2-110, 320)
+	ebitenutil.DebugPrintAt(screen, "Go365 Challenge - Day 101", ScreenW/2-110, 290)
 	
 	// Decorative line
 	lineImg := createLineImage(300, 4, color.RGBA{100, 180, 255, 255})
 	op := &ebiten.DrawImageOptions{}
-	op.GeoM.Translate(float64(ScreenW/2-150), 350)
+	op.GeoM.Translate(float64(ScreenW/2-150), 320)
 	screen.DrawImage(lineImg, op)
 	
 	// X and O decorations
 	xImg := createXImage(80, color.RGBA{100, 200, 255, 200})
 	op2 := &ebiten.DrawImageOptions{}
-	op2.GeoM.Translate(float64(ScreenW/2-180), 380)
+	op2.GeoM.Translate(float64(ScreenW/2-180), 340)
 	screen.DrawImage(xImg, op2)
 	
 	oImg := createOImage(80, color.RGBA{255, 100, 150, 200})
 	op3 := &ebiten.DrawImageOptions{}
-	op3.GeoM.Translate(float64(ScreenW/2+100), 380)
+	op3.GeoM.Translate(float64(ScreenW/2+100), 340)
 	screen.DrawImage(oImg, op3)
 	
 	// Start button
 	g.drawButton(screen, "▶  ИГРАТЬ", ScreenW/2-100, 500, 200, 60)
 	
+	// Difficulty selection
+	ebitenutil.DebugPrintAt(screen, "Сложность AI:", ScreenW/2-95, 560)
+	
+	for i := 0; i < 3; i++ {
+		dbtnX := ScreenW/2 - 160 + i*110
+		dbtnY := 580
+		label := aiNames[i]
+		
+		// Highlight selected
+		if AIDifficulty(i) == g.AIDifficulty {
+			g.drawButtonGreen(screen, label, dbtnX, dbtnY, 100, 45)
+		} else {
+			g.drawButton(screen, label, dbtnX, dbtnY, 100, 45)
+		}
+	}
+	
 	// Info
-	ebitenutil.DebugPrintAt(screen, "Вы играете крестиками (X)", ScreenW/2-120, 600)
-	ebitenutil.DebugPrintAt(screen, "AI играет ноликами (O)", ScreenW/2-110, 625)
-	ebitenutil.DebugPrintAt(screen, "AI использует алгоритм Minimax", ScreenW/2-130, 650)
+	ebitenutil.DebugPrintAt(screen, "Вы: X  |  AI: O", ScreenW/2-90, 650)
+	ebitenutil.DebugPrintAt(screen, "Minimax algorithm", ScreenW/2-100, 670)
 }
 
 func (g *Game) drawGame(screen *ebiten.Image) {
@@ -761,13 +910,40 @@ func (g *Game) drawButton(screen *ebiten.Image, text string, x, y, w, h int) {
 	ebitenutil.DebugPrintAt(screen, text, x+20, y+h/2-10)
 }
 
+func (g *Game) drawButtonGreen(screen *ebiten.Image, text string, x, y, w, h int) {
+	btn := ebiten.NewImage(w, h)
+	
+	mx, my := ebiten.CursorPosition()
+	fmx, fmy := float64(mx), float64(my)
+	hover := fmx >= float64(x) && fmx <= float64(x+w) && fmy >= float64(y) && fmy <= float64(y+h)
+	
+	if hover {
+		vector.DrawFilledRect(btn, 0, 0, float32(w), float32(h), color.RGBA{60, 140, 80, 255}, false)
+	} else {
+		vector.DrawFilledRect(btn, 0, 0, float32(w), float32(h), color.RGBA{40, 110, 60, 255}, false)
+	}
+	
+	border := ebiten.NewImage(w, 3)
+	border.Fill(color.RGBA{100, 255, 140, 255})
+	
+	op := &ebiten.DrawImageOptions{}
+	op.GeoM.Translate(float64(x), float64(y))
+	screen.DrawImage(btn, op)
+	
+	op2 := &ebiten.DrawImageOptions{}
+	op2.GeoM.Translate(float64(x), float64(y))
+	screen.DrawImage(border, op2)
+	
+	ebitenutil.DebugPrintAt(screen, text, x+15, y+h/2-10)
+}
+
 func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
 	return ScreenW, ScreenH
 }
 
 func main() {
 	ebiten.SetWindowSize(ScreenW, ScreenH)
-	ebiten.SetWindowTitle("Крестики-Нолики - Go365 Day 100")
+	ebiten.SetWindowTitle("Крестики-Нолики - Go365 Day 101")
 	ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
 	
 	game := NewGame()
