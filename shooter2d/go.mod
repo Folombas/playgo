@@ -1,4 +1,4 @@
-module github.com/playgo/match3
+module github.com/playgo/shooter2d
 
 go 1.25.0
 
