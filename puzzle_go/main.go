@@ -7,6 +7,7 @@ package main
 
 import (
 	"fmt"
+	"image"
 	"image/color"
 	"log"
 	"math"
@@ -181,23 +182,24 @@ func lerp(a, b, t float64) float64 {
 }
 
 func createGemImage(gemType GemType, size int) *ebiten.Image {
-	img := ebiten.NewImage(size, size)
+	// Создаём изображение в памяти (standard library)
+	img := image.NewRGBA(image.Rect(0, 0, size, size))
 	c := gemColors[gemType]
-	
-	// Рисуем форму кристалла
+
 	half := size / 2
+
+	// Рисуем форму кристалла (ромб)
 	for y := 0; y < size; y++ {
 		for x := 0; x < size; x++ {
 			dx := math.Abs(float64(x)-float64(half)) / float64(half)
 			dy := math.Abs(float64(y)-float64(half)) / float64(half)
-			
+
 			if dx+dy <= 1.0 {
-				// Основной цвет
 				img.Set(x, y, c)
 			}
 		}
 	}
-	
+
 	// Блик
 	shineX := half / 2
 	shineY := half / 2
@@ -206,28 +208,28 @@ func createGemImage(gemType GemType, size int) *ebiten.Image {
 			if dx*dx+dy*dy <= 16 {
 				sx, sy := shineX+dx, shineY+dy
 				if sx >= 0 && sx < size && sy >= 0 && sy < size {
-					_, _, _, a := img.At(sx, sy).RGBA()
-					if a > 0 {
+					px := img.Pix[(sy*img.Stride + sx*4)]
+					if px > 0 {
 						img.Set(sx, sy, color.RGBA{255, 255, 255, 160})
 					}
 				}
 			}
 		}
 	}
-	
+
 	// Обводка
 	for y := 0; y < size; y++ {
 		for x := 0; x < size; x++ {
 			dx := math.Abs(float64(x)-float64(half)) / float64(half)
 			dy := math.Abs(float64(y)-float64(half)) / float64(half)
-			
+
 			if dx+dy >= 0.88 && dx+dy <= 1.0 {
 				img.Set(x, y, color.RGBA{255, 255, 255, 180})
 			}
 		}
 	}
-	
-	return img
+
+	return ebiten.NewImageFromImage(img)
 }
 
 // ============================================================================
