@@ -1,10 +1,12 @@
-// Crystal Cascade - Match-3 Game
-// Go365 Challenge Day 99 - April 7, 2026
-// A beautiful crystal matching game built with Ebitengine
+// Crystal Cascade v2.0 - Go365 Challenge Day 100
+// Полностью переписанная игра Match-3 с использованием Ebitengine
+// Дата: 8 апреля 2026
+
 package main
 
 import (
 	"bytes"
+	"fmt"
 	"image/color"
 	"image/png"
 	"log"
@@ -12,108 +14,93 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
-	"sync"
 	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/audio"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
+	"github.com/hajimehoshi/ebiten/v2/text"
+	"golang.org/x/image/font"
+	"golang.org/x/image/font/opentype"
 )
 
-// ─── Constants ───────────────────────────────────────────────────────────────
+// ============================================================================
+// КОНСТАНТЫ И КОНФИГУРАЦИЯ
+// ============================================================================
 
 const (
-	screenWidth  = 1280
-	screenHeight = 800
-	boardCols    = 8
-	boardRows    = 8
-	cellSize     = 70
-	cellPad      = 4
-	boardX       = 380
-	boardY       = 60
-	crystalCount = 6
+	ScreenWidth  = 1280
+	ScreenHeight = 960
+	BoardCols    = 8
+	BoardRows    = 10
+	CellSize     = 64
+	CellPadding  = 4
+	BoardOffsetX = (ScreenWidth - BoardCols*(CellSize+CellPadding)) / 2
+	BoardOffsetY = 140
+	AnimSpeed    = 0.2
+	TargetFPS    = 60
 )
 
-var crystalNames = []string{"red", "blue", "green", "yellow", "violet", "orange"}
+// Цветовая палитра
+var (
+	ColorBgDark      = color.RGBA{20, 25, 45, 255}
+	ColorBgPanel     = color.RGBA{30, 35, 60, 240}
+	ColorBorder      = color.RGBA{100, 180, 255, 255}
+	ColorTextWhite   = color.RGBA{240, 240, 250, 255}
+	ColorTextGold    = color.RGBA{255, 215, 0, 255}
+	ColorTextAccent  = color.RGBA{120, 200, 255, 255}
+	ColorCellBg      = color.RGBA{40, 45, 70, 200}
+	ColorCellBorder  = color.RGBA{60, 70, 100, 150}
+	ColorCombo       = color.RGBA{255, 180, 50, 255}
+	ColorHighlight   = color.RGBA{255, 255, 100, 200}
+)
 
-var crystalColors = []color.RGBA{
-	{230, 50, 50, 255},    // red
-	{50, 100, 230, 255},   // blue
-	{50, 200, 80, 255},    // green
-	{255, 210, 50, 255},   // yellow
-	{180, 80, 230, 255},   // violet
-	{255, 150, 50, 255},   // orange
-}
+// ============================================================================
+// ТИПЫ ДАННЫХ
+// ============================================================================
 
-var glowColors = [][]float64{
-	{1.0, 0.2, 0.2, 1.0},   // red glow
-	{0.2, 0.4, 1.0, 1.0},   // blue glow
-	{0.2, 1.0, 0.3, 1.0},   // green glow
-	{1.0, 0.8, 0.2, 1.0},   // yellow glow
-	{0.7, 0.3, 1.0, 1.0},   // violet glow
-	{1.0, 0.6, 0.2, 1.0},   // orange glow
-}
+// GemType определяет тип кристалла
+type GemType int
 
-// ─── Game States ─────────────────────────────────────────────────────────────
+const (
+	GemRed GemType = iota
+	GemBlue
+	GemGreen
+	GemYellow
+	GemPurple
+	GemOrange
+	GemCyan
+	GemPink
+	GemCount
+)
 
+// SpecialType определяет тип специального элемента
+type SpecialType int
+
+const (
+	SpecialNone SpecialType = iota
+	SpecialBomb       // Взрыв 3x3
+	SpecialRow        // Очистка строки
+	SpecialCol        // Очистка колонки
+	SpecialRainbow    // Уничтожает все одного типа
+)
+
+// GameState определяет состояние игры
 type GameState int
 
 const (
 	StateMenu GameState = iota
 	StatePlaying
-	StatePaused
+	StateSwapping
+	StateRemoving
+	StateDropping
 	StateGameOver
 )
 
-// ─── Easing Functions ────────────────────────────────────────────────────────
-
-func easeOutBounce(t float64) float64 {
-	const n1 = 7.5625
-	const d1 = 2.75
-	if t < 1/d1 {
-		return n1 * t * t
-	} else if t < 2/d1 {
-		t -= 1.5 / d1
-		return n1*t*t + 0.75
-	} else if t < 2.5/d1 {
-		t -= 2.25 / d1
-		return n1*t*t + 0.9375
-	}
-	t -= 2.625 / d1
-	return n1*t*t + 0.984375
-}
-
-func easeOutElastic(t float64) float64 {
-	const c4 = (2 * math.Pi) / 3
-	if t == 0 {
-		return 0
-	}
-	if t == 1 {
-		return 1
-	}
-	return math.Pow(2, -10*t)*math.Sin((t*10-0.75)*c4) + 1
-}
-
-func easeOutCubic(t float64) float64 {
-	return 1 - math.Pow(1-t, 3)
-}
-
-func easeInOutQuad(t float64) float64 {
-	if t < 0.5 {
-		return 2 * t * t
-	}
-	return 1 - math.Pow(-2*t+2, 2)/2
-}
-
-func lerp(a, b, t float64) float64 {
-	return a + (b-a)*t
-}
-
-// ─── Crystal (Piece) ─────────────────────────────────────────────────────────
-
-type Crystal struct {
-	Type      int
+// Gem - игровой кристалл
+type Gem struct {
+	Type      GemType
+	Special   SpecialType
 	Col       int
 	Row       int
 	X         float64
@@ -123,632 +110,91 @@ type Crystal struct {
 	Alpha     float64
 	Scale     float64
 	Rotation  float64
-	Matched   bool
-	Special   int // 0=none, 1=bomb, 2=rainbow, 3=horizontal-clear, 4=vertical-clear
-	SpawnTime float64
-	AnimProgress float64
-	PulsePhase float64
+	Selected  bool
+	Removing  bool
+	SwapTarget *Gem
 }
 
-func newCrystal(t, c, r int, fromAbove bool) *Crystal {
-	x := float64(boardX + c*(cellSize+cellPad))
-	y := float64(boardY + r*(cellSize+cellPad))
-	if fromAbove {
-		y = float64(boardY - (cellSize+cellPad)*5)
-	}
-	return &Crystal{
-		Type: t, Col: c, Row: r,
-		X: x, Y: y, TargetX: x, TargetY: y,
-		Alpha: 1, Scale: 0.01, Rotation: 0,
-		SpawnTime:    float64(time.Now().UnixNano()) / 1e9,
-		AnimProgress: 0,
-		PulsePhase:   rand.Float64() * 6.2832,
-	}
-}
-
-func (c *Crystal) update(dt float64) bool {
-	// Smooth movement
-	dx := c.TargetX - c.X
-	dy := c.TargetY - c.Y
-	dist := dx*dx + dy*dy
-	if dist > 0.25 {
-		c.X += dx * 0.2
-		c.Y += dy * 0.2
-	} else {
-		c.X = c.TargetX
-		c.Y = c.TargetY
-	}
-
-	// Scale animation (spawn/match)
-	if c.Scale < 1 && !c.Matched {
-		c.AnimProgress += dt * 3
-		if c.AnimProgress > 1 {
-			c.AnimProgress = 1
-		}
-		c.Scale = easeOutBounce(c.AnimProgress)
-	}
-
-	// Pulse effect for special crystals
-	if c.Special > 0 && !c.Matched {
-		c.PulsePhase += dt * 3
-	}
-
-	// Match shrink animation
-	if c.Matched {
-		c.Scale *= 0.85
-		c.Alpha *= 0.8
-		c.Rotation += 0.1
-		return c.Alpha > 0.02
-	}
-
-	return dist > 0.25
-}
-
-func (c *Crystal) contains(mx, my float64) bool {
-	s := float64(cellSize) * c.Scale / 2
-	cx := c.X + float64(cellSize)/2
-	cy := c.Y + float64(cellSize)/2
-	return mx >= cx-s && mx <= cx+s && my >= cy-s && my <= cy+s
-}
-
-// ─── Game Board ──────────────────────────────────────────────────────────────
-
-type Board struct {
-	grid [][]*Crystal
-}
-
-func newBoard() *Board {
-	b := &Board{grid: make([][]*Crystal, boardCols)}
-	for c := 0; c < boardCols; c++ {
-		b.grid[c] = make([]*Crystal, boardRows)
-	}
-	b.fill()
-	return b
-}
-
-func (b *Board) fill() {
-	for c := 0; c < boardCols; c++ {
-		for r := 0; r < boardRows; r++ {
-			var t int
-			for {
-				t = rand.Intn(crystalCount)
-				if !b.wouldMatch(c, r, t) {
-					break
-				}
-			}
-			b.grid[c][r] = newCrystal(t, c, r, false)
-		}
-	}
-}
-
-func (b *Board) wouldMatch(c, r, t int) bool {
-	// Check horizontal
-	n := 1
-	for i := c - 1; i >= 0 && b.grid[i][r] != nil && b.grid[i][r].Type == t; i-- {
-		n++
-	}
-	for i := c + 1; i < boardCols && b.grid[i][r] != nil && b.grid[i][r].Type == t; i++ {
-		n++
-	}
-	if n >= 3 {
-		return true
-	}
-	// Check vertical
-	n = 1
-	for i := r - 1; i >= 0 && b.grid[c][i] != nil && b.grid[c][i].Type == t; i-- {
-		n++
-	}
-	for i := r + 1; i < boardRows && b.grid[c][i] != nil && b.grid[c][i].Type == t; i++ {
-		n++
-	}
-	return n >= 3
-}
-
-func (b *Board) get(c, r int) *Crystal {
-	if c < 0 || c >= boardCols || r < 0 || r >= boardRows {
-		return nil
-	}
-	return b.grid[c][r]
-}
-
-func (b *Board) swap(c1, r1, c2, r2 int) bool {
-	dc := c1 - c2
-	dr := r1 - r2
-	if dc < 0 {
-		dc = -dc
-	}
-	if dr < 0 {
-		dr = -dr
-	}
-	if !((dc == 1 && dr == 0) || (dc == 0 && dr == 1)) {
-		return false
-	}
-	p1 := b.grid[c1][r1]
-	p2 := b.grid[c2][r2]
-	if p1 == nil || p2 == nil {
-		return false
-	}
-
-	// Handle rainbow special
-	if p1.Special == 2 {
-		b.activateRainbow(c1, r1, p2.Type)
-		p1.Matched = true
-		p2.Matched = true
-		return true
-	}
-	if p2.Special == 2 {
-		b.activateRainbow(c2, r2, p1.Type)
-		p1.Matched = true
-		p2.Matched = true
-		return true
-	}
-
-	b.grid[c1][r1] = p2
-	b.grid[c2][r2] = p1
-	p1.Col, p1.Row = c2, r2
-	p2.Col, p2.Row = c1, r1
-	p1.TargetX = float64(boardX + c2*(cellSize+cellPad))
-	p1.TargetY = float64(boardY + r2*(cellSize+cellPad))
-	p2.TargetX = float64(boardX + c1*(cellSize+cellPad))
-	p2.TargetY = float64(boardY + r1*(cellSize+cellPad))
-	return true
-}
-
-func (b *Board) findMatches() (int, bool) {
-	matched := make(map[[2]int]bool)
-	count := 0
-	specialCreated := false
-
-	// Horizontal matches
-	for r := 0; r < boardRows; r++ {
-		for c := 0; c <= boardCols-3; c++ {
-			p := b.grid[c][r]
-			if p == nil || p.Matched {
-				continue
-			}
-			match := []*Crystal{p}
-			for cc := c + 1; cc < boardCols && b.grid[cc][r] != nil && b.grid[cc][r].Type == p.Type; cc++ {
-				match = append(match, b.grid[cc][r])
-			}
-			if len(match) >= 3 {
-				// Create special pieces
-				if len(match) == 4 {
-					// Find middle piece to make special
-					midIdx := len(match) / 2
-					if match[midIdx] != nil {
-						match[midIdx].Special = 1 // Bomb
-						specialCreated = true
-					}
-				}
-				if len(match) >= 5 {
-					midIdx := len(match) / 2
-					if match[midIdx] != nil {
-						match[midIdx].Special = 2 // Rainbow
-						specialCreated = true
-					}
-				}
-				for _, m := range match {
-					k := [2]int{m.Col, m.Row}
-					if !matched[k] {
-						matched[k] = true
-						m.Matched = true
-						count++
-					}
-				}
-			}
-		}
-	}
-
-	// Vertical matches
-	for c := 0; c < boardCols; c++ {
-		for r := 0; r <= boardRows-3; r++ {
-			p := b.grid[c][r]
-			if p == nil || p.Matched {
-				continue
-			}
-			match := []*Crystal{p}
-			for rr := r + 1; rr < boardRows && b.grid[c][rr] != nil && b.grid[c][rr].Type == p.Type; rr++ {
-				match = append(match, b.grid[c][rr])
-			}
-			if len(match) >= 3 {
-				if len(match) == 4 {
-					midIdx := len(match) / 2
-					if match[midIdx] != nil {
-						match[midIdx].Special = 1 // Bomb
-						specialCreated = true
-					}
-				}
-				if len(match) >= 5 {
-					midIdx := len(match) / 2
-					if match[midIdx] != nil {
-						match[midIdx].Special = 2 // Rainbow
-						specialCreated = true
-					}
-				}
-				for _, m := range match {
-					k := [2]int{m.Col, m.Row}
-					if !matched[k] {
-						matched[k] = true
-						m.Matched = true
-						count++
-					}
-				}
-			}
-		}
-	}
-	return count, specialCreated
-}
-
-func (b *Board) explodeBomb(c, r int) {
-	for dc := -1; dc <= 1; dc++ {
-		for dr := -1; dr <= 1; dr++ {
-			nc, nr := c+dc, r+dr
-			if nc >= 0 && nc < boardCols && nr >= 0 && nr < boardRows && b.grid[nc][nr] != nil {
-				b.grid[nc][nr].Matched = true
-			}
-		}
-	}
-}
-
-func (b *Board) activateRainbow(c, r int, targetType int) {
-	for cc := 0; cc < boardCols; cc++ {
-		for rr := 0; rr < boardRows; rr++ {
-			if b.grid[cc][rr] != nil && b.grid[cc][rr].Type == targetType {
-				b.grid[cc][rr].Matched = true
-			}
-		}
-	}
-}
-
-func (b *Board) remove() {
-	// Activate specials before removing
-	for c := 0; c < boardCols; c++ {
-		for r := 0; r < boardRows; r++ {
-			if b.grid[c][r] != nil && b.grid[c][r].Matched {
-				p := b.grid[c][r]
-				if p.Special == 1 {
-					b.explodeBomb(c, r)
-				}
-			}
-		}
-	}
-	// Now remove
-	for c := 0; c < boardCols; c++ {
-		for r := 0; r < boardRows; r++ {
-			if b.grid[c][r] != nil && b.grid[c][r].Matched {
-				b.grid[c][r] = nil
-			}
-		}
-	}
-}
-
-func (b *Board) drop() bool {
-	dropped := false
-	for c := 0; c < boardCols; c++ {
-		empty := -1
-		for r := boardRows - 1; r >= 0; r-- {
-			if b.grid[c][r] == nil {
-				if empty == -1 {
-					empty = r
-				}
-				continue
-			}
-			if empty != -1 {
-				p := b.grid[c][r]
-				b.grid[c][empty] = p
-				b.grid[c][r] = nil
-				p.Row = empty
-				p.TargetY = float64(boardY + empty*(cellSize+cellPad))
-				p.AnimProgress = 0
-				empty--
-				dropped = true
-			}
-		}
-		for r := empty; r >= 0; r-- {
-			t := rand.Intn(crystalCount)
-			p := newCrystal(t, c, r, true)
-			p.TargetY = float64(boardY + r*(cellSize+cellPad))
-			b.grid[c][r] = p
-			dropped = true
-		}
-	}
-	return dropped
-}
-
-func (b *Board) isAnimating() bool {
-	for c := 0; c < boardCols; c++ {
-		for r := 0; r < boardRows; r++ {
-			p := b.grid[c][r]
-			if p == nil {
-				continue
-			}
-			dx := p.TargetX - p.X
-			dy := p.TargetY - p.Y
-			if dx*dx+dy*dy > 0.5 {
-				return true
-			}
-			if p.Matched && p.Alpha > 0.02 {
-				return true
-			}
-			if p.Scale < 0.99 && !p.Matched {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-func (b *Board) at(mx, my float64) *Crystal {
-	for c := 0; c < boardCols; c++ {
-		for r := 0; r < boardRows; r++ {
-			p := b.grid[c][r]
-			if p != nil && p.contains(mx, my) {
-				return p
-			}
-		}
-	}
-	return nil
-}
-
-// ─── Particle System ─────────────────────────────────────────────────────────
-
+// Particle - частица для эффектов
 type Particle struct {
-	X, Y, VX, VY float64
-	Life         float64
-	Color        color.RGBA
-	Size         float64
-	Rotation     float64
-	RotSpeed     float64
-	Type         int // 0=circle, 1=star, 2=sparkle
+	X, Y       float64
+	VX, VY     float64
+	Life       float64
+	MaxLife    float64
+	Color      color.RGBA
+	Size       float64
+	Acceleration float64
 }
 
-// ─── Background Star (parallax) ──────────────────────────────────────────────
-
-type BGStar struct {
-	X, Y   float64
-	Size   float64
-	Speed  float64
-	Twinkle float64
-	Phase  float64
-}
-
-// ─── Floating Text ───────────────────────────────────────────────────────────
-
+// FloatingText - всплывающий текст с очками
 type FloatingText struct {
-	X, Y, VY float64
+	X, Y     float64
 	Text     string
 	Life     float64
+	MaxLife  float64
 	Color    color.RGBA
 	Size     float64
 }
 
-func (ft *FloatingText) Update(dt float64) bool {
-	ft.Y += ft.VY
-	ft.VY *= 0.96
-	ft.Life -= dt
-	return ft.Life > 0
+// Button - UI кнопка
+type Button struct {
+	X, Y, W, H float64
+	Text       string
+	Image      *ebiten.Image
+	Hover      bool
+	Pressed    bool
+	Action     func()
 }
 
-// ─── Main Game ───────────────────────────────────────────────────────────────
+// Board - игровое поле
+type Board struct {
+	Grid [][]*Gem
+}
 
+// Game - основная структура игры
 type Game struct {
-	state GameState
+	State       GameState
+	Board       *Board
+	GemImages   map[GemType]*ebiten.Image
+	Particles   []*Particle
+	FloatingTxt []*FloatingText
+	Score       int
+	Combo       int
+	MaxCombo    int
+	Moves       int
+	TargetScore int
+	Level       int
 
-	// Game data
-	board   *Board
-	score   int
-	combo   int
-	level   int
-	moves   int
-	maxMoves int
+	SelectedGem *Gem
+	DragStartX  float64
+	DragStartY  float64
+	Dragging    bool
 
-	// Assets
-	crystals   []*ebiten.Image
-	crystalGlow []*ebiten.Image
-	bgStars    []BGStar
-	bgTile     *ebiten.Image
-	menuBg     *ebiten.Image
-	menuStars  *ebiten.Image
-	btnPlay    *ebiten.Image
-	btnExit    *ebiten.Image
-	particleStar *ebiten.Image
-	particleSmallStar *ebiten.Image
-	selector   *ebiten.Image
+	Buttons     map[string]*Button
+	Font        font.Face
+	SmallFont   font.Face
 
-	// Effects
-	particles    []*Particle
-	floatingTexts []*FloatingText
-	screenShakeX float64
-	screenShakeY float64
-	shakeTime    float64
-	shakeIntensity float64
+	BackgroundImg  *ebiten.Image
+	PanelImg       *ebiten.Image
 
-	// Input
-	dragPiece  *Crystal
-	dragStartX float64
-	dragStartY float64
-	isDragging bool
+	GameTime     float64
+	StateTimer   float64
+	SwapGem1     *Gem
+	SwapGem2     *Gem
+	RemoveList   [][]int
+	DropAnimDone bool
 
-	// Timing
-	gameTime   float64
-	menuAnimT  float64
-
-	// Audio (procedural)
-	audio *AudioManager
+	ShakeX, ShakeY   float64
+	ShakeDuration    float64
+	ShakeTimer       float64
+	ShakeIntensity   float64
 }
 
-func NewGame() *Game {
-	rand.Seed(time.Now().UnixNano())
-	g := &Game{
-		state:     StateMenu,
-		crystals:  make([]*ebiten.Image, crystalCount),
-		bgStars:   make([]BGStar, 150),
-		maxMoves:  30,
-	}
+// ============================================================================
+// ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
+// ============================================================================
 
-	// Initialize background stars
-	for i := range g.bgStars {
-		g.bgStars[i] = BGStar{
-			X:      rand.Float64() * screenWidth,
-			Y:      rand.Float64() * screenHeight,
-			Size:   rand.Float64()*2 + 0.5,
-			Speed:  rand.Float64()*0.3 + 0.1,
-			Phase:  rand.Float64() * 6.2832,
-		}
-	}
-
-	g.loadAssets()
-	g.audio = NewAudioManager()
-	return g
-}
-
-func (g *Game) loadAssets() {
-	execPath, _ := os.Getwd()
-	spritesDir := filepath.Join(execPath, "assets", "sprites")
-	menuDir := filepath.Join(execPath, "assets", "menu")
-
-	// Load crystal sprites from gems
-	gemFiles := []string{
-		filepath.Join(execPath, "jewelred.png"),
-		filepath.Join(execPath, "jewelblue_0.png"),
-		filepath.Join(execPath, "jewelgreen.png"),
-		filepath.Join(execPath, "jewelyellow.png"),
-		filepath.Join(execPath, "jewelviolet.png"),
-		filepath.Join(execPath, "gem5.png"), // orange-ish
-	}
-
-	// Try loading from sprites/gems first, fallback to root
-	for i, path := range gemFiles {
-		img, err := loadPNG(path)
-		if err != nil {
-			// Try alternative paths
-			altPaths := []string{
-				filepath.Join(spritesDir, filepath.Base(path)),
-				filepath.Join(execPath, "assets", filepath.Base(path)),
-			}
-			for _, alt := range altPaths {
-				img, err = loadPNG(alt)
-				if err == nil {
-					break
-				}
-			}
-		}
-		if img != nil {
-			g.crystals[i] = img
-		}
-	}
-
-	// If still no crystals, create procedural ones
-	for i := 0; i < crystalCount; i++ {
-		if g.crystals[i] == nil {
-			g.crystals[i] = g.createProceduralCrystal(i)
-		}
-	}
-
-	// Menu assets
-	if img, err := loadPNG(filepath.Join(menuDir, "stars back.png")); err == nil {
-		g.menuBg = img
-	}
-	if img, err := loadPNG(filepath.Join(menuDir, "stars.png")); err == nil {
-		g.menuStars = img
-	}
-	if img, err := loadPNG(filepath.Join(menuDir, "play button.png")); err == nil {
-		g.btnPlay = g.scaleImage(img, 200, 70)
-	}
-	if img, err := loadPNG(filepath.Join(menuDir, "Exit Button.png")); err == nil {
-		g.btnExit = g.scaleImage(img, 200, 60)
-	}
-
-	// Particles
-	if img, err := loadPNG(filepath.Join(spritesDir, "pack1", "particleStar.png")); err == nil {
-		g.particleStar = img
-	}
-	if img, err := loadPNG(filepath.Join(spritesDir, "pack1", "particleSmallStar.png")); err == nil {
-		g.particleSmallStar = img
-	}
-
-	// Selector
-	if img, err := loadPNG(filepath.Join(spritesDir, "pack1", "selectorA.png")); err == nil {
-		g.selector = img
-	}
-
-	// Background tile
-	if img, err := loadPNG(filepath.Join(spritesDir, "backtiles", "BackTile_01.png")); err == nil {
-		g.bgTile = g.scaleImage(img, screenWidth, screenHeight)
-	}
-}
-
-func (g *Game) createProceduralCrystal(crystalType int) *ebiten.Image {
-	img := ebiten.NewImage(cellSize, cellSize)
-	col := crystalColors[crystalType]
-
-	// Draw a diamond shape using rectangles
-	center := cellSize / 2
-	halfW := cellSize/2 - 6
-	halfH := cellSize/2 - 6
-
-	// Top triangle
-	for y := center - halfH; y < center; y++ {
-		if y < 0 || y >= cellSize {
-			continue
-		}
-		progress := float64(y-(center-halfH)) / float64(halfH)
-		w := int(float64(halfW) * progress)
-		if w < 1 {
-			continue
-		}
-		row := ebiten.NewImage(w*2, 1)
-		row.Fill(col)
-		rowOp := &ebiten.DrawImageOptions{}
-		rowOp.GeoM.Translate(float64(center-w), float64(y))
-		img.DrawImage(row, rowOp)
-	}
-
-	// Bottom triangle
-	for y := center; y < center+halfH; y++ {
-		if y < 0 || y >= cellSize {
-			continue
-		}
-		progress := 1 - float64(y-center)/float64(halfH)
-		w := int(float64(halfW) * progress)
-		if w < 1 {
-			continue
-		}
-		row := ebiten.NewImage(w*2, 1)
-		row.Fill(col)
-		rowOp := &ebiten.DrawImageOptions{}
-		rowOp.GeoM.Translate(float64(center-w), float64(y))
-		img.DrawImage(row, rowOp)
-	}
-
-	// Highlight
-	hlCol := color.RGBA{255, 255, 255, 80}
-	hlSize := 10
-	hl := ebiten.NewImage(hlSize, hlSize/2)
-	hl.Fill(hlCol)
-	hlOp := &ebiten.DrawImageOptions{}
-	hlOp.GeoM.Translate(float64(center-hlSize/2), float64(center-halfH+4))
-	img.DrawImage(hl, hlOp)
-
-	return img
-}
-
-func (g *Game) scaleImage(img *ebiten.Image, w, h int) *ebiten.Image {
-	if img == nil {
-		return nil
-	}
-	srcW := img.Bounds().Dx()
-	srcH := img.Bounds().Dy()
-	if srcW == 0 || srcH == 0 {
-		return nil
-	}
-	result := ebiten.NewImage(w, h)
-	op := &ebiten.DrawImageOptions{}
-	op.GeoM.Scale(float64(w)/float64(srcW), float64(h)/float64(srcH))
-	result.DrawImage(img, op)
-	return result
-}
-
+// loadPNG загружает PNG изображение в ebiten.Image
 func loadPNG(path string) (*ebiten.Image, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -761,828 +207,1283 @@ func loadPNG(path string) (*ebiten.Image, error) {
 	return ebiten.NewImageFromImage(img), nil
 }
 
-func (g *Game) Update() error {
-	dt := 1.0 / 60.0
-	g.gameTime += dt
+// createRoundedRect создаёт изображение со скруглёнными углами
+func createRoundedRect(w, h int, radius int, fillColor color.RGBA, borderColor color.RGBA) *ebiten.Image {
+	img := ebiten.NewImage(w, h)
+	
+	// Fill main area
+	mainRect := ebiten.NewImage(w-h, h)
+	mainRect.Fill(fillColor)
+	op := &ebiten.DrawImageOptions{}
+	op.GeoM.Translate(float64(radius), 0)
+	img.DrawImage(mainRect, op)
+	
+	// Border
+	imgBorder := ebiten.NewImage(w, 3)
+	imgBorder.Fill(borderColor)
+	op2 := &ebiten.DrawImageOptions{}
+	op2.GeoM.Translate(0, 0)
+	img.DrawImage(imgBorder, op2)
+	
+	return img
+}
 
-	// Update bg stars
-	for i := range g.bgStars {
-		g.bgStars[i].Y += g.bgStars[i].Speed
-		g.bgStars[i].Phase += dt * 2
-		if g.bgStars[i].Y > screenHeight {
-			g.bgStars[i].Y = -5
-			g.bgStars[i].X = rand.Float64() * screenWidth
+// lerp линейная интерполяция
+func lerp(a, b, t float64) float64 {
+	return a + (b-a)*t
+}
+
+// clamp ограничивает значение
+func clamp(val, min, max float64) float64 {
+	if val < min {
+		return min
+	}
+	if val > max {
+		return max
+	}
+	return val
+}
+
+// ============================================================================
+// РЕАЛИЗАЦИЯ Board
+// ============================================================================
+
+func NewBoard() *Board {
+	b := &Board{
+		Grid: make([][]*Gem, BoardCols),
+	}
+	for c := 0; c < BoardCols; c++ {
+		b.Grid[c] = make([]*Gem, BoardRows)
+	}
+	b.Fill()
+	return b
+}
+
+// Fill заполняет поле без начальных совпадений
+func (b *Board) Fill() {
+	for c := 0; c < BoardCols; c++ {
+		for r := 0; r < BoardRows; r++ {
+			b.Grid[c][r] = b.createGemNoMatch(c, r)
 		}
 	}
+}
 
-	// Update particles
-	for i := len(g.particles) - 1; i >= 0; i-- {
-		p := g.particles[i]
-		p.X += p.VX
-		p.Y += p.VY
-		p.VY += 0.15
-		p.VX *= 0.98
-		p.Life -= dt * 1.5
-		p.Rotation += p.RotSpeed
-		if p.Life <= 0 {
-			g.particles = append(g.particles[:i], g.particles[i+1:]...)
+// createGemNoMatch создаёт кристалл без совпадений
+func (b *Board) createGemNoMatch(c, r int) *Gem {
+	var gemType GemType
+	attempts := 0
+	for attempts < 100 {
+		gemType = GemType(rand.Intn(int(GemCount)))
+		if !b.wouldMatch(c, r, gemType) {
+			break
+		}
+		attempts++
+	}
+	
+	x := float64(BoardOffsetX + c*(CellSize+CellPadding))
+	y := float64(BoardOffsetY + r*(CellSize+CellPadding))
+	
+	return &Gem{
+		Type:    gemType,
+		Special: SpecialNone,
+		Col:     c,
+		Row:     r,
+		X:       x,
+		Y:       y,
+		TargetX: x,
+		TargetY: y,
+		Alpha:   1,
+		Scale:   1,
+	}
+}
+
+// wouldMatch проверяет, создаст ли кристалл совпадение
+func (b *Board) wouldMatch(c, r int, t GemType) bool {
+	// Horizontal
+	count := 1
+	for i := c - 1; i >= 0 && b.Grid[i][r] != nil && b.Grid[i][r].Type == t; i-- {
+		count++
+	}
+	for i := c + 1; i < BoardCols && b.Grid[i][r] != nil && b.Grid[i][r].Type == t; i++ {
+		count++
+	}
+	if count >= 3 {
+		return true
+	}
+	
+	// Vertical
+	count = 1
+	for i := r - 1; i >= 0 && b.Grid[c][i] != nil && b.Grid[c][i].Type == t; i-- {
+		count++
+	}
+	for i := r + 1; r < BoardRows && b.Grid[c][i] != nil && b.Grid[c][i].Type == t; i++ {
+		count++
+	}
+	return count >= 3
+}
+
+// Get возвращает кристалл по координатам
+func (b *Board) Get(c, r int) *Gem {
+	if c < 0 || c >= BoardCols || r < 0 || r >= BoardRows {
+		return nil
+	}
+	return b.Grid[c][r]
+}
+
+// Set устанавливает кристалл по координатам
+func (b *Board) Set(c, r int, gem *Gem) {
+	if c >= 0 && c < BoardCols && r >= 0 && r < BoardRows {
+		b.Grid[c][r] = gem
+	}
+}
+
+// Swap меняет местами два кристалла
+func (b *Board) Swap(c1, r1, c2, r2 int) bool {
+	dc := c1 - c2
+	dr := r1 - r2
+	if (dc == 1 || dc == -1) && dr == 0 || dc == 0 && (dr == 1 || dr == -1) {
+		g1 := b.Grid[c1][r1]
+		g2 := b.Grid[c2][r2]
+		if g1 == nil || g2 == nil {
+			return false
+		}
+		
+		b.Grid[c1][r1] = g2
+		b.Grid[c2][r2] = g1
+		
+		g1.Col, g1.Row = c2, r2
+		g2.Col, g2.Row = c1, r1
+		
+		g1.TargetX = float64(BoardOffsetX + c2*(CellSize+CellPadding))
+		g1.TargetY = float64(BoardOffsetY + r2*(CellSize+CellPadding))
+		g2.TargetX = float64(BoardOffsetX + c1*(CellSize+CellPadding))
+		g2.TargetY = float64(BoardOffsetY + r1*(CellSize+CellPadding))
+		
+		return true
+	}
+	return false
+}
+
+// FindMatches находит все совпадения
+func (b *Board) FindMatches() ([][][2]int, int) {
+	matched := make(map[[2]int]bool)
+	var matches [][][2]int
+	
+	// Horizontal
+	for r := 0; r < BoardRows; r++ {
+		for c := 0; c <= BoardCols-3; c++ {
+			gem := b.Grid[c][r]
+			if gem == nil || gem.Removing {
+				continue
+			}
+			
+			match := [][2]int{{c, r}}
+			for cc := c + 1; cc < BoardCols && b.Grid[cc][r] != nil && b.Grid[cc][r].Type == gem.Type && !b.Grid[cc][r].Removing; cc++ {
+				match = append(match, [2]int{cc, r})
+			}
+			
+			if len(match) >= 3 {
+				// Check for special creation
+				if len(match) == 4 {
+					// Create bomb at center
+					centerIdx := len(match) / 2
+					bc, br := match[centerIdx][0], match[centerIdx][1]
+					if b.Grid[bc][br] != nil {
+						b.Grid[bc][br].Special = SpecialBomb
+					}
+				} else if len(match) >= 5 {
+					// Create rainbow at center
+					centerIdx := len(match) / 2
+					bc, br := match[centerIdx][0], match[centerIdx][1]
+					if b.Grid[bc][br] != nil {
+						b.Grid[bc][br].Special = SpecialRainbow
+					}
+				}
+				
+				for _, pos := range match {
+					key := [2]int{pos[0], pos[1]}
+					if !matched[key] {
+						matched[key] = true
+					}
+				}
+				matches = append(matches, match)
+				c += len(match) - 1
+			}
 		}
 	}
-
-	// Update floating texts
-	for i := len(g.floatingTexts) - 1; i >= 0; i-- {
-		if !g.floatingTexts[i].Update(dt) {
-			g.floatingTexts = append(g.floatingTexts[:i], g.floatingTexts[i+1:]...)
-		}
-	}
-
-	// Screen shake decay
-	if g.shakeTime > 0 {
-		g.shakeTime -= dt
-		progress := g.shakeTime / 0.3
-		g.screenShakeX = math.Sin(g.gameTime*80) * g.shakeIntensity * progress
-		g.screenShakeY = math.Cos(g.gameTime*60) * g.shakeIntensity * progress
-	} else {
-		g.screenShakeX = 0
-		g.screenShakeY = 0
-	}
-
-	mx, my := ebiten.CursorPosition()
-	fx, fy := float64(mx), float64(my)
-
-	// Menu animation
-	if g.state == StateMenu {
-		g.menuAnimT += dt * 1.5
-		if g.menuAnimT > 1 {
-			g.menuAnimT = 1
-		}
-	}
-
-	// Click handling
-	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
-		if g.state == StateMenu {
-			// Play button area
-			if fx >= 540 && fx <= 740 && fy >= 420 && fy <= 490 {
-				g.playSound(600, 0.08, 0.3)
-				g.startGame()
+	
+	// Vertical
+	for c := 0; c < BoardCols; c++ {
+		for r := 0; r <= BoardRows-3; r++ {
+			gem := b.Grid[c][r]
+			if gem == nil || gem.Removing {
+				continue
 			}
-			// Exit button area
-			if fx >= 540 && fx <= 740 && fy >= 520 && fy <= 580 {
-				os.Exit(0)
+			
+			match := [][2]int{{c, r}}
+			for rr := r + 1; rr < BoardRows && b.Grid[c][rr] != nil && b.Grid[c][rr].Type == gem.Type && !b.Grid[c][rr].Removing; rr++ {
+				match = append(match, [2]int{c, rr})
 			}
-		} else if g.state == StatePlaying {
-			// Pause button
-			if fx >= 1120 && fx <= 1240 && fy >= 20 && fy <= 60 {
-				g.playSound(400, 0.06, 0.2)
-				g.state = StatePaused
-			}
-		} else if g.state == StatePaused {
-			// Resume
-			if fx >= 540 && fx <= 740 && fy >= 350 && fy <= 420 {
-				g.playSound(500, 0.06, 0.2)
-				g.state = StatePlaying
-			}
-			// Quit to menu
-			if fx >= 540 && fx <= 740 && fy >= 440 && fy <= 500 {
-				g.playSound(300, 0.08, 0.2)
-				g.state = StateMenu
-				g.board = nil
+			
+			if len(match) >= 3 {
+				// Check for special creation
+				if len(match) == 4 {
+					centerIdx := len(match) / 2
+					bc, br := match[centerIdx][0], match[centerIdx][1]
+					if b.Grid[bc][br] != nil {
+						b.Grid[bc][br].Special = SpecialCol
+					}
+				} else if len(match) >= 5 {
+					centerIdx := len(match) / 2
+					bc, br := match[centerIdx][0], match[centerIdx][1]
+					if b.Grid[bc][br] != nil {
+						b.Grid[bc][br].Special = SpecialRainbow
+					}
+				}
+				
+				for _, pos := range match {
+					key := [2]int{pos[0], pos[1]}
+					if !matched[key] {
+						matched[key] = true
+					}
+				}
+				matches = append(matches, match)
+				r += len(match) - 1
 			}
 		}
 	}
-
-	// Game logic
-	if g.state == StatePlaying {
-		g.updateGame(fx, fy)
+	
+	totalMatched := 0
+	for range matched {
+		totalMatched++
 	}
+	
+	return matches, totalMatched
+}
 
+// RemoveGem помечает кристалл на удаление
+func (b *Board) RemoveGem(c, r int) {
+	if c >= 0 && c < BoardCols && r >= 0 && r < BoardRows && b.Grid[c][r] != nil {
+		b.Grid[c][r].Removing = true
+	}
+}
+
+// ApplyGravity применяет гравитацию и создаёт новые кристаллы
+func (b *Board) ApplyGravity() bool {
+	dropped := false
+	
+	for c := 0; c < BoardCols; c++ {
+		emptyRow := -1
+		
+		// Move existing gems down
+		for r := BoardRows - 1; r >= 0; r-- {
+			if b.Grid[c][r] == nil || b.Grid[c][r].Removing {
+				if emptyRow == -1 {
+					emptyRow = r
+				}
+				continue
+			}
+			
+			if emptyRow != -1 {
+				gem := b.Grid[c][r]
+				b.Grid[c][emptyRow] = gem
+				b.Grid[c][r] = nil
+				
+				gem.Row = emptyRow
+				gem.TargetY = float64(BoardOffsetY + emptyRow*(CellSize+CellPadding))
+				emptyRow--
+				dropped = true
+			}
+		}
+		
+		// Create new gems at top
+		for r := emptyRow; r >= 0; r-- {
+			gemType := GemType(rand.Intn(int(GemCount)))
+			x := float64(BoardOffsetX + c*(CellSize+CellPadding))
+			y := float64(BoardOffsetY - (emptyRow-r+1)*(CellSize+CellPadding))
+			targetY := float64(BoardOffsetY + r*(CellSize+CellPadding))
+			
+			gem := &Gem{
+				Type:    gemType,
+				Special: SpecialNone,
+				Col:     c,
+				Row:     r,
+				X:       x,
+				Y:       y,
+				TargetX: x,
+				TargetY: targetY,
+				Alpha:   1,
+				Scale:   1,
+			}
+			
+			b.Grid[c][r] = gem
+			dropped = true
+		}
+		
+		// Clear removed gems
+		for r := 0; r < BoardRows; r++ {
+			if b.Grid[c][r] != nil && b.Grid[c][r].Removing {
+				b.Grid[c][r] = nil
+			}
+		}
+	}
+	
+	return dropped
+}
+
+// IsAnimating проверяет, есть ли активные анимации
+func (b *Board) IsAnimating() bool {
+	for c := 0; c < BoardCols; c++ {
+		for r := 0; r < BoardRows; r++ {
+			gem := b.Grid[c][r]
+			if gem == nil {
+				continue
+			}
+			
+			dx := gem.TargetX - gem.X
+			dy := gem.TargetY - gem.Y
+			if dx*dx+dy*dy > 1 {
+				return true
+			}
+			
+			if gem.Removing && gem.Alpha > 0.01 {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// GetGemAt возвращает кристалл по экранным координатам
+func (b *Board) GetGemAt(mx, my float64) *Gem {
+	for c := 0; c < BoardCols; c++ {
+		for r := 0; r < BoardRows; r++ {
+			gem := b.Grid[c][r]
+			if gem != nil && !gem.Removing {
+				gx := gem.X + float64(CellSize)/2
+				gy := gem.Y + float64(CellSize)/2
+				halfSize := float64(CellSize) / 2
+				
+				if mx >= gx-halfSize && mx <= gx+halfSize && my >= gy-halfSize && my <= gy+halfSize {
+					return gem
+				}
+			}
+		}
+	}
 	return nil
 }
 
-func (g *Game) startGame() {
-	g.state = StatePlaying
-	g.board = newBoard()
-	g.score = 0
-	g.combo = 0
-	g.level = 1
-	g.moves = 0
-	g.particles = []*Particle{}
-	g.floatingTexts = []*FloatingText{}
-	g.playSound(523.25, 0.1, 0.3)
-	g.playSound(659.25, 0.1, 0.25)
-	g.playSound(783.99, 0.1, 0.2)
+// ============================================================================
+// РЕАЛИЗАЦИЯ Game
+// ============================================================================
+
+func NewGame() *Game {
+	rand.Seed(time.Now().UnixNano())
+	
+	g := &Game{
+		State:       StateMenu,
+		Score:       0,
+		Combo:       0,
+		MaxCombo:    0,
+		Moves:       0,
+		Level:       1,
+		TargetScore: 5000,
+		Buttons:     make(map[string]*Button),
+		GemImages:   make(map[GemType]*ebiten.Image),
+		Particles:   []*Particle{},
+		FloatingTxt: []*FloatingText{},
+	}
+	
+	g.loadAssets()
+	g.createButtons()
+	g.initFonts()
+	
+	return g
 }
 
-func (g *Game) updateGame(fx, fy float64) {
-	if g.board == nil {
-		return
+func (g *Game) loadAssets() {
+	// Get executable path
+	execPath, _ := os.Getwd()
+	spritesPath := filepath.Join(execPath, "..", "..", "sprites")
+	
+	// Try to load gem sprites from puzzle/pack1
+	pack1Path := filepath.Join(spritesPath, "puzzle", "pack1", "PNG", "Default")
+	
+	// Map gem types to colors
+	colorMap := map[GemType]string{
+		GemRed:    "red",
+		GemBlue:   "blue",
+		GemGreen:  "green",
+		GemYellow: "yellow",
+		GemPurple: "purple",
+		GemOrange: "orange",
+		GemCyan:   "blue", // fallback
+		GemPink:   "red",  // fallback
 	}
-
-	// Update crystals
-	for c := 0; c < boardCols; c++ {
-		for r := 0; r < boardRows; r++ {
-			p := g.board.get(c, r)
-			if p != nil {
-				p.update(1.0 / 60.0)
+	
+	shapeMap := map[GemType]string{
+		GemRed:    "diamond",
+		GemBlue:   "polygon",
+		GemGreen:  "rectangle",
+		GemYellow: "square",
+		GemPurple: "cube",
+		GemOrange: "diamond",
+		GemCyan:   "polygon",
+		GemPink:   "rectangle",
+	}
+	
+	loaded := 0
+	for gemType, shape := range shapeMap {
+		colorName := colorMap[gemType]
+		
+		// Try different filename patterns
+		possibleNames := []string{
+			fmt.Sprintf("element_%s_%s.png", colorName, shape),
+			fmt.Sprintf("element_%s_%s_glossy.png", colorName, shape),
+			fmt.Sprintf("gem%s.png", colorName),
+			fmt.Sprintf("jewel%s.png", colorName),
+		}
+		
+		for _, name := range possibleNames {
+			path := filepath.Join(pack1Path, name)
+			if img, err := loadPNG(path); err == nil {
+				g.GemImages[gemType] = img
+				loaded++
+				break
 			}
 		}
 	}
-
-	// Check for matches when not animating
-	if !g.board.isAnimating() {
-		m, specialCreated := g.board.findMatches()
-		if m > 0 {
-			g.combo++
-			g.processMatches(m, specialCreated)
-		}
+	
+	// If no gem sprites found, create colored placeholders
+	if loaded == 0 {
+		log.Println("Warning: No gem sprites found, using colored placeholders")
+		g.GemImages[GemRed] = createGemPlaceholder(64, 64, color.RGBA{255, 60, 60, 255})
+		g.GemImages[GemBlue] = createGemPlaceholder(64, 64, color.RGBA{60, 120, 255, 255})
+		g.GemImages[GemGreen] = createGemPlaceholder(64, 64, color.RGBA{60, 255, 60, 255})
+		g.GemImages[GemYellow] = createGemPlaceholder(64, 64, color.RGBA{255, 255, 60, 255})
+		g.GemImages[GemPurple] = createGemPlaceholder(64, 64, color.RGBA{180, 60, 255, 255})
+		g.GemImages[GemOrange] = createGemPlaceholder(64, 64, color.RGBA{255, 160, 60, 255})
+		g.GemImages[GemCyan] = createGemPlaceholder(64, 64, color.RGBA{60, 255, 255, 255})
+		g.GemImages[GemPink] = createGemPlaceholder(64, 64, color.RGBA{255, 120, 180, 255})
 	}
-
-	// Input handling
-	g.handleInput(fx, fy)
-
-	// Check game over
-	if g.moves >= g.maxMoves {
-		g.state = StateGameOver
+	
+	// Try to load background
+	bgPath := filepath.Join(spritesPath, "puzzle", "pack1", "PNG", "Default", "BackTile_01.png")
+	if img, err := loadPNG(bgPath); err == nil {
+		g.BackgroundImg = img
 	}
 }
 
-func (g *Game) processMatches(count int, specialCreated bool) {
-	baseScore := count * 100
-	comboMultiplier := 1 + float64(g.combo-1)*0.5
-	totalScore := int(float64(baseScore) * comboMultiplier)
-	g.score += totalScore
-
-	// Spawn particles at match locations
-	g.spawnMatchParticles(count)
-
-	// Floating score text
-	cx := float64(boardX + boardCols*(cellSize+cellPad)/2)
-	cy := float64(boardY + boardRows*(cellSize+cellPad)/2)
-	g.floatingTexts = append(g.floatingTexts, &FloatingText{
-		X: cx - 40, Y: cy, VY: -2,
-		Text: "+" + string(rune(totalScore)),
-		Life: 1.5,
-		Color: color.RGBA{255, 255, 255, 255},
-		Size: 24,
-	})
-
-	// Remove matched crystals
-	g.board.remove()
-
-	// Screen shake for combos
-	if g.combo >= 2 {
-		g.shakeIntensity = float64(g.combo) * 3
-		g.shakeTime = 0.3
-	}
-
-	// Play sounds
-	if g.combo >= 3 {
-		g.playComboSound(g.combo)
-	} else {
-		g.playMatchSound(g.combo)
-	}
-
-	// Drop new crystals
-	if g.board.drop() {
-		g.playSound(350, 0.05, 0.15)
-	}
-
-	g.moves++
-}
-
-func (g *Game) handleInput(fx, fy float64) {
-	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
-		p := g.board.at(fx, fy)
-		if p != nil {
-			g.dragPiece = p
-			g.dragStartX = fx
-			g.dragStartY = fy
-			g.isDragging = false
-			g.playSound(800, 0.05, 0.2)
-		}
-	}
-
-	if ebiten.IsMouseButtonPressed(ebiten.MouseButtonLeft) && g.dragPiece != nil {
-		dx := fx - g.dragStartX
-		dy := fy - g.dragStartY
-		if !g.isDragging && (dx*dx+dy*dy > 100) {
-			g.isDragging = true
-		}
-		if g.isDragging {
-			g.dragPiece.X = g.dragPiece.TargetX + dx
-			g.dragPiece.Y = g.dragPiece.TargetY + dy
-		}
-	}
-
-	if inpututil.IsMouseButtonJustReleased(ebiten.MouseButtonLeft) && g.dragPiece != nil {
-		if g.isDragging {
-			dx := g.dragPiece.X - g.dragPiece.TargetX
-			dy := g.dragPiece.Y - g.dragPiece.TargetY
-			tc, tr := g.dragPiece.Col, g.dragPiece.Row
-
-			if dx*dx > dy*dy {
-				if dx > 0 {
-					tc++
-				} else {
-					tc--
-				}
-			} else {
-				if dy > 0 {
-					tr++
-				} else {
-					tr--
-				}
+func createGemPlaceholder(w, h int, fillColor color.RGBA) *ebiten.Image {
+	// Draw diamond shape
+	centerX := float64(w) / 2
+	centerY := float64(h) / 2
+	
+	// Create diamond polygon
+	diamond := ebiten.NewImage(w, h)
+	
+	// Fill with color
+	for y := 0; y < h; y++ {
+		for x := 0; x < w; x++ {
+			dx := math.Abs(float64(x)-centerX) / centerX
+			dy := math.Abs(float64(y)-centerY) / centerY
+			if dx+dy <= 1 {
+				diamond.Set(x, y, fillColor)
 			}
-
-			if tc >= 0 && tc < boardCols && tr >= 0 && tr < boardRows {
-				target := g.board.get(tc, tr)
-				if target != nil {
-					if g.board.swap(g.dragPiece.Col, g.dragPiece.Row, tc, tr) {
-						m, _ := g.board.findMatches()
-						if m == 0 {
-							// Undo swap
-							g.board.swap(tc, tr, g.dragPiece.Col, g.dragPiece.Row)
-							g.combo = 0
-							g.playSound(220, 0.1, 0.2)
-						}
+		}
+	}
+	
+	// Add border
+	for y := 0; y < h; y++ {
+		for x := 0; x < w; x++ {
+			dx := math.Abs(float64(x)-centerX) / centerX
+			dy := math.Abs(float64(y)-centerY) / centerY
+			if dx+dy >= 0.9 && dx+dy <= 1.0 {
+				diamond.Set(x, y, color.RGBA{255, 255, 255, 200})
+			}
+		}
+	}
+	
+	// Add shine
+	shineX := int(centerX * 0.7)
+	shineY := int(centerY * 0.7)
+	for dy := -3; dy <= 3; dy++ {
+		for dx := -3; dx <= 3; dx++ {
+			if dx*dx+dy*dy <= 9 {
+				if shineX+dx >= 0 && shineX+dx < w && shineY+dy >= 0 && shineY+dy < h {
+					c, _ := diamond.At(shineX+dx, shineY+dy).(color.RGBA)
+					if c.A > 0 {
+						diamond.Set(shineX+dx, shineY+dy, color.RGBA{255, 255, 255, 180})
 					}
 				}
 			}
 		}
-		g.dragPiece = nil
-		g.isDragging = false
 	}
+	
+	return diamond
 }
 
-// ─── Particle Effects ────────────────────────────────────────────────────────
-
-func (g *Game) spawnMatchParticles(count int) {
-	for i := 0; i < count*8; i++ {
-		c := rand.Intn(boardCols)
-		r := rand.Intn(boardRows)
-		p := g.board.get(c, r)
-		if p != nil {
-			col := crystalColors[p.Type]
-			g.particles = append(g.particles, &Particle{
-				X:        float64(boardX+c*(cellSize+cellPad)+cellSize/2),
-				Y:        float64(boardY+r*(cellSize+cellPad)+cellSize/2),
-				VX:       float64(rand.Intn(9)-4) * 2,
-				VY:       float64(rand.Intn(9)-4)*2 - 3,
-				Life:     1,
-				Color:    col,
-				Size:     float64(4 + rand.Intn(6)),
-				Rotation: rand.Float64() * 6.2832,
-				RotSpeed: (rand.Float64() - 0.5) * 0.3,
-				Type:     rand.Intn(3),
+func (g *Game) initFonts() {
+	// Try to load BoldPixels font
+	execPath, _ := os.Getwd()
+	fontPath := filepath.Join(execPath, "..", "..", "sprites", "08_Fonts", "webfontkit-boldpixels", "BoldPixels.ttf")
+	
+	fontData, err := os.ReadFile(fontPath)
+	if err == nil {
+		tt, parseErr := opentype.Parse(fontData)
+		if parseErr == nil {
+			g.Font, err = opentype.NewFace(tt, &opentype.FaceOptions{
+				Size:    24,
+				DPI:     72,
+				Hinting: font.HintingFull,
 			})
-		}
-	}
-
-	// Extra sparkle for special
-	if count >= 4 {
-		cx := float64(boardX + boardCols*(cellSize+cellPad)/2)
-		cy := float64(boardY + boardRows*(cellSize+cellPad)/2)
-		for i := 0; i < 30; i++ {
-			angle := float64(i) * 6.2832 / 30
-			speed := float64(3 + rand.Intn(5))
-			g.particles = append(g.particles, &Particle{
-				X:        cx,
-				Y:        cy,
-				VX:       math.Cos(angle) * speed,
-				VY:       math.Sin(angle) * speed,
-				Life:     1,
-				Color:    color.RGBA{255, 255, 255, 255},
-				Size:     float64(3 + rand.Intn(4)),
-				Rotation: 0,
-				RotSpeed: 0,
-				Type:     2, // sparkle
+			if err != nil {
+				log.Printf("Warning: Could not create font face: %v", err)
+				g.Font = nil
+			}
+			
+			g.SmallFont, err = opentype.NewFace(tt, &opentype.FaceOptions{
+				Size:    16,
+				DPI:     72,
+				Hinting: font.HintingFull,
 			})
+			if err != nil {
+				g.SmallFont = nil
+			}
 		}
+	}
+	
+	if g.Font == nil {
+		// Fallback to default
+		g.Font = nil
+		g.SmallFont = nil
 	}
 }
 
-// ─── Sound System (Procedural) ───────────────────────────────────────────────
-
-type AudioManager struct {
-	volume float64
-	ctx    *audio.Context
-	mu     sync.Mutex
-}
-
-func NewAudioManager() *AudioManager {
-	ctx := audio.NewContext(44100)
-	return &AudioManager{volume: 0.4, ctx: ctx}
-}
-
-func (a *AudioManager) playTone(freq, dur, vol float64, wave string) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-
-	sampleRate := 44100
-	samples := int(float64(sampleRate) * dur)
-	buf := make([]int16, samples)
-
-	for i := 0; i < samples; i++ {
-		t := float64(i) / float64(sampleRate)
-		var val float64
-		switch wave {
-		case "sine":
-			val = math.Sin(2 * math.Pi * freq * t)
-		case "triangle":
-			val = 2*math.Abs(2*(freq*t-math.Floor(freq*t+0.5))) - 1
-		case "sawtooth":
-			val = 2 * (freq*t - math.Floor(freq*t+0.5))
-		default:
-			val = math.Sin(2 * math.Pi * freq * t)
-		}
-
-		attack := 0.005
-		release := 0.03
-		env := 1.0
-		if t < attack {
-			env = t / attack
-		} else if t > dur-release {
-			env = (dur - t) / release
-		}
-		if env < 0 {
-			env = 0
-		}
-		env *= vol * a.volume
-
-		buf[i] = int16(val * env * 25000)
+func (g *Game) createButtons() {
+	g.Buttons["play"] = &Button{
+		X: ScreenWidth/2 - 100, Y: 450, W: 200, H: 60,
+		Text: "▶ ИГРАТЬ",
+		Action: func() {
+			g.startGame()
+		},
 	}
-
-	byteBuf := make([]byte, len(buf)*2)
-	for i, s := range buf {
-		byteBuf[i*2] = byte(s)
-		byteBuf[i*2+1] = byte(s >> 8)
+	
+	g.Buttons["exit"] = &Button{
+		X: ScreenWidth/2 - 100, Y: 530, W: 200, H: 60,
+		Text: "✕ ВЫЙТИ",
+		Action: func() {
+			os.Exit(0)
+		},
 	}
-
-	player := a.ctx.NewPlayerFromBytes(byteBuf)
-	player.Play()
+	
+	g.Buttons["pause"] = &Button{
+		X: ScreenWidth - 140, Y: 20, W: 120, H: 50,
+		Text: "⏸ ПАУЗА",
+		Action: func() {
+			if g.State == StatePlaying {
+				g.State = StatePlaying // Will toggle pause
+			}
+		},
+	}
+	
+	g.Buttons["back"] = &Button{
+		X: 20, Y: ScreenHeight - 80, W: 150, H: 50,
+		Text: "← НАЗАД",
+		Action: func() {
+			g.State = StateMenu
+			g.Board = nil
+		},
+	}
 }
 
-func (g *Game) playSound(freq, dur, vol float64) {
-	if g.audio == nil {
+func (g *Game) startGame() {
+	g.State = StatePlaying
+	g.Board = NewBoard()
+	g.Score = 0
+	g.Combo = 0
+	g.MaxCombo = 0
+	g.Moves = 0
+	g.Level = 1
+	g.TargetScore = 5000
+	g.Particles = []*Particle{}
+	g.FloatingTxt = []*FloatingText{}
+	g.SelectedGem = nil
+}
+
+// ============================================================================
+// UPDATE
+// ============================================================================
+
+func (g *Game) Update() error {
+	g.GameTime += 1.0 / TargetFPS
+	
+	// Update buttons hover state
+	mx, my := ebiten.CursorPosition()
+	fmx, fmy := float64(mx), float64(my)
+	
+	for _, btn := range g.Buttons {
+		btn.Hover = fmx >= btn.X && fmx <= btn.X+btn.W && fmy >= btn.Y && fmy <= btn.Y+btn.H
+	}
+	
+	// Handle button clicks
+	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
+		for _, btn := range g.Buttons {
+			if btn.Hover && btn.Action != nil {
+				btn.Action()
+				return nil
+			}
+		}
+	}
+	
+	// Update game state
+	switch g.State {
+	case StatePlaying:
+		g.updatePlaying(fmx, fmy)
+	case StateSwapping, StateRemoving, StateDropping:
+		g.updateAnimationState()
+	}
+	
+	// Update particles
+	g.updateParticles()
+	
+	// Update floating texts
+	g.updateFloatingTexts()
+	
+	return nil
+}
+
+func (g *Game) updatePlaying(mx, my float64) {
+	if g.Board == nil {
 		return
 	}
-	g.audio.playTone(freq, dur, vol, "sine")
-}
-
-func (g *Game) playMatchSound(combo int) {
-	baseFreq := 440.0 + float64(combo)*60
-	g.playSound(baseFreq, 0.12, 0.3)
-	g.playSound(baseFreq*1.5, 0.08, 0.2)
-}
-
-func (g *Game) playComboSound(combo int) {
-	freqs := []float64{523.25, 659.25, 783.99, 1046.50}
-	for i := 0; i < combo && i < len(freqs); i++ {
-		g.playSound(freqs[i%len(freqs)], 0.1, 0.25)
+	
+	// Update gem animations
+	g.updateGemAnimations()
+	
+	// Check if board is stable
+	if g.Board.IsAnimating() {
+		return
+	}
+	
+	// Find matches
+	matches, count := g.Board.FindMatches()
+	if count > 0 {
+		g.Combo++
+		if g.Combo > g.MaxCombo {
+			g.MaxCombo = g.Combo
+		}
+		
+		points := count * 100 * (1 + g.Combo/2)
+		g.Score += points
+		
+		// Mark gems for removal
+		for _, match := range matches {
+			for _, pos := range match {
+				gem := g.Board.Get(pos[0], pos[1])
+				if gem != nil {
+					gem.Removing = true
+					// Spawn particles
+					g.spawnParticles(gem.X+float64(CellSize)/2, gem.Y+float64(CellSize)/2, gem.Type, 8)
+				}
+			}
+		}
+		
+		// Add floating score
+		if len(matches) > 0 {
+			firstMatch := matches[0]
+			if len(firstMatch) > 0 {
+				pos := firstMatch[0]
+				gem := g.Board.Get(pos[0], pos[1])
+				if gem != nil {
+					g.FloatingTxt = append(g.FloatingTxt, &FloatingText{
+						X:     gem.X + float64(CellSize)/2,
+						Y:     gem.Y,
+						Text:  fmt.Sprintf("+%d", points),
+						Life:  1.5,
+						MaxLife: 1.5,
+						Color: ColorTextGold,
+						Size:  24,
+					})
+				}
+			}
+		}
+		
+		// Screen shake for combos
+		if g.Combo >= 3 {
+			g.ShakeDuration = 0.3
+			g.ShakeIntensity = float64(g.Combo) * 2
+		}
+		
+		g.State = StateRemoving
+		g.StateTimer = 0.5
+		return
+	}
+	
+	// No matches, reset combo
+	if g.Combo > 0 {
+		g.Combo = 0
+	}
+	
+	// Handle input
+	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
+		gem := g.Board.GetGemAt(mx, my)
+		if gem != nil {
+			if g.SelectedGem == nil {
+				g.SelectedGem = gem
+				gem.Selected = true
+			} else if g.SelectedGem == gem {
+				g.SelectedGem.Selected = false
+				g.SelectedGem = nil
+			} else {
+				// Check adjacency
+				dc := gem.Col - g.SelectedGem.Col
+				dr := gem.Row - g.SelectedGem.Row
+				if (dc == 1 || dc == -1) && dr == 0 || dc == 0 && (dr == 1 || dr == -1) {
+					// Try swap
+					g.State = StateSwapping
+					g.SwapGem1 = g.SelectedGem
+					g.SwapGem2 = gem
+					g.SwapGem1.Selected = false
+					g.Board.Swap(g.SwapGem1.Col, g.SwapGem1.Row, g.SwapGem2.Col, g.SwapGem2.Row)
+					g.Moves++
+					g.SelectedGem = nil
+				} else {
+					g.SelectedGem.Selected = false
+					g.SelectedGem = gem
+					gem.Selected = true
+				}
+			}
+		}
 	}
 }
 
-// ─── Rendering ───────────────────────────────────────────────────────────────
+func (g *Game) updateAnimationState() {
+	g.StateTimer -= 1.0 / TargetFPS
+	
+	if g.State == StateSwapping {
+		if !g.Board.IsAnimating() || g.StateTimer <= 0 {
+			// Check if swap created matches
+			_, count := g.Board.FindMatches()
+			if count > 0 {
+				g.State = StateRemoving
+				g.StateTimer = 0.5
+			} else {
+				// Swap back
+				g.Board.Swap(g.SwapGem1.Col, g.SwapGem1.Row, g.SwapGem2.Col, g.SwapGem2.Row)
+				g.State = StatePlaying
+			}
+			g.SwapGem1 = nil
+			g.SwapGem2 = nil
+		}
+	} else if g.State == StateRemoving {
+		if g.StateTimer <= 0 {
+			// Clear removed gems
+			for c := 0; c < BoardCols; c++ {
+				for r := 0; r < BoardRows; r++ {
+					if g.Board.Grid[c][r] != nil && g.Board.Grid[c][r].Removing {
+						g.Board.Grid[c][r] = nil
+					}
+				}
+			}
+			
+			// Apply gravity
+			if g.Board.ApplyGravity() {
+				g.State = StateDropping
+				g.StateTimer = 1.0
+			} else {
+				g.State = StatePlaying
+			}
+		}
+	} else if g.State == StateDropping {
+		if !g.Board.IsAnimating() || g.StateTimer <= 0 {
+			g.State = StatePlaying
+		}
+	}
+}
+
+func (g *Game) updateGemAnimations() {
+	if g.Board == nil {
+		return
+	}
+	
+	for c := 0; c < BoardCols; c++ {
+		for r := 0; r < BoardRows; r++ {
+			gem := g.Board.Grid[c][r]
+			if gem != nil {
+				gem.X = lerp(gem.X, gem.TargetX, AnimSpeed)
+				gem.Y = lerp(gem.Y, gem.TargetY, AnimSpeed)
+				
+				if gem.Removing {
+					gem.Scale *= 0.85
+					gem.Alpha *= 0.8
+				}
+			}
+		}
+	}
+}
+
+func (g *Game) updateParticles() {
+	for i := len(g.Particles) - 1; i >= 0; i-- {
+		p := g.Particles[i]
+		p.X += p.VX
+		p.Y += p.VY
+		p.VY += p.Acceleration
+		p.Life -= 1.0 / TargetFPS
+		
+		if p.Life <= 0 {
+			g.Particles = append(g.Particles[:i], g.Particles[i+1:]...)
+		}
+	}
+}
+
+func (g *Game) updateFloatingTexts() {
+	for i := len(g.FloatingTxt) - 1; i >= 0; i-- {
+		ft := g.FloatingTxt[i]
+		ft.Y -= 1.5
+		ft.Life -= 1.0 / TargetFPS
+		
+		if ft.Life <= 0 {
+			g.FloatingTxt = append(g.FloatingTxt[:i], g.FloatingTxt[i+1:]...)
+		}
+	}
+}
+
+func (g *Game) spawnParticles(x, y float64, gemType GemType, count int) {
+	colors := map[GemType]color.RGBA{
+		GemRed:    {255, 60, 60, 255},
+		GemBlue:   {60, 120, 255, 255},
+		GemGreen:  {60, 255, 60, 255},
+		GemYellow: {255, 255, 60, 255},
+		GemPurple: {180, 60, 255, 255},
+		GemOrange: {255, 160, 60, 255},
+		GemCyan:   {60, 255, 255, 255},
+		GemPink:   {255, 120, 180, 255},
+	}
+	
+	col := colors[gemType]
+	
+	for i := 0; i < count; i++ {
+		angle := float64(i)*6.2832/float64(count) + rand.Float64()*0.5
+		speed := 2 + rand.Float64()*4
+		
+		g.Particles = append(g.Particles, &Particle{
+			X:  x,
+			Y:  y,
+			VX: math.Cos(angle) * speed,
+			VY: math.Sin(angle)*speed - 2,
+			Life:  1.0,
+			MaxLife: 1.0,
+			Color: col,
+			Size:  3 + rand.Float64()*4,
+			Acceleration: 0.15,
+		})
+	}
+}
+
+// ============================================================================
+// DRAW
+// ============================================================================
 
 func (g *Game) Draw(screen *ebiten.Image) {
-	// Background
-	screen.Fill(color.RGBA{10, 10, 25, 255})
-
-	// Draw background stars
-	for _, star := range g.bgStars {
-		alpha := 0.5 + 0.5*math.Sin(star.Phase)
-		s := int(star.Size * 2)
-		if s < 1 {
-			s = 1
+	screen.Fill(ColorBgDark)
+	
+	// Screen shake
+	if g.ShakeDuration > 0 {
+		g.ShakeTimer += 1.0 / TargetFPS
+		if g.ShakeTimer <= g.ShakeDuration {
+			g.ShakeX = (rand.Float64() - 0.5) * g.ShakeIntensity
+			g.ShakeY = (rand.Float64() - 0.5) * g.ShakeIntensity
+		} else {
+			g.ShakeX = 0
+			g.ShakeY = 0
+			g.ShakeDuration = 0
 		}
-		starImg := ebiten.NewImage(s, s)
-		starImg.Fill(color.RGBA{200, 220, 255, uint8(alpha * 255)})
-		starOp := &ebiten.DrawImageOptions{}
-		starOp.GeoM.Translate(star.X-float64(s)/2, star.Y-float64(s)/2)
-		screen.DrawImage(starImg, starOp)
 	}
-
-	// Apply screen shake
+	
 	op := &ebiten.DrawImageOptions{}
-	op.GeoM.Translate(g.screenShakeX, g.screenShakeY)
-
-	if g.state == StateMenu {
+	op.GeoM.Translate(g.ShakeX, g.ShakeY)
+	
+	switch g.State {
+	case StateMenu:
 		g.drawMenu(screen)
-	} else if g.state == StatePlaying || g.state == StatePaused {
+	default:
 		g.drawGame(screen)
-		if g.state == StatePaused {
-			g.drawPause(screen)
-		}
-	} else if g.state == StateGameOver {
-		g.drawGame(screen)
-		g.drawGameOver(screen)
 	}
-
-	// Draw particles
-	for _, p := range g.particles {
-		if p.Life <= 0 {
-			continue
-		}
-		alpha := uint8(p.Life * 255)
-		s := int(p.Size * p.Life)
-		if s < 1 {
-			continue
-		}
-
-		particleImg := ebiten.NewImage(s, s)
-		particleImg.Fill(color.RGBA{p.Color.R, p.Color.G, p.Color.B, alpha})
-
-		drawOp := &ebiten.DrawImageOptions{}
-		drawOp.GeoM.Translate(p.X-float64(s)/2, p.Y-float64(s)/2)
-		drawOp.GeoM.Rotate(p.Rotation)
-		drawOp.ColorM.Scale(1, 1, 1, p.Life)
-		screen.DrawImage(particleImg, drawOp)
-	}
-
-	// Draw floating texts
-	for _, ft := range g.floatingTexts {
-		if ft.Life <= 0 {
-			continue
-		}
-		alpha := uint8(ft.Life * 255)
-		drawText(screen, ft.Text, ft.X, ft.Y, float64(ft.Size), color.RGBA{ft.Color.R, ft.Color.G, ft.Color.B, alpha})
-	}
-}
-
-func drawText(screen *ebiten.Image, txt string, x, y, size float64, col color.RGBA) {
-	if txt == "" {
-		return
-	}
-
-	// Draw text as colored rectangle with background
-	textW := float64(len(txt)) * size * 0.6
-	textH := size
-
-	// Background
-	bg := ebiten.NewImage(int(textW)+10, int(textH)+6)
-	bg.Fill(color.RGBA{0, 0, 0, uint8(float64(col.A) * 0.7)})
-	bgOp := &ebiten.DrawImageOptions{}
-	bgOp.GeoM.Translate(x-5, y-3)
-	screen.DrawImage(bg, bgOp)
-
-	// Colored text block
-	textBlock := ebiten.NewImage(int(textW), int(textH))
-	textBlock.Fill(col)
-	textOp := &ebiten.DrawImageOptions{}
-	textOp.GeoM.Translate(x, y)
-	screen.DrawImage(textBlock, textOp)
-}
-
-func (g *Game) drawMenu(screen *ebiten.Image) {
-	// Background
-	if g.menuBg != nil {
-		screen.DrawImage(g.menuBg, &ebiten.DrawImageOptions{})
-	}
-	if g.menuStars != nil {
-		screen.DrawImage(g.menuStars, &ebiten.DrawImageOptions{})
-	}
-
-	// Title
-	titleY := 180 + math.Sin(g.gameTime*2)*8
-	titleW := 500
-	titleH := 100
-
-	// Title background
-	titleBg := ebiten.NewImage(titleW, titleH)
-	titleBg.Fill(color.RGBA{20, 30, 60, 220})
-	titleBgOp := &ebiten.DrawImageOptions{}
-	titleBgOp.GeoM.Translate(float64(screenWidth/2-titleW/2), titleY)
-	screen.DrawImage(titleBg, titleBgOp)
-
-	// Title border
-	titleBorder := ebiten.NewImage(titleW, 4)
-	titleBorder.Fill(color.RGBA{100, 180, 255, 255})
-	titleBorderOp := &ebiten.DrawImageOptions{}
-	titleBorderOp.GeoM.Translate(float64(screenWidth/2-titleW/2), titleY+float64(titleH))
-	screen.DrawImage(titleBorder, titleBorderOp)
-
-	// Title text placeholder
-	titleText := ebiten.NewImage(400, 50)
-	titleText.Fill(color.RGBA{150, 200, 255, 255})
-	titleTextOp := &ebiten.DrawImageOptions{}
-	titleTextOp.GeoM.Translate(float64(screenWidth/2-200), titleY+25)
-	screen.DrawImage(titleText, titleTextOp)
-
-	// Play button
-	btnY := 420
-	if g.btnPlay != nil {
-		btnOp := &ebiten.DrawImageOptions{}
-		btnOp.GeoM.Translate(540, float64(btnY))
-		screen.DrawImage(g.btnPlay, btnOp)
-	} else {
-		btn := ebiten.NewImage(200, 70)
-		btn.Fill(color.RGBA{50, 120, 180, 255})
-		btnOp := &ebiten.DrawImageOptions{}
-		btnOp.GeoM.Translate(540, float64(btnY))
-		screen.DrawImage(btn, btnOp)
-	}
-
-	// Exit button
-	exitY := 520
-	if g.btnExit != nil {
-		exitOp := &ebiten.DrawImageOptions{}
-		exitOp.GeoM.Translate(540, float64(exitY))
-		screen.DrawImage(g.btnExit, exitOp)
-	} else {
-		exitBtn := ebiten.NewImage(200, 60)
-		exitBtn.Fill(color.RGBA{120, 50, 50, 255})
-		exitOp := &ebiten.DrawImageOptions{}
-		exitOp.GeoM.Translate(540, float64(exitY))
-		screen.DrawImage(exitBtn, exitOp)
-	}
-
-	// Decorative crystals at bottom
-	for i := 0; i < crystalCount; i++ {
-		if g.crystals[i] != nil {
-			crystalOp := &ebiten.DrawImageOptions{}
-			crystalOp.GeoM.Scale(0.8, 0.8)
-			crystalOp.GeoM.Translate(float64(200+i*100), 650+math.Sin(g.gameTime*2+float64(i))*10)
-			screen.DrawImage(g.crystals[i], crystalOp)
-		}
-	}
-
-	// Challenge badge
-	badge := ebiten.NewImage(120, 40)
-	badge.Fill(color.RGBA{40, 40, 80, 200})
-	badgeOp := &ebiten.DrawImageOptions{}
-	badgeOp.GeoM.Translate(20, screenHeight-60)
-	screen.DrawImage(badge, badgeOp)
-
-	ebitenutil.DebugPrintAt(screen, "Go365 Day 99", 30, screenHeight-50)
-}
-
-func (g *Game) drawGame(screen *ebiten.Image) {
-	if g.board == nil {
-		return
-	}
-
-	// Board background
-	bw := boardCols*(cellSize+cellPad) + 20
-	bh := boardRows*(cellSize+cellPad) + 20
-	boardBg := ebiten.NewImage(bw, bh)
-	boardBg.Fill(color.RGBA{20, 25, 45, 240})
-	boardBgOp := &ebiten.DrawImageOptions{}
-	boardBgOp.GeoM.Translate(float64(boardX-10), float64(boardY-10))
-	screen.DrawImage(boardBg, boardBgOp)
-
-	// Board border
-	boardBorder := ebiten.NewImage(bw, 4)
-	boardBorder.Fill(color.RGBA{80, 160, 255, 255})
-	boardBorderOp := &ebiten.DrawImageOptions{}
-	boardBorderOp.GeoM.Translate(float64(boardX-10), float64(boardY-12))
-	screen.DrawImage(boardBorder, boardBorderOp)
-
-	// Grid lines
-	for c := 0; c <= boardCols; c++ {
-		x := float64(boardX + c*(cellSize+cellPad) - cellPad/2)
-		ebitenutil.DrawLine(screen, x, float64(boardY), x, float64(boardY+boardRows*(cellSize+cellPad)),
-			color.RGBA{40, 50, 80, 100})
-	}
-	for r := 0; r <= boardRows; r++ {
-		y := float64(boardY + r*(cellSize+cellPad) - cellPad/2)
-		ebitenutil.DrawLine(screen, float64(boardX), y, float64(boardX+boardCols*(cellSize+cellPad)), y,
-			color.RGBA{40, 50, 80, 100})
-	}
-
-	// Draw crystals
-	for c := 0; c < boardCols; c++ {
-		for r := 0; r < boardRows; r++ {
-			p := g.board.get(c, r)
-			if p == nil || p.Alpha < 0.02 || p == g.dragPiece {
-				continue
-			}
-			g.drawCrystal(screen, p)
-		}
-	}
-	if g.dragPiece != nil && g.dragPiece.Alpha > 0.02 {
-		g.drawCrystal(screen, g.dragPiece)
-	}
-
-	// UI
+	
+	// Draw UI layer (not affected by shake)
 	g.drawUI(screen)
 }
 
-func (g *Game) drawCrystal(screen *ebiten.Image, c *Crystal) {
-	img := g.crystals[c.Type]
+func (g *Game) drawMenu(screen *ebiten.Image) {
+	// Draw starfield background
+	g.drawStarfield(screen)
+	
+	// Title panel
+	titlePanel := ebiten.NewImage(500, 100)
+	titlePanel.Fill(ColorBgPanel)
+	
+	// Border
+	border := ebiten.NewImage(500, 4)
+	border.Fill(ColorBorder)
+	
+	op := &ebiten.DrawImageOptions{}
+	op.GeoM.Translate(float64(ScreenWidth/2-250), 250)
+	screen.DrawImage(titlePanel, op)
+	
+	op2 := &ebiten.DrawImageOptions{}
+	op2.GeoM.Translate(float64(ScreenWidth/2-250), 248)
+	screen.DrawImage(border, op2)
+	
+	// Title text
+	title := "💎 CRYSTAL CASCADE 💎"
+	if g.Font != nil {
+		text.Draw(screen, title, g.Font, ScreenWidth/2-180, 315, ColorTextWhite)
+	} else {
+		ebitenutil.DebugPrintAt(screen, title, ScreenWidth/2-180, 310)
+	}
+	
+	// Subtitle
+	subtitle := "Go365 Challenge - Day 100"
+	if g.SmallFont != nil {
+		text.Draw(screen, subtitle, g.SmallFont, ScreenWidth/2-120, 340, ColorTextAccent)
+	} else {
+		ebitenutil.DebugPrintAt(screen, subtitle, ScreenWidth/2-120, 335)
+	}
+	
+	// Draw buttons
+	for name, btn := range g.Buttons {
+		if name == "play" || name == "exit" {
+			g.drawButton(screen, btn)
+		}
+	}
+	
+	// Footer
+	footer := "Match 3+ crystals • Create combos • Beat the target score!"
+	if g.SmallFont != nil {
+		text.Draw(screen, footer, g.SmallFont, ScreenWidth/2-220, ScreenHeight-50, ColorTextAccent)
+	} else {
+		ebitenutil.DebugPrintAt(screen, footer, ScreenWidth/2-220, ScreenHeight-55)
+	}
+}
+
+func (g *Game) drawStarfield(screen *ebiten.Image) {
+	// Generate deterministic starfield
+	rand.Seed(42)
+	for i := 0; i < 100; i++ {
+		x := rand.Float64() * ScreenWidth
+		y := rand.Float64() * ScreenHeight
+		size := rand.Float64()*2 + 1
+		alpha := uint8(rand.Float64()*155 + 100)
+		
+		star := ebiten.NewImage(int(size), int(size))
+		star.Fill(color.RGBA{255, 255, 255, alpha})
+		
+		op := &ebiten.DrawImageOptions{}
+		op.GeoM.Translate(x, y)
+		screen.DrawImage(star, op)
+	}
+	rand.Seed(time.Now().UnixNano())
+}
+
+func (g *Game) drawGame(screen *ebiten.Image) {
+	if g.Board == nil {
+		return
+	}
+	
+	// Draw background
+	if g.BackgroundImg != nil {
+		op := &ebiten.DrawImageOptions{}
+		screen.DrawImage(g.BackgroundImg, op)
+	}
+	
+	// Draw board background
+	boardW := BoardCols*(CellSize+CellPadding) + 16
+	boardH := BoardRows*(CellSize+CellPadding) + 16
+	
+	boardBg := ebiten.NewImage(boardW, boardH)
+	boardBg.Fill(ColorBgPanel)
+	
+	op := &ebiten.DrawImageOptions{}
+	op.GeoM.Translate(float64(BoardOffsetX-8), float64(BoardOffsetY-8))
+	screen.DrawImage(boardBg, op)
+	
+	// Border
+	boardBorder := ebiten.NewImage(boardW, 4)
+	boardBorder.Fill(ColorBorder)
+	
+	op2 := &ebiten.DrawImageOptions{}
+	op2.GeoM.Translate(float64(BoardOffsetX-8), float64(BoardOffsetY-10))
+	screen.DrawImage(boardBorder, op2)
+	
+	// Draw cells
+	for c := 0; c < BoardCols; c++ {
+		for r := 0; r < BoardRows; r++ {
+			cellX := BoardOffsetX + c*(CellSize+CellPadding)
+			cellY := BoardOffsetY + r*(CellSize+CellPadding)
+			
+			cell := ebiten.NewImage(CellSize, CellSize)
+			cell.Fill(ColorCellBg)
+			
+			op := &ebiten.DrawImageOptions{}
+			op.GeoM.Translate(float64(cellX), float64(cellY))
+			screen.DrawImage(cell, op)
+		}
+	}
+	
+	// Draw gems
+	for c := 0; c < BoardCols; c++ {
+		for r := 0; r < BoardRows; r++ {
+			gem := g.Board.Grid[c][r]
+			if gem != nil && gem.Alpha > 0.01 {
+				g.drawGem(screen, gem)
+			}
+		}
+	}
+	
+	// Draw particles
+	for _, p := range g.Particles {
+		size := int(p.Size * (p.Life / p.MaxLife))
+		if size < 1 {
+			continue
+		}
+		
+		alpha := uint8((p.Life / p.MaxLife) * 255)
+		c := color.RGBA{p.Color.R, p.Color.G, p.Color.B, alpha}
+		
+		particle := ebiten.NewImage(size, size)
+		particle.Fill(c)
+		
+		op := &ebiten.DrawImageOptions{}
+		op.GeoM.Translate(p.X-float64(size)/2, p.Y-float64(size)/2)
+		screen.DrawImage(particle, op)
+	}
+	
+	// Draw floating texts
+	for _, ft := range g.FloatingTxt {
+		alpha := uint8((ft.Life / ft.MaxLife) * 255)
+		c := color.RGBA{ft.Color.R, ft.Color.G, ft.Color.B, alpha}
+		
+		if g.Font != nil {
+			text.Draw(screen, ft.Text, g.Font, int(ft.X), int(ft.Y), c)
+		} else {
+			ebitenutil.DebugPrintAt(screen, ft.Text, int(ft.X), int(ft.Y))
+		}
+	}
+}
+
+func (g *Game) drawGem(screen *ebiten.Image, gem *Gem) {
+	img := g.GemImages[gem.Type]
 	if img == nil {
 		return
 	}
-
-	s := int(float64(cellSize) * c.Scale)
-	if s < 4 {
-		return
-	}
-
-	sc := float64(s) / float64(img.Bounds().Dx())
+	
 	op := &ebiten.DrawImageOptions{}
-	op.GeoM.Scale(sc, sc)
-	op.GeoM.Rotate(c.Rotation)
-	op.GeoM.Translate(c.X, c.Y)
-	op.ColorM.Scale(1, 1, 1, c.Alpha)
-
-	// Glow effect for special crystals
-	if c.Special > 0 {
-		glow := ebiten.NewImage(s+16, s+16)
-		glowCol := glowColors[c.Type]
-		glow.Fill(color.RGBA{uint8(glowCol[0]*255), uint8(glowCol[1]*255), uint8(glowCol[2]*255), 80})
-		glowOp := &ebiten.DrawImageOptions{}
-		glowOp.GeoM.Translate(c.X-8, c.Y-8)
-		glowOp.ColorM.Scale(1, 1, 1, 0.3+0.2*math.Sin(c.PulsePhase))
-		screen.DrawImage(glow, glowOp)
-	}
-
+	
+	// Scale
+	scale := gem.Scale * float64(CellSize) / float64(img.Bounds().Dx())
+	op.GeoM.Scale(scale, scale)
+	
+	// Translate
+	op.GeoM.Translate(gem.X, gem.Y)
+	
+	// Alpha
+	op.ColorM.Scale(1, 1, 1, gem.Alpha)
+	
 	screen.DrawImage(img, op)
-
-	// Special piece indicator
-	if c.Special == 1 {
-		// Bomb indicator - small circle
-		bomb := ebiten.NewImage(s/3, s/3)
-		bomb.Fill(color.RGBA{255, 100, 50, 200})
-		bombOp := &ebiten.DrawImageOptions{}
-		bombOp.GeoM.Translate(c.X+float64(s)/3, c.Y+float64(s)/3)
-		screen.DrawImage(bomb, bombOp)
-	} else if c.Special == 2 {
-		// Rainbow indicator
-		rainbow := ebiten.NewImage(s/3, s/3)
-		rainbow.Fill(color.RGBA{200, 100, 255, 200})
-		rainbowOp := &ebiten.DrawImageOptions{}
-		rainbowOp.GeoM.Translate(c.X+float64(s)/3, c.Y+float64(s)/3)
-		screen.DrawImage(rainbow, rainbowOp)
+	
+	// Selection highlight
+	if gem.Selected {
+		highlight := ebiten.NewImage(CellSize+4, CellSize+4)
+		highlight.Fill(ColorHighlight)
+		
+		op2 := &ebiten.DrawImageOptions{}
+		op2.GeoM.Translate(gem.X-2, gem.Y-2)
+		screen.DrawImage(highlight, op2)
 	}
+	
+	// Special gem indicators
+	if gem.Special != SpecialNone {
+		g.drawSpecialIndicator(screen, gem)
+	}
+}
+
+func (g *Game) drawSpecialIndicator(screen *ebiten.Image, gem *Gem) {
+	indicator := ebiten.NewImage(CellSize, CellSize)
+	
+	switch gem.Special {
+	case SpecialBomb:
+		// Bomb glow
+		for i := 0; i < 3; i++ {
+			size := CellSize - i*8
+			if size > 0 {
+				c := color.RGBA{255, 100, 50, uint8(100 - i*30)}
+				inner := ebiten.NewImage(size, size)
+				inner.Fill(c)
+				op := &ebiten.DrawImageOptions{}
+				op.GeoM.Translate(float64(i*4), float64(i*4))
+				indicator.DrawImage(inner, op)
+			}
+		}
+	case SpecialRainbow:
+		// Rainbow shimmer
+		shimmer := uint8(math.Sin(g.GameTime*5)*50 + 200)
+		c := color.RGBA{shimmer, shimmer, 255, 150}
+		inner := ebiten.NewImage(CellSize-8, CellSize-8)
+		inner.Fill(c)
+		op := &ebiten.DrawImageOptions{}
+		op.GeoM.Translate(4, 4)
+		indicator.Fill(c)
+	case SpecialRow, SpecialCol:
+		// Line indicator
+		c := color.RGBA{100, 255, 100, 180}
+		indicator.Fill(c)
+	}
+	
+	op := &ebiten.DrawImageOptions{}
+	op.ColorM.Scale(1, 1, 1, 0.4)
+	op.GeoM.Translate(gem.X, gem.Y)
+	screen.DrawImage(indicator, op)
 }
 
 func (g *Game) drawUI(screen *ebiten.Image) {
+	if g.State == StatePlaying || g.State == StateSwapping || g.State == StateRemoving || g.State == StateDropping {
+		g.drawGameUI(screen)
+	}
+}
+
+func (g *Game) drawGameUI(screen *ebiten.Image) {
 	// Score panel
-	panelW := 280
-	panelH := 300
-	panel := ebiten.NewImage(panelW, panelH)
-	panel.Fill(color.RGBA{20, 25, 45, 230})
-	panelOp := &ebiten.DrawImageOptions{}
-	panelOp.GeoM.Translate(20, 50)
-	screen.DrawImage(panel, panelOp)
-
-	// Panel border
-	panelBorder := ebiten.NewImage(panelW, 3)
-	panelBorder.Fill(color.RGBA{80, 160, 255, 255})
-	panelBorderOp := &ebiten.DrawImageOptions{}
-	panelBorderOp.GeoM.Translate(20, 50)
-	screen.DrawImage(panelBorder, panelBorderOp)
-
-	// Score display
-	scoreW := 200
-	scoreH := 40
-	scoreBg := ebiten.NewImage(scoreW, scoreH)
-	scoreBg.Fill(color.RGBA{40, 80, 120, 200})
-	scoreBgOp := &ebiten.DrawImageOptions{}
-	scoreBgOp.GeoM.Translate(60, 100)
-	screen.DrawImage(scoreBg, scoreBgOp)
-
-	// Combo display
-	if g.combo > 1 {
-		comboW := 80 + g.combo*15
-		if comboW > 240 {
-			comboW = 240
-		}
-		comboBg := ebiten.NewImage(comboW, 35)
-		comboCol := color.RGBA{200, 180, 50, 200}
-		if g.combo >= 5 {
-			comboCol = color.RGBA{255, 100, 50, 220}
-		}
-		comboBg.Fill(comboCol)
-		comboBgOp := &ebiten.DrawImageOptions{}
-		comboBgOp.GeoM.Translate(60, 160)
-		screen.DrawImage(comboBg, comboBgOp)
+	scorePanel := ebiten.NewImage(240, 180)
+	scorePanel.Fill(ColorBgPanel)
+	
+	op := &ebiten.DrawImageOptions{}
+	op.GeoM.Translate(20, 40)
+	screen.DrawImage(scorePanel, op)
+	
+	// Border
+	scoreBorder := ebiten.NewImage(240, 3)
+	scoreBorder.Fill(ColorBorder)
+	
+	op2 := &ebiten.DrawImageOptions{}
+	op2.GeoM.Translate(20, 40)
+	screen.DrawImage(scoreBorder, op2)
+	
+	// Score text
+	scoreText := fmt.Sprintf("СЧЁТ: %d", g.Score)
+	if g.Font != nil {
+		text.Draw(screen, scoreText, g.Font, 40, 75, ColorTextWhite)
+	} else {
+		ebitenutil.DebugPrintAt(screen, scoreText, 40, 70)
 	}
-
-	// Moves display
-	movesW := 120
-	movesH := 30
-	movesBg := ebiten.NewImage(movesW, movesH)
-	movesCol := color.RGBA{60, 140, 100, 200}
-	if g.moves >= g.maxMoves-5 {
-		movesCol = color.RGBA{180, 60, 60, 220}
+	
+	// Target
+	targetText := fmt.Sprintf("ЦЕЛЬ: %d", g.TargetScore)
+	if g.SmallFont != nil {
+		text.Draw(screen, targetText, g.SmallFont, 40, 100, ColorTextAccent)
+	} else {
+		ebitenutil.DebugPrintAt(screen, targetText, 40, 95)
 	}
-	movesBg.Fill(movesCol)
-	movesBgOp := &ebiten.DrawImageOptions{}
-	movesBgOp.GeoM.Translate(60, 220)
-	screen.DrawImage(movesBg, movesBgOp)
-
-	// Level display
-	levelW := 80
-	levelH := 30
-	levelBg := ebiten.NewImage(levelW, levelH)
-	levelBg.Fill(color.RGBA{100, 60, 180, 200})
-	levelBgOp := &ebiten.DrawImageOptions{}
-	levelBgOp.GeoM.Translate(60, 270)
-	screen.DrawImage(levelBg, levelBgOp)
-
+	
+	// Combo
+	if g.Combo > 1 {
+		comboText := fmt.Sprintf("COMBO x%d", g.Combo)
+		if g.SmallFont != nil {
+			text.Draw(screen, comboText, g.SmallFont, 40, 125, ColorCombo)
+		} else {
+			ebitenutil.DebugPrintAt(screen, comboText, 40, 120)
+		}
+	}
+	
+	// Moves
+	movesText := fmt.Sprintf("ХОДЫ: %d", g.Moves)
+	if g.SmallFont != nil {
+		text.Draw(screen, movesText, g.SmallFont, 40, 150, ColorTextAccent)
+	} else {
+		ebitenutil.DebugPrintAt(screen, movesText, 40, 145)
+	}
+	
+	// Title bar at top
+	titleBar := ebiten.NewImage(ScreenWidth, 60)
+	titleBar.Fill(ColorBgPanel)
+	
+	op3 := &ebiten.DrawImageOptions{}
+	op3.GeoM.Translate(0, 0)
+	screen.DrawImage(titleBar, op3)
+	
+	titleBorder := ebiten.NewImage(ScreenWidth, 3)
+	titleBorder.Fill(ColorBorder)
+	
+	op4 := &ebiten.DrawImageOptions{}
+	op4.GeoM.Translate(0, 60)
+	screen.DrawImage(titleBorder, op4)
+	
+	// Title
+	titleText := "💎 CRYSTAL CASCADE"
+	if g.Font != nil {
+		text.Draw(screen, titleText, g.Font, ScreenWidth/2-140, 40, ColorTextWhite)
+	} else {
+		ebitenutil.DebugPrintAt(screen, titleText, ScreenWidth/2-140, 35)
+	}
+	
 	// Pause button
-	pauseBtn := ebiten.NewImage(120, 40)
-	pauseBtn.Fill(color.RGBA{50, 50, 80, 200})
-	pauseBtnOp := &ebiten.DrawImageOptions{}
-	pauseBtnOp.GeoM.Translate(1120, 20)
-	screen.DrawImage(pauseBtn, pauseBtnOp)
-
-	// Game title at top
-	titleText := ebiten.NewImage(400, 40)
-	titleText.Fill(color.RGBA{100, 150, 200, 255})
-	titleTextOp := &ebiten.DrawImageOptions{}
-	titleTextOp.GeoM.Translate(440, 10)
-	screen.DrawImage(titleText, titleTextOp)
+	if btn, ok := g.Buttons["pause"]; ok {
+		g.drawButton(screen, btn)
+	}
 }
 
-func (g *Game) drawPause(screen *ebiten.Image) {
-	// Dark overlay
-	overlay := ebiten.NewImage(screenWidth, screenHeight)
-	overlay.Fill(color.RGBA{0, 0, 0, 150})
-	overlayOp := &ebiten.DrawImageOptions{}
-	overlayOp.GeoM.Translate(g.screenShakeX, g.screenShakeY)
-	screen.DrawImage(overlay, overlayOp)
-
-	// Pause panel
-	panelW := 400
-	panelH := 300
-	panel := ebiten.NewImage(panelW, panelH)
-	panel.Fill(color.RGBA{25, 30, 55, 245})
-	panelOp := &ebiten.DrawImageOptions{}
-	panelOp.GeoM.Translate(float64(screenWidth/2-panelW/2), float64(screenHeight/2-panelH/2))
-	screen.DrawImage(panel, panelOp)
-
-	// Panel border
-	panelBorder := ebiten.NewImage(panelW, 4)
-	panelBorder.Fill(color.RGBA{100, 180, 255, 255})
-	panelBorderOp := &ebiten.DrawImageOptions{}
-	panelBorderOp.GeoM.Translate(float64(screenWidth/2-panelW/2), float64(screenHeight/2-panelH/2))
-	screen.DrawImage(panelBorder, panelBorderOp)
-
-	// Resume button
-	resumeBtn := ebiten.NewImage(200, 70)
-	resumeBtn.Fill(color.RGBA{50, 120, 180, 255})
-	resumeBtnOp := &ebiten.DrawImageOptions{}
-	resumeBtnOp.GeoM.Translate(540, 350)
-	screen.DrawImage(resumeBtn, resumeBtnOp)
-
-	// Quit button
-	quitBtn := ebiten.NewImage(200, 60)
-	quitBtn.Fill(color.RGBA{120, 50, 50, 255})
-	quitBtnOp := &ebiten.DrawImageOptions{}
-	quitBtnOp.GeoM.Translate(540, 440)
-	screen.DrawImage(quitBtn, quitBtnOp)
+func (g *Game) drawButton(screen *ebiten.Image, btn *Button) {
+	// Button background
+	btnImg := ebiten.NewImage(int(btn.W), int(btn.H))
+	
+	if btn.Pressed {
+		btnImg.Fill(color.RGBA{80, 100, 140, 255})
+	} else if btn.Hover {
+		btnImg.Fill(color.RGBA{60, 80, 120, 255})
+	} else {
+		btnImg.Fill(color.RGBA{40, 50, 80, 255})
+	}
+	
+	// Border
+	border := ebiten.NewImage(int(btn.W), 3)
+	border.Fill(ColorBorder)
+	
+	op := &ebiten.DrawImageOptions{}
+	op.GeoM.Translate(btn.X, btn.Y)
+	screen.DrawImage(btnImg, op)
+	
+	op2 := &ebiten.DrawImageOptions{}
+	op2.GeoM.Translate(btn.X, btn.Y)
+	screen.DrawImage(border, op2)
+	
+	// Button text
+	textX := int(btn.X + btn.W/2) - len(btn.Text)*4
+	textY := int(btn.Y + btn.H/2 + 6)
+	
+	if g.SmallFont != nil {
+		text.Draw(screen, btn.Text, g.SmallFont, textX, textY, ColorTextWhite)
+	} else {
+		ebitenutil.DebugPrintAt(screen, btn.Text, int(btn.X+10), int(btn.Y+btn.H/2-8))
+	}
 }
 
-func (g *Game) drawGameOver(screen *ebiten.Image) {
-	// Dark overlay
-	overlay := ebiten.NewImage(screenWidth, screenHeight)
-	overlay.Fill(color.RGBA{0, 0, 0, 180})
-	screen.DrawImage(overlay, &ebiten.DrawImageOptions{})
+// ============================================================================
+// EBITENGINE ENTRY POINT
+// ============================================================================
 
-	// Game over panel
-	panelW := 500
-	panelH := 350
-	panel := ebiten.NewImage(panelW, panelH)
-	panel.Fill(color.RGBA{25, 30, 55, 250})
-	panelOp := &ebiten.DrawImageOptions{}
-	panelOp.GeoM.Translate(float64(screenWidth/2-panelW/2), float64(screenHeight/2-panelH/2))
-	screen.DrawImage(panel, panelOp)
-
-	// Panel border
-	panelBorder := ebiten.NewImage(panelW, 4)
-	panelBorder.Fill(color.RGBA{200, 100, 100, 255})
-	panelBorderOp := &ebiten.DrawImageOptions{}
-	panelBorderOp.GeoM.Translate(float64(screenWidth/2-panelW/2), float64(screenHeight/2-panelH/2))
-	screen.DrawImage(panelBorder, panelBorderOp)
-
-	// Score display
-	scoreW := 300
-	scoreH := 50
-	scoreBg := ebiten.NewImage(scoreW, scoreH)
-	scoreBg.Fill(color.RGBA{60, 100, 160, 220})
-	scoreBgOp := &ebiten.DrawImageOptions{}
-	scoreBgOp.GeoM.Translate(float64(screenWidth/2-scoreW/2), float64(screenHeight/2-30))
-	screen.DrawImage(scoreBg, scoreBgOp)
-
-	// Play again button
-	againBtn := ebiten.NewImage(200, 70)
-	againBtn.Fill(color.RGBA{50, 120, 180, 255})
-	againBtnOp := &ebiten.DrawImageOptions{}
-	againBtnOp.GeoM.Translate(540, 500)
-	screen.DrawImage(againBtn, againBtnOp)
-}
-
-func (g *Game) Layout(ow, oh int) (int, int) {
-	return screenWidth, screenHeight
+func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
+	return ScreenWidth, ScreenHeight
 }
 
 func main() {
-	ebiten.SetWindowSize(screenWidth, screenHeight)
-	ebiten.SetWindowTitle("Crystal Cascade - Go365 Day 99")
+	ebiten.SetWindowSize(ScreenWidth, ScreenHeight)
+	ebiten.SetWindowTitle("Crystal Cascade - Go365 Day 100")
 	ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
-	if err := ebiten.RunGame(NewGame()); err != nil {
+	ebiten.SetFPSMode(ebiten.FPSModeVsyncOn)
+	
+	game := NewGame()
+	
+	if err := ebiten.RunGame(game); err != nil {
 		log.Fatal(err)
 	}
 }
