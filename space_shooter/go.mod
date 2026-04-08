@@ -1,4 +1,4 @@
-module github.com/playgo/top_shooter
+module github.com/playgo/space_shooter
 
 go 1.25.0
 
