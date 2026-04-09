@@ -1,4 +1,4 @@
-module Go104
+module space_survivor
 
 go 1.25.0
 
