@@ -290,7 +290,6 @@ func createCircleImage(size int, c color.RGBA, glow bool) *ebiten.Image {
 
 func (g *Game) loadAssets() {
 	g.loadShipSprite()
-	g.loadEnemySprites()
 	g.loadBulletSprites()
 	g.loadPowerupSprites()
 }
