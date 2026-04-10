@@ -6,6 +6,7 @@ import (
 	"match3/internal/ui"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/hajimehoshi/ebiten/v2/inpututil"
 )
 
 // GameState определяет текущее состояние игры
@@ -19,11 +20,17 @@ const (
 
 // Game - основная структура игры, реализует ebiten.Game
 type Game struct {
-	state     GameState
-	board     *logic.Board
-	uiManager *ui.Manager
-	score     int
-	moves     int
+	state        GameState
+	board        *logic.Board
+	uiManager    *ui.Manager
+	score        int
+	moves        int
+	selectedTile *logic.Tile
+	isSwapping   bool
+	swapFrom     *logic.Tile
+	swapTo       *logic.Tile
+	mouseX       int
+	mouseY       int
 }
 
 // NewGame создаёт новую игру
@@ -39,13 +46,17 @@ func NewGame() *Game {
 
 // Update обновляет логику игры каждый кадр
 func (g *Game) Update() error {
+	// Отслеживание позиции мыши
+	g.mouseX, g.mouseY = ebiten.CursorPosition()
+
 	switch g.state {
 	case StateMenu:
 		// Обновление меню
-		if ebiten.IsKeyPressed(ebiten.KeyEnter) || ebiten.IsGamepadButtonPressed(0, 0) {
+		if ebiten.IsKeyPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
 			g.startGame()
 		}
 	case StatePlaying:
+		g.handleInput()
 		// Обновление игровой логики
 		g.board.Update()
 		
@@ -55,8 +66,11 @@ func (g *Game) Update() error {
 		}
 	case StateGameOver:
 		// Обновление экрана Game Over
-		if ebiten.IsKeyPressed(ebiten.KeyEnter) {
+		if inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
 			g.startGame()
+		}
+		if ebiten.IsKeyPressed(ebiten.KeyEscape) {
+			g.state = StateMenu
 		}
 	}
 	return nil
@@ -98,4 +112,107 @@ func (g *Game) drawGame(screen *ebiten.Image) {
 	
 	// Отрисовка UI (счёт, ходы)
 	g.uiManager.DrawHUD(screen, g.score, g.moves)
+}
+
+// handleInput обрабатывает ввод игрока
+func (g *Game) handleInput() {
+	// Выход в меню
+	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
+		g.state = StateMenu
+		return
+	}
+
+	// Обработка клика мыши
+	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
+		tile := g.board.GetTileAt(g.mouseX, g.mouseY)
+		if tile != nil {
+			g.handleTileClick(tile)
+		}
+	}
+
+	// Обработка клавиш для обмена (Shift + стрелки)
+	if ebiten.IsKeyPressed(ebiten.KeyShift) || ebiten.IsKeyPressed(ebiten.KeyShiftLeft) || ebiten.IsKeyPressed(ebiten.KeyShiftRight) {
+		if g.selectedTile != nil {
+			targetRow, targetCol := g.selectedTile.Row, g.selectedTile.Col
+			
+			if inpututil.IsKeyJustPressed(ebiten.KeyUp) && targetRow > 0 {
+				targetRow--
+			} else if inpututil.IsKeyJustPressed(ebiten.KeyDown) && targetRow < g.board.Rows-1 {
+				targetRow++
+			} else if inpututil.IsKeyJustPressed(ebiten.KeyLeft) && targetCol > 0 {
+				targetCol--
+			} else if inpututil.IsKeyJustPressed(ebiten.KeyRight) && targetCol < g.board.Cols-1 {
+				targetCol++
+			} else {
+				return
+			}
+			
+			targetTile := g.board.Tiles[targetRow][targetCol]
+			g.executeSwap(g.selectedTile, targetTile)
+		}
+	}
+}
+
+// handleTileClick обрабатывает клик по камню
+func (g *Game) handleTileClick(tile *logic.Tile) {
+	if g.selectedTile == nil {
+		// Первый клик - выбор камня
+		g.selectedTile = tile
+		tile.Selected = true
+	} else if g.selectedTile == tile {
+		// Повторный клик - отмена выбора
+		g.selectedTile.Selected = false
+		g.selectedTile = nil
+	} else {
+		// Клик по другому камню - попытка обмена
+		g.executeSwap(g.selectedTile, tile)
+	}
+}
+
+// executeSwap выполняет обмен между двумя камнями
+func (g *Game) executeSwap(from, to *logic.Tile) {
+	// Сброс выделения
+	if g.selectedTile != nil {
+		g.selectedTile.Selected = false
+	}
+	g.selectedTile = nil
+
+	// Проверка на соседство
+	dr := abs(from.Row - to.Row)
+	dc := abs(from.Col - to.Col)
+	
+	if dr+dc != 1 {
+		// Не соседние - просто выбрать новый
+		to.Selected = true
+		g.selectedTile = to
+		return
+	}
+
+	// Выполнение обмена
+	success := g.board.SwapTiles(from, to)
+	
+	if success {
+		g.moves++
+		
+		// Проверка на матчи
+		matches := g.board.FindAllMatches()
+		if len(matches) > 0 {
+			// Есть матчи - удаляем и начисляем очки
+			score := g.board.RemoveMatches()
+			g.score += score
+			fmt.Printf("Матч! +%d очков (всего: %d)\n", score, g.score)
+		} else {
+			// Нет матчей - отменить обмен
+			g.board.SwapTiles(from, to)
+			fmt.Println("Нет матча - обмен отменён")
+		}
+	}
+}
+
+// abs возвращает абсолютное значение
+func abs(x int) int {
+	if x < 0 {
+		return -x
+	}
+	return x
 }
