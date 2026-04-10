@@ -89,3 +89,68 @@ func (m *Manager) DrawGameOver(screen *ebiten.Image, score int) {
 	restartText := "Нажмите ENTER для рестарта"
 	text.Draw(screen, restartText, basicfont.Face7x13, 180, 550, ColorButton)
 }
+
+// DrawPaused отрисовывает экран паузы
+func (m *Manager) DrawPaused(screen *ebiten.Image) {
+	// Полупрозрачный фон
+	overlay := ebiten.NewImage(640, 960)
+	overlay.Fill(color.RGBA{0, 0, 0, 150})
+	screen.DrawImage(overlay, nil)
+
+	// Заголовок
+	pausedText := "ПАУЗА"
+	text.Draw(screen, pausedText, basicfont.Face7x13, 270, 400, ColorTitle)
+
+	// Инструкции
+	resumeText := "ESC/P - продолжить"
+	text.Draw(screen, resumeText, basicfont.Face7x13, 220, 450, ColorHUD)
+
+	settingsText := "S - настройки"
+	text.Draw(screen, settingsText, basicfont.Face7x13, 240, 480, ColorHUD)
+
+	quitText := "Q - выйти в меню"
+	text.Draw(screen, quitText, basicfont.Face7x13, 230, 510, color.RGBA{255, 100, 100, 255})
+}
+
+// DrawSettings отрисовывает экран настроек
+func (m *Manager) DrawSettings(screen *ebiten.Image, soundManager interface{}) {
+	// Фон
+	overlay := ebiten.NewImage(640, 960)
+	overlay.Fill(color.RGBA{20, 20, 40, 255})
+	screen.DrawImage(overlay, nil)
+
+	// Заголовок
+	settingsText := "НАСТРОЙКИ"
+	text.Draw(screen, settingsText, basicfont.Face7x13, 250, 200, ColorTitle)
+
+	// Настройки звука
+	volText := "Громкость: 50%"
+	text.Draw(screen, volText, basicfont.Face7x13, 220, 300, ColorHUD)
+
+	muteText := "M - вкл/выкл звук"
+	text.Draw(screen, muteText, basicfont.Face7x13, 210, 350, ColorButton)
+
+	// Назад
+	backText := "ESC - назад"
+	text.Draw(screen, backText, basicfont.Face7x13, 240, 500, color.RGBA{150, 150, 150, 255})
+}
+
+// DrawLevelComplete отрисовывает экран завершения уровня
+func (m *Manager) DrawLevelComplete(screen *ebiten.Image, level int) {
+	// Фон
+	overlay := ebiten.NewImage(640, 960)
+	overlay.Fill(color.RGBA{0, 50, 0, 200})
+	screen.DrawImage(overlay, nil)
+
+	// Заголовок
+	levelText := fmt.Sprintf("УРОВЕНЬ %d ПРОЙДЕН!", level)
+	text.Draw(screen, levelText, basicfont.Face7x13, 180, 400, ColorTitle)
+
+	// Звёзды
+	starsText := "★★★"
+	text.Draw(screen, starsText, basicfont.Face7x13, 260, 450, color.RGBA{255, 215, 0, 255})
+
+	// Продолжить
+	contText := "ENTER - следующий уровень"
+	text.Draw(screen, contText, basicfont.Face7x13, 170, 550, ColorButton)
+}

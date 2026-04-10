@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"match3/internal/logic"
 	"match3/internal/ui"
+	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
@@ -15,7 +16,10 @@ type GameState int
 const (
 	StateMenu GameState = iota
 	StatePlaying
+	StatePaused
+	StateSettings
 	StateGameOver
+	StateLevelComplete
 )
 
 // Game - основная структура игры, реализует ebiten.Game
@@ -37,6 +41,9 @@ type Game struct {
 	lastMatchTime   float64
 	spriteManager   *SpriteManager
 	soundManager    *SoundManager
+	saveManager     *SaveManager
+	levelManager    *logic.LevelManager
+	levelStartTime  time.Time
 }
 
 // NewGame создаёт новую игру
@@ -50,6 +57,8 @@ func NewGame() *Game {
 		scorePopups:   logic.NewScorePopupSystem(),
 		spriteManager: NewSpriteManager(),
 		soundManager:  NewSoundManager(),
+		saveManager:   NewSaveManager(),
+		levelManager:  logic.NewLevelManager(),
 	}
 	return g
 }
@@ -78,6 +87,21 @@ func (g *Game) Update() error {
 		if !g.board.HasValidMoves() {
 			g.state = StateGameOver
 		}
+		
+		// Пауза
+		if inpututil.IsKeyJustPressed(ebiten.KeyEscape) || inpututil.IsKeyJustPressed(ebiten.KeyP) {
+			g.state = StatePaused
+		}
+	case StatePaused:
+		// Обновление паузы
+		if inpututil.IsKeyJustPressed(ebiten.KeyEscape) || inpututil.IsKeyJustPressed(ebiten.KeyP) {
+			g.state = StatePlaying
+		}
+	case StateSettings:
+		// Обновление настроек
+		if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
+			g.state = StatePaused
+		}
 	case StateGameOver:
 		// Обновление экрана Game Over
 		if inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
@@ -86,8 +110,51 @@ func (g *Game) Update() error {
 		if ebiten.IsKeyPressed(ebiten.KeyEscape) {
 			g.state = StateMenu
 		}
+	case StateLevelComplete:
+		// Обновление экрана завершения уровня
+		if inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
+			g.nextLevel()
+		}
 	}
 	return nil
+}
+
+// Layout возвращает размеры экрана
+func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
+	return outsideWidth, outsideHeight
+}
+
+// startGame начинает новую игру
+func (g *Game) startGame() {
+	g.state = StatePlaying
+	level := g.levelManager.GetCurrentLevel()
+	g.board = logic.NewBoard(level.BoardRows, level.BoardCols)
+	
+	// Передаём спрайты доске
+	if g.spriteManager.IsLoaded() {
+		sprites := make(map[int]*ebiten.Image)
+		for i := 0; i < level.GemTypes; i++ {
+			sprites[i] = g.spriteManager.GetGemSprite(i)
+		}
+		g.board.SetGemSprites(sprites)
+	}
+	
+	g.score = 0
+	g.moves = 0
+	g.comboCounter = 0
+	g.levelStartTime = time.Now()
+	g.levelManager.Reset()
+	
+	fmt.Printf("Новая игра! Уровень %d\n", level.Number)
+}
+
+// drawGame отрисовывает игровое поле и UI
+func (g *Game) drawGame(screen *ebiten.Image) {
+	// Отрисовка доски
+	g.board.Draw(screen)
+	
+	// Отрисовка UI (счёт, ходы)
+	g.uiManager.DrawHUD(screen, g.score, g.moves)
 }
 
 // Draw отрисовывает текущий кадр
@@ -100,43 +167,16 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		g.uiManager.DrawMenu(screen)
 	case StatePlaying:
 		g.drawGame(screen)
+	case StatePaused:
+		g.drawGame(screen)
+		g.uiManager.DrawPaused(screen)
+	case StateSettings:
+		g.uiManager.DrawSettings(screen, g.soundManager)
 	case StateGameOver:
 		g.uiManager.DrawGameOver(screen, g.score)
+	case StateLevelComplete:
+		g.uiManager.DrawLevelComplete(screen, g.levelManager.GetCurrentLevelNumber())
 	}
-}
-
-// Layout возвращает размеры экрана
-func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
-	return outsideWidth, outsideHeight
-}
-
-// startGame начинает новую игру
-func (g *Game) startGame() {
-	g.state = StatePlaying
-	g.board = logic.NewBoard(8, 8)
-	
-	// Передаём спрайты доске
-	if g.spriteManager.IsLoaded() {
-		sprites := make(map[int]*ebiten.Image)
-		for i := 0; i < 6; i++ {
-			sprites[i] = g.spriteManager.GetGemSprite(i)
-		}
-		g.board.SetGemSprites(sprites)
-	}
-	
-	g.score = 0
-	g.moves = 0
-	g.comboCounter = 0
-	fmt.Println("Новая игра началась!")
-}
-
-// drawGame отрисовывает игровое поле и UI
-func (g *Game) drawGame(screen *ebiten.Image) {
-	// Отрисовка доски
-	g.board.Draw(screen)
-	
-	// Отрисовка UI (счёт, ходы)
-	g.uiManager.DrawHUD(screen, g.score, g.moves)
 }
 
 // handleInput обрабатывает ввод игрока
@@ -267,4 +307,20 @@ func abs(x int) int {
 		return -x
 	}
 	return x
+}
+
+// nextLevel переходит к следующему уровню
+func (g *Game) nextLevel() {
+	g.state = StatePlaying
+	g.board = logic.NewBoard(8, 8)
+	g.score = 0
+	g.moves = 0
+	g.comboCounter = 0
+	fmt.Println("Следующий уровень!")
+}
+
+// toggleMute переключает режим mute
+func (g *Game) toggleMute() {
+	muted := g.soundManager.ToggleMute()
+	fmt.Printf("Sound muted: %v\n", muted)
 }
