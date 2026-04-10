@@ -20,26 +20,32 @@ const (
 
 // Game - основная структура игры, реализует ebiten.Game
 type Game struct {
-	state        GameState
-	board        *logic.Board
-	uiManager    *ui.Manager
-	score        int
-	moves        int
-	selectedTile *logic.Tile
-	isSwapping   bool
-	swapFrom     *logic.Tile
-	swapTo       *logic.Tile
-	mouseX       int
-	mouseY       int
+	state           GameState
+	board           *logic.Board
+	uiManager       *ui.Manager
+	score           int
+	moves           int
+	selectedTile    *logic.Tile
+	isSwapping      bool
+	swapFrom        *logic.Tile
+	swapTo          *logic.Tile
+	mouseX          int
+	mouseY          int
+	effectSystem    *logic.EffectSystem
+	scorePopups     *logic.ScorePopupSystem
+	comboCounter    int
+	lastMatchTime   float64
 }
 
 // NewGame создаёт новую игру
 func NewGame() *Game {
 	g := &Game{
-		state:     StateMenu,
-		uiManager: ui.NewManager(),
-		score:     0,
-		moves:     0,
+		state:        StateMenu,
+		uiManager:    ui.NewManager(),
+		score:        0,
+		moves:        0,
+		effectSystem: logic.NewEffectSystem(),
+		scorePopups:  logic.NewScorePopupSystem(),
 	}
 	return g
 }
@@ -59,6 +65,10 @@ func (g *Game) Update() error {
 		g.handleInput()
 		// Обновление игровой логики
 		g.board.Update()
+		
+		// Обновление эффектов
+		g.effectSystem.Update()
+		g.scorePopups.Update()
 		
 		// Проверка на доступные ходы
 		if !g.board.HasValidMoves() {
@@ -199,11 +209,30 @@ func (g *Game) executeSwap(from, to *logic.Tile) {
 		if len(matches) > 0 {
 			// Есть матчи - удаляем и начисляем очки
 			score := g.board.RemoveMatches()
+			
+			// Комбо система
+			g.comboCounter++
+			
+			// Бонус за комбо
+			if g.comboCounter > 1 {
+				score *= g.comboCounter
+				g.effectSystem.SpawnComboEffect(from.Col*60+40, from.Row*60+150, g.comboCounter)
+			}
+			
+			// Эффекты для каждого матча
+			for _, m := range matches {
+				x := g.board.OffsetX + m.Col*g.board.TileSize
+				y := g.board.OffsetY + m.Row*g.board.TileSize
+				g.effectSystem.SpawnMatchEffect(x, y, logic.GemColors[m.Gem], 1)
+				g.scorePopups.AddScorePopup(x, y, score/len(matches))
+			}
+			
 			g.score += score
-			fmt.Printf("Матч! +%d очков (всего: %d)\n", score, g.score)
+			fmt.Printf("Матч! +%d очков (комбо x%d, всего: %d)\n", score, g.comboCounter, g.score)
 		} else {
 			// Нет матчей - отменить обмен
 			g.board.SwapTiles(from, to)
+			g.comboCounter = 0 // Сброс комбо
 			fmt.Println("Нет матча - обмен отменён")
 		}
 	}

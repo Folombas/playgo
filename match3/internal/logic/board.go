@@ -42,8 +42,8 @@ type Board struct {
 	OffsetY  int
 }
 
-// Цвета для разных типов камней
-var gemColors = []color.Color{
+// GemColors содержит цвета для разных типов камней
+var GemColors = []color.Color{
 	color.RGBA{255, 50, 50, 255},    // Red
 	color.RGBA{50, 100, 255, 255},   // Blue
 	color.RGBA{50, 200, 50, 255},    // Green
@@ -51,6 +51,9 @@ var gemColors = []color.Color{
 	color.RGBA{180, 50, 255, 255},   // Purple
 	color.RGBA{255, 165, 0, 255},    // Orange
 }
+
+// Цвета для разных типов камней (внутренняя)
+var gemColors = GemColors
 
 // NewBoard создаёт новую игровую доску заданного размера
 func NewBoard(rows, cols int) *Board {
