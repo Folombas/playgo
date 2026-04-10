@@ -36,6 +36,7 @@ type Game struct {
 	comboCounter    int
 	lastMatchTime   float64
 	spriteManager   *SpriteManager
+	soundManager    *SoundManager
 }
 
 // NewGame создаёт новую игру
@@ -48,6 +49,7 @@ func NewGame() *Game {
 		effectSystem:  logic.NewEffectSystem(),
 		scorePopups:   logic.NewScorePopupSystem(),
 		spriteManager: NewSpriteManager(),
+		soundManager:  NewSoundManager(),
 	}
 	return g
 }
@@ -217,11 +219,17 @@ func (g *Game) executeSwap(from, to *logic.Tile) {
 	if success {
 		g.moves++
 		
+		// Звук обмена
+		g.soundManager.Play(SoundSwap)
+		
 		// Проверка на матчи
 		matches := g.board.FindAllMatches()
 		if len(matches) > 0 {
 			// Есть матчи - удаляем и начисляем очки
 			score := g.board.RemoveMatches()
+			
+			// Звук матча
+			g.soundManager.Play(SoundMatch)
 			
 			// Комбо система
 			g.comboCounter++
@@ -230,6 +238,7 @@ func (g *Game) executeSwap(from, to *logic.Tile) {
 			if g.comboCounter > 1 {
 				score *= g.comboCounter
 				g.effectSystem.SpawnComboEffect(from.Col*60+40, from.Row*60+150, g.comboCounter)
+				g.soundManager.Play(SoundCombo)
 			}
 			
 			// Эффекты для каждого матча
@@ -246,6 +255,7 @@ func (g *Game) executeSwap(from, to *logic.Tile) {
 			// Нет матчей - отменить обмен
 			g.board.SwapTiles(from, to)
 			g.comboCounter = 0 // Сброс комбо
+			g.soundManager.Play(SoundInvalid)
 			fmt.Println("Нет матча - обмен отменён")
 		}
 	}
