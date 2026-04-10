@@ -35,17 +35,19 @@ type Game struct {
 	scorePopups     *logic.ScorePopupSystem
 	comboCounter    int
 	lastMatchTime   float64
+	spriteManager   *SpriteManager
 }
 
 // NewGame создаёт новую игру
 func NewGame() *Game {
 	g := &Game{
-		state:        StateMenu,
-		uiManager:    ui.NewManager(),
-		score:        0,
-		moves:        0,
-		effectSystem: logic.NewEffectSystem(),
-		scorePopups:  logic.NewScorePopupSystem(),
+		state:         StateMenu,
+		uiManager:     ui.NewManager(),
+		score:         0,
+		moves:         0,
+		effectSystem:  logic.NewEffectSystem(),
+		scorePopups:   logic.NewScorePopupSystem(),
+		spriteManager: NewSpriteManager(),
 	}
 	return g
 }
@@ -110,8 +112,19 @@ func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
 func (g *Game) startGame() {
 	g.state = StatePlaying
 	g.board = logic.NewBoard(8, 8)
+	
+	// Передаём спрайты доске
+	if g.spriteManager.IsLoaded() {
+		sprites := make(map[int]*ebiten.Image)
+		for i := 0; i < 6; i++ {
+			sprites[i] = g.spriteManager.GetGemSprite(i)
+		}
+		g.board.SetGemSprites(sprites)
+	}
+	
 	g.score = 0
 	g.moves = 0
+	g.comboCounter = 0
 	fmt.Println("Новая игра началась!")
 }
 

@@ -34,12 +34,13 @@ type Tile struct {
 
 // Board представляет игровое поле
 type Board struct {
-	Tiles    [][]*Tile
-	Rows     int
-	Cols     int
-	TileSize int
-	OffsetX  int
-	OffsetY  int
+	Tiles      [][]*Tile
+	Rows       int
+	Cols       int
+	TileSize   int
+	OffsetX    int
+	OffsetY    int
+	GemSprites map[int]*ebiten.Image
 }
 
 // GemColors содержит цвета для разных типов камней
@@ -54,6 +55,30 @@ var GemColors = []color.Color{
 
 // Цвета для разных типов камней (внутренняя)
 var gemColors = GemColors
+
+// SetGemSprites устанавливает спрайты камней
+func (b *Board) SetGemSprites(sprites map[int]*ebiten.Image) {
+	b.GemSprites = sprites
+}
+
+// drawGemFallback отрисовывает камень цветом (fallback)
+func (b *Board) drawGemFallback(screen *ebiten.Image, x, y int, gemType GemType, selected bool) {
+	gemImg := ebiten.NewImage(b.TileSize-4, b.TileSize-4)
+	gemImg.Fill(gemColors[gemType])
+	
+	op := &ebiten.DrawImageOptions{}
+	op.GeoM.Translate(float64(x+2), float64(y+2))
+	
+	if selected {
+		op.GeoM.Translate(-2, -2)
+		gemOut := ebiten.NewImage(b.TileSize+2, b.TileSize+2)
+		gemOut.Fill(color.White)
+		gemOut.DrawImage(gemImg, nil)
+		screen.DrawImage(gemOut, op)
+	} else {
+		screen.DrawImage(gemImg, op)
+	}
+}
 
 // NewBoard создаёт новую игровую доску заданного размера
 func NewBoard(rows, cols int) *Board {
@@ -174,22 +199,35 @@ func (b *Board) Draw(screen *ebiten.Image) {
 			screen.DrawImage(rect, op)
 
 			// Отрисовка камня
-			if tile.Gem < GemCount {
-				gem := ebiten.NewImage(b.TileSize-4, b.TileSize-4)
-				gem.Fill(gemColors[tile.Gem])
-				
-				op := &ebiten.DrawImageOptions{}
-				op.GeoM.Translate(float64(x+2), float64(y+2))
-				
-				// Выделение выбранного камня
-				if tile.Selected {
-					op.GeoM.Translate(-2, -2)
-					gemOut := ebiten.NewImage(b.TileSize+2, b.TileSize+2)
-					gemOut.Fill(color.White)
-					gemOut.DrawImage(gem, nil)
-					screen.DrawImage(gemOut, op)
+			if tile.Gem >= 0 && tile.Gem < GemCount {
+				// Используем спрайт если доступен
+				if b.GemSprites != nil {
+					if sprite, ok := b.GemSprites[int(tile.Gem)]; ok && sprite != nil {
+						op := &ebiten.DrawImageOptions{}
+						op.GeoM.Translate(float64(x+2), float64(y+2))
+						
+						// Масштабирование до размера ячейки
+						scale := float64(b.TileSize-4) / 32.0
+						op.GeoM.Scale(scale, scale)
+						
+						// Выделение выбранного камня
+						if tile.Selected {
+							// Рисуем белую рамку
+							highlight := ebiten.NewImage(b.TileSize, b.TileSize)
+							highlight.Fill(color.White)
+							hlOp := &ebiten.DrawImageOptions{}
+							hlOp.GeoM.Translate(float64(x), float64(y))
+							screen.DrawImage(highlight, hlOp)
+						}
+						
+						screen.DrawImage(sprite, op)
+					} else {
+						// Fallback на цвета
+						b.drawGemFallback(screen, x, y, tile.Gem, tile.Selected)
+					}
 				} else {
-					screen.DrawImage(gem, op)
+					// Fallback на цвета
+					b.drawGemFallback(screen, x, y, tile.Gem, tile.Selected)
 				}
 			}
 		}
