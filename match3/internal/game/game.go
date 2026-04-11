@@ -161,8 +161,22 @@ func (g *Game) Update() error {
 
 		// Проверка на доступные ходы
 		if !g.board.HasValidMoves() {
-			g.state = StateGameOver
-			g.soundManager.Play(SoundGameOver)
+			// Показываем подсказку сначала
+			if !g.hintSystem.IsVisible() {
+				g.hintSystem.ShowHint(g.board)
+			} else {
+				// Если подсказка уже показана и ходов нет - перемешиваем
+				fmt.Println("Нет доступных ходов - перемешиваем доску!")
+				g.board.Shuffle()
+				g.hintSystem.Reset()
+				g.soundManager.Play(SoundMatch)
+				
+				// Если после перемешивания всё равно нет ходов - game over
+				if !g.board.HasValidMoves() {
+					g.state = StateGameOver
+					g.soundManager.Play(SoundGameOver)
+				}
+			}
 		}
 		
 		// Проверка достижений

@@ -471,6 +471,43 @@ func (b *Board) FindHint() (tile1, tile2 *Tile) {
 	return nil, nil
 }
 
+// Shuffle перемешивает доску случайным образом
+func (b *Board) Shuffle() {
+	// Собираем все камни
+	allGems := make([]GemType, 0, b.Rows*b.Cols)
+	for r := 0; r < b.Rows; r++ {
+		for c := 0; c < b.Cols; c++ {
+			if b.Tiles[r][c].Gem != GemType(-1) {
+				allGems = append(allGems, b.Tiles[r][c].Gem)
+			}
+		}
+	}
+	
+	// Перемешиваем
+	rng.Shuffle(len(allGems), func(i, j int) {
+		allGems[i], allGems[j] = allGems[j], allGems[i]
+	})
+	
+	// Возвращаем на доску
+	idx := 0
+	for r := 0; r < b.Rows; r++ {
+		for c := 0; c < b.Cols; c++ {
+			if idx < len(allGems) {
+				b.Tiles[r][c].Gem = allGems[idx]
+				b.Tiles[r][c].IsBomb = false // Сбрасываем бомбы
+				b.Tiles[r][c].Falling = true
+				b.Tiles[r][c].OffsetY = float64(rng.Intn(b.TileSize * 2))
+				idx++
+			}
+		}
+	}
+	
+	// Убираем начальные матчи
+	b.RemoveInitialMatches()
+	
+	fmt.Println("🔀 Доска перемешана!")
+}
+
 // abs возвращает абсолютное значение
 func abs(x int) int {
 	if x < 0 {
