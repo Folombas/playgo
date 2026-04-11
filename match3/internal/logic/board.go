@@ -52,6 +52,7 @@ type Board struct {
 	OffsetX    int
 	OffsetY    int
 	GemSprites map[int]*ebiten.Image
+	SwapAnim   *SwapAnimation // Текущая анимация обмена
 }
 
 // GemColors содержит цвета для разных типов камней
@@ -178,6 +179,11 @@ func (b *Board) FindAllMatches() []*Tile {
 
 // Update обновляет состояние доски каждый кадр
 func (b *Board) Update() {
+	// Обновление анимации обмена
+	if b.SwapAnim != nil && !b.SwapAnim.IsComplete() {
+		b.SwapAnim.Update(1.0 / 60.0) // Предполагаем 60 FPS
+	}
+	
 	// Анимация падения
 	for r := 0; r < b.Rows; r++ {
 		for c := 0; c < b.Cols; c++ {
@@ -200,6 +206,19 @@ func (b *Board) Draw(screen *ebiten.Image) {
 			tile := b.Tiles[r][c]
 			x := b.OffsetX + c*b.TileSize
 			y := b.OffsetY + r*b.TileSize + int(tile.OffsetY)
+			
+			// Применяем смещение анимации, если есть
+			if b.SwapAnim != nil && !b.SwapAnim.IsComplete() {
+				if tile == b.SwapAnim.Tile1 {
+					offX, offY := b.SwapAnim.GetOffset1()
+					x += int(offX)
+					y += int(offY)
+				} else if tile == b.SwapAnim.Tile2 {
+					offX, offY := b.SwapAnim.GetOffset2()
+					x += int(offX)
+					y += int(offY)
+				}
+			}
 
 			// Отрисовка фона ячейки
 			rect := ebiten.NewImage(b.TileSize, b.TileSize)
@@ -285,18 +304,21 @@ func (b *Board) GetTileAt(x, y int) *Tile {
 	return nil
 }
 
-// SwapTiles меняет местами два соседних камня
+// SwapTiles меняет местами два соседних камня и создаёт анимацию
 func (b *Board) SwapTiles(t1, t2 *Tile) bool {
 	// Проверка на соседство
 	dr := abs(t1.Row - t2.Row)
 	dc := abs(t1.Col - t2.Col)
-	
+
 	if dr+dc != 1 {
 		return false
 	}
 
-	// Обмен камнями
-	b.Tiles[t1.Row][t1.Col].Gem, b.Tiles[t2.Row][t2.Col].Gem = 
+	// Создаём анимацию
+	b.SwapAnim = NewSwapAnimation(t1, t2, b.TileSize)
+
+	// Обмен камнями (визуально будет через анимацию)
+	b.Tiles[t1.Row][t1.Col].Gem, b.Tiles[t2.Row][t2.Col].Gem =
 		b.Tiles[t2.Row][t2.Col].Gem, b.Tiles[t1.Row][t1.Col].Gem
 
 	return true
