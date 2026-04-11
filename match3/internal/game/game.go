@@ -1,3 +1,7 @@
+// Package game содержит основную игровую логику для Match-3 игры.
+//
+// Этот пакет реализует основной игровой цикл, управление состояниями,
+// обработку ввода и интеграцию всех систем (звуки, спрайты, сохранения).
 package game
 
 import (
@@ -12,18 +16,25 @@ import (
 )
 
 // GameState определяет текущее состояние игры
+//
+// Используется для управления переходами между различными экранами:
+// меню, игра, пауза, настройки, game over, завершение уровня.
 type GameState int
 
 const (
-	StateMenu GameState = iota
-	StatePlaying
-	StatePaused
-	StateSettings
-	StateGameOver
-	StateLevelComplete
+	StateMenu GameState = iota // Главное меню
+	StatePlaying               // Игровой процесс
+	StatePaused                // Пауза
+	StateSettings              // Настройки
+	StateGameOver              // Игра окончена
+	StateLevelComplete         // Уровень пройден
 )
 
 // Game - основная структура игры, реализует ebiten.Game
+//
+// Game управляет всеми аспектами игры: состояниями, доской, UI,
+// звуками, сохранениями, уровнями и специальными эффектами.
+// Это центральный компонент архитектуры игры.
 type Game struct {
 	state           GameState
 	board           *logic.Board
@@ -56,7 +67,20 @@ type GameConfig struct {
 }
 
 // NewGame создаёт новую игру с опциональной конфигурацией
-// Если config nil, создаются реализации по умолчанию
+//
+// Если config nil, создаются реализации по умолчанию для звуков и сохранений.
+// Это позволяет инжектить моки для тестирования.
+//
+// Пример использования:
+//
+//	// Создание игры с настройками по умолчанию
+//	game := NewGame()
+//
+//	// Или с кастомными зависимостями для тестов
+//	game := NewGame(GameConfig{
+//	    SoundPlayer: mockSoundPlayer,
+//	    SaveStorage: mockSaveStorage,
+//	})
 func NewGame(config ...GameConfig) *Game {
 	var cfg GameConfig
 	if len(config) > 0 {
