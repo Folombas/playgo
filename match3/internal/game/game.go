@@ -61,6 +61,8 @@ type Game struct {
 	leaderboard     *Leaderboard
 	bgEffect        *logic.BackgroundEffect
 	bombsCreated    int
+	fireGemsDestroyed int
+	iceBroken      int
 }
 
 // GameConfig содержит зависимости для создания игры
@@ -328,7 +330,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		muted := g.soundManager.IsMuted()
 		g.uiManager.DrawSettings(screen, vol, muted)
 	case StateGameOver:
-		g.uiManager.DrawGameOver(screen, g.score, g.moves, g.levelManager.GetCurrentLevelNumber(), g.comboCounter)
+		g.uiManager.DrawGameOver(screen, g.score, g.moves, g.levelManager.GetCurrentLevelNumber(), g.comboCounter, g.bombsCreated, g.fireGemsDestroyed, g.iceBroken)
 	case StateLevelComplete:
 		g.uiManager.DrawLevelComplete(screen, g.levelManager.GetCurrentLevelNumber(), g.score, g.moves)
 	}
@@ -406,6 +408,7 @@ func (g *Game) handleTileClick(tile *logic.Tile) {
 			fmt.Printf("💔 Ледяной камень разбит!\n")
 			tile.IsIce = false
 			tile.ClickCount = 0
+			g.iceBroken++
 			
 			// Эффект разбивания льда
 			x := g.board.OffsetX + tile.Col*g.board.TileSize
@@ -465,6 +468,7 @@ func (g *Game) activateFireGem(tile *logic.Tile) {
 	// Начисляем очки
 	fireScore := g.board.Cols * 20
 	g.score += fireScore
+	g.fireGemsDestroyed += g.board.Cols // Считаем уничтоженные камни
 	g.scorePopups.AddScorePopup(
 		g.board.OffsetX+g.board.Cols*g.board.TileSize/2,
 		g.board.OffsetY+tile.Row*g.board.TileSize,

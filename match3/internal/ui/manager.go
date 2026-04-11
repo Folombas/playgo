@@ -180,7 +180,7 @@ func (m *Manager) DrawHUD(screen *ebiten.Image, score int, moves int, timeLeft i
 }
 
 // DrawGameOver отрисовывает экран окончания игры с расширенной статистикой
-func (m *Manager) DrawGameOver(screen *ebiten.Image, score int, moves int, level int, combo int) {
+func (m *Manager) DrawGameOver(screen *ebiten.Image, score int, moves int, level int, combo int, bombs int, fireGems int, iceBroken int) {
 	// Фон
 	overlay := ebiten.NewImage(640, 960)
 	overlay.Fill(color.RGBA{0, 0, 0, 200})
@@ -194,23 +194,23 @@ func (m *Manager) DrawGameOver(screen *ebiten.Image, score int, moves int, level
 	// Статистика игры
 	statsY := 260
 	statLineHeight := 25
-	
+
 	// Уровень
 	levelText := fmt.Sprintf("Уровень: %d", level)
 	text.Draw(screen, levelText, basicfont.Face7x13, 250, statsY, ColorHUD)
-	
+
 	// Итоговый счёт
 	scoreText := fmt.Sprintf("Итоговый счёт: %d", score)
 	text.Draw(screen, scoreText, basicfont.Face7x13, 240, statsY+statLineHeight, ColorScore)
-	
+
 	// Количество ходов
 	movesText := fmt.Sprintf("Сделано ходов: %d", moves)
 	text.Draw(screen, movesText, basicfont.Face7x13, 240, statsY+statLineHeight*2, ColorHUD)
-	
+
 	// Максимальное комбо
 	comboText := fmt.Sprintf("Лучшее комбо: x%d", combo)
 	text.Draw(screen, comboText, basicfont.Face7x13, 240, statsY+statLineHeight*3, color.RGBA{255, 215, 0, 255})
-	
+
 	// Разделитель
 	dividerY := statsY + statLineHeight*4 + 10
 	divider := ebiten.NewImage(300, 2)
@@ -219,16 +219,31 @@ func (m *Manager) DrawGameOver(screen *ebiten.Image, score int, moves int, level
 	divOp.GeoM.Translate(170, float64(dividerY))
 	screen.DrawImage(divider, divOp)
 
+	// Расширенная статистика специальных камней
+	specialStatsY := dividerY + 30
+	
+	// Бомбы
+	bombsText := fmt.Sprintf("💣 Взрывов бомб: %d", bombs)
+	text.Draw(screen, bombsText, basicfont.Face7x13, 240, specialStatsY, color.RGBA{255, 150, 50, 255})
+	
+	// Огненные камни
+	fireText := fmt.Sprintf("🔥 Уничтожено огнём: %d", fireGems)
+	text.Draw(screen, fireText, basicfont.Face7x13, 240, specialStatsY+statLineHeight, color.RGBA{255, 100, 0, 255})
+	
+	// Лёд
+	iceText := fmt.Sprintf("❄️ Разбито льда: %d", iceBroken)
+	text.Draw(screen, iceText, basicfont.Face7x13, 240, specialStatsY+statLineHeight*2, color.RGBA{150, 200, 255, 255})
+
 	// Кнопка рестарта (мигающая)
-	restartY := dividerY + 40
-	if math.Sin(float64(statsY)*0.1) > 0 {
+	restartY := specialStatsY + statLineHeight*3 + 30
+	if math.Sin(float64(restartY)*0.1) > 0 {
 		restartText := ">>> Нажмите ENTER для рестарта <<<"
 		text.Draw(screen, restartText, basicfont.Face7x13, 170, restartY, ColorButton)
 	} else {
 		restartText := "    Нажмите ENTER для рестарта    "
 		text.Draw(screen, restartText, basicfont.Face7x13, 170, restartY, ColorButton)
 	}
-	
+
 	// Кнопка выхода
 	exitText := "ESC - вернуться в меню"
 	text.Draw(screen, exitText, basicfont.Face7x13, 210, restartY+40, color.RGBA{150, 150, 150, 255})
