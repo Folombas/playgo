@@ -58,6 +58,7 @@ type Game struct {
 	levelStartTime  time.Time
 	hintSystem      *logic.HintSystem
 	achievementSys  *AchievementSystem
+	leaderboard     *Leaderboard
 	bombsCreated    int
 }
 
@@ -116,6 +117,7 @@ func NewGame(config ...GameConfig) *Game {
 	g.levelManager = logic.NewLevelManager()
 	g.hintSystem = logic.NewHintSystem()
 	g.achievementSys = NewAchievementSystem()
+	g.leaderboard = NewLeaderboard()
 	g.bombsCreated = 0
 
 	return g
@@ -237,6 +239,14 @@ func (g *Game) Update() error {
 	case StateLevelComplete:
 		// Обновление экрана завершения уровня
 		if inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
+			// Добавляем в таблицу рекордов
+			g.leaderboard.AddEntry(LeaderboardEntry{
+				PlayerName: "Player",
+				Score:      g.score,
+				Level:      g.levelManager.GetCurrentLevelNumber(),
+				Moves:      g.moves,
+				Date:       time.Now(),
+			})
 			g.nextLevel()
 		}
 	}
