@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"math"
 	"math/rand"
-	"time"
 
 	"github.com/hajimehoshi/ebiten/v2/audio"
 	"github.com/hajimehoshi/ebiten/v2/audio/wav"
@@ -200,9 +199,4 @@ func (sm *SoundManager) ToggleMute() bool {
 // IsMuted проверяет, включён ли mute
 func (sm *SoundManager) IsMuted() bool {
 	return sm.muted
-}
-
-// Инициализация random seed
-func init() {
-	rand.Seed(time.Now().UnixNano())
 }

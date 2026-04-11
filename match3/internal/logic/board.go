@@ -4,9 +4,18 @@ import (
 	"fmt"
 	"image/color"
 	"math/rand"
+	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
 )
+
+// rng - глобальный генератор случайных чисел (потокобезопасный в Go 1.20+)
+var rng = rand.New(rand.NewSource(time.Now().UnixNano()))
+
+// GetRNG возвращает генератор случайных чисел
+func GetRNG() *rand.Rand {
+	return rng
+}
 
 // GemType определяет тип драгоценного камня
 type GemType int
@@ -108,7 +117,7 @@ func NewBoard(rows, cols int) *Board {
 // createRandomTile создаёт случайный камень
 func (b *Board) createRandomTile(row, col int) *Tile {
 	return &Tile{
-		Gem:     GemType(rand.Intn(int(GemCount))),
+		Gem:     GemType(rng.Intn(int(GemCount))),
 		Row:     row,
 		Col:     col,
 		OffsetY: 0,
@@ -123,7 +132,7 @@ func (b *Board) RemoveInitialMatches() {
 			break
 		}
 		for _, m := range matches {
-			b.Tiles[m.Row][m.Col].Gem = GemType(rand.Intn(int(GemCount)))
+			b.Tiles[m.Row][m.Col].Gem = GemType(rng.Intn(int(GemCount)))
 		}
 	}
 }
@@ -306,7 +315,7 @@ func (b *Board) ApplyGravity() {
 
 		// Заполнение пустых ячеек сверху новыми камнями
 		for r := emptyRow; r >= 0; r-- {
-			b.Tiles[r][c].Gem = GemType(rand.Intn(int(GemCount)))
+			b.Tiles[r][c].Gem = GemType(rng.Intn(int(GemCount)))
 			b.Tiles[r][c].Falling = true
 			b.Tiles[r][c].OffsetY = float64((emptyRow - r + 1) * b.TileSize)
 		}
