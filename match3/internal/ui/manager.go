@@ -270,22 +270,79 @@ func (m *Manager) DrawSettings(screen *ebiten.Image, soundManager interface{}) {
 	text.Draw(screen, backText, basicfont.Face7x13, 240, 500, color.RGBA{150, 150, 150, 255})
 }
 
-// DrawLevelComplete отрисовывает экран завершения уровня
-func (m *Manager) DrawLevelComplete(screen *ebiten.Image, level int) {
+// DrawLevelComplete отрисовывает экран завершения уровня со статистикой и звёздами
+func (m *Manager) DrawLevelComplete(screen *ebiten.Image, level int, score int, moves int) {
 	// Фон
 	overlay := ebiten.NewImage(640, 960)
-	overlay.Fill(color.RGBA{0, 50, 0, 200})
+	overlay.Fill(color.RGBA{0, 50, 0, 220})
 	screen.DrawImage(overlay, nil)
 
-	// Заголовок
+	// Заголовок с тенью
 	levelText := fmt.Sprintf("УРОВЕНЬ %d ПРОЙДЕН!", level)
-	text.Draw(screen, levelText, basicfont.Face7x13, 180, 400, ColorTitle)
+	text.Draw(screen, levelText, basicfont.Face7x13, 182, 202, color.RGBA{0, 0, 0, 128})
+	text.Draw(screen, levelText, basicfont.Face7x13, 180, 200, ColorTitle)
 
-	// Звёзды
-	starsText := "★★★"
-	text.Draw(screen, starsText, basicfont.Face7x13, 260, 450, color.RGBA{255, 215, 0, 255})
+	// Звёзды с анимацией
+	starsY := 260
+	starsText := calculateStars(score, moves)
+	text.Draw(screen, starsText, basicfont.Face7x13, 260, starsY, color.RGBA{255, 215, 0, 255})
+	
+	// Статистика
+	statsY := 320
+	statLineHeight := 25
+	
+	scoreText := fmt.Sprintf("Счёт: %d", score)
+	text.Draw(screen, scoreText, basicfont.Face7x13, 260, statsY, ColorScore)
+	
+	movesText := fmt.Sprintf("Ходов сделано: %d", moves)
+	text.Draw(screen, movesText, basicfont.Face7x13, 240, statsY+statLineHeight, ColorHUD)
 
-	// Продолжить
-	contText := "ENTER - следующий уровень"
-	text.Draw(screen, contText, basicfont.Face7x13, 170, 550, ColorButton)
+	// Разделитель
+	dividerY := statsY + statLineHeight*2 + 10
+	divider := ebiten.NewImage(300, 2)
+	divider.Fill(color.RGBA{150, 150, 150, 255})
+	divOp := &ebiten.DrawImageOptions{}
+	divOp.GeoM.Translate(170, float64(dividerY))
+	screen.DrawImage(divider, divOp)
+
+	// Продолжить (мигающая кнопка)
+	contY := dividerY + 40
+	contText := ">>> ENTER - следующий уровень <<<"
+	text.Draw(screen, contText, basicfont.Face7x13, 170, contY, ColorButton)
+	
+	exitText := "ESC - вернуться в меню"
+	text.Draw(screen, exitText, basicfont.Face7x13, 210, contY+40, color.RGBA{150, 150, 150, 255})
+}
+
+// calculateStars рассчитывает количество звёзд на основе результата
+func calculateStars(score int, moves int) string {
+	// Упрощённая логика звёзд
+	// Можно улучшить на основе уровня
+	stars := 0
+	
+	if score > 0 {
+		stars++
+	}
+	
+	if moves > 0 && moves < 20 {
+		stars++
+	}
+	
+	if score > 1000 {
+		stars++
+	}
+	
+	// Возвращаем строку со звёздами
+	switch stars {
+	case 0:
+		return "☆☆☆"
+	case 1:
+		return "★☆☆"
+	case 2:
+		return "★★☆"
+	case 3:
+		return "★★★"
+	default:
+		return "★★★"
+	}
 }
