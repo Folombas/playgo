@@ -106,36 +106,84 @@ func (sm *SaveManager) Load() error {
 	if err != nil {
 		if os.IsNotExist(err) {
 			// Файл не существует - это нормально для первого запуска
+			fmt.Println("No save file found, starting fresh")
 			return nil
 		}
 		return fmt.Errorf("failed to read save file: %w", err)
 	}
-	
+
 	err = json.Unmarshal(data, &sm.data)
 	if err != nil {
-		return fmt.Errorf("failed to parse save file: %w", err)
+		// Поврежденный файл сохранения - создать резервную копию
+		fmt.Printf("Corrupted save file, creating backup: %v\n", err)
+		sm.createBackupAndReset()
+		return nil
 	}
-	
+
 	fmt.Printf("Save loaded from %s\n", sm.savePath)
 	return nil
 }
 
-// Save сохраняет данные в файл
+// Save сохраняет данные в файл с обработкой ошибок
 func (sm *SaveManager) Save() error {
 	sm.data.LastPlayedAt = time.Now()
-	
+
 	data, err := json.MarshalIndent(sm.data, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to marshal save data: %w", err)
 	}
-	
+
+	// Создать директорию если не существует
+	dir := filepath.Dir(sm.savePath)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("failed to create save directory: %w", err)
+	}
+
+	// Создать резервную копию перед записью
+	sm.createBackup()
+
 	err = os.WriteFile(sm.savePath, data, 0644)
 	if err != nil {
 		return fmt.Errorf("failed to write save file: %w", err)
 	}
-	
+
 	fmt.Printf("Save written to %s\n", sm.savePath)
 	return nil
+}
+
+// createBackup создаёт резервную копию файла сохранения
+func (sm *SaveManager) createBackup() {
+	if _, err := os.Stat(sm.savePath); err == nil {
+		backupPath := sm.savePath + ".bak"
+		data, err := os.ReadFile(sm.savePath)
+		if err != nil {
+			fmt.Printf("Warning: Could not read save file for backup: %v\n", err)
+			return
+		}
+		
+		err = os.WriteFile(backupPath, data, 0644)
+		if err != nil {
+			fmt.Printf("Warning: Could not create backup: %v\n", err)
+			return
+		}
+	}
+}
+
+// createBackupAndReset создаёт резервную копию и сбрасывает данные
+func (sm *SaveManager) createBackupAndReset() {
+	// Попытаться создать резервную копию поврежденного файла
+	if _, err := os.Stat(sm.savePath); err == nil {
+		backupPath := sm.savePath + ".corrupted"
+		err := os.Rename(sm.savePath, backupPath)
+		if err != nil {
+			fmt.Printf("Warning: Could not backup corrupted save: %v\n", err)
+		} else {
+			fmt.Printf("Corrupted save backed up to %s\n", backupPath)
+		}
+	}
+	
+	// Сбросить данные
+	sm.data = createDefaultSave()
 }
 
 // GetSaveData возвращает копию данных сохранения
