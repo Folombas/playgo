@@ -44,6 +44,8 @@ type Tile struct {
 	IsFire    bool    // Огненный камень - уничтожает весь ряд
 	IsIce     bool    // Ледяной камень - требует двойного клика
 	ClickCount int    // Счётчик кликов (для ледяных камней)
+	Spawning  bool    // Анимация появления
+	SpawnScale float64 // Масштаб при появлении (0.0 - 1.0)
 }
 
 // Board представляет игровое поле
@@ -226,7 +228,7 @@ func (b *Board) Update() {
 	if b.SwapAnim != nil && !b.SwapAnim.IsComplete() {
 		b.SwapAnim.Update(1.0 / 60.0) // Предполагаем 60 FPS
 	}
-	
+
 	// Анимация падения с ускорением
 	for r := 0; r < b.Rows; r++ {
 		for c := 0; c < b.Cols; c++ {
@@ -239,6 +241,15 @@ func (b *Board) Update() {
 					tile.Falling = false
 					// Эффект приземления
 					b.SpawnLandEffect(r, c)
+				}
+			}
+			
+			// Анимация появления новых камней
+			if tile.Spawning && tile.SpawnScale < 1.0 {
+				tile.SpawnScale += 0.08 // Скорость анимации
+				if tile.SpawnScale >= 1.0 {
+					tile.SpawnScale = 1.0
+					tile.Spawning = false
 				}
 			}
 		}
@@ -285,10 +296,17 @@ func (b *Board) Draw(screen *ebiten.Image) {
 				if b.GemSprites != nil {
 					if sprite, ok := b.GemSprites[int(tile.Gem)]; ok && sprite != nil {
 						op := &ebiten.DrawImageOptions{}
-						op.GeoM.Translate(float64(x+2), float64(y+2))
-
-						// Масштабирование до размера ячейки
+						
+						// Применяем масштабирование для анимации появления
 						scale := float64(b.TileSize-4) / 32.0
+						if tile.Spawning {
+							scale *= tile.SpawnScale
+							// Центрируем при масштабировании
+							offset := float64(b.TileSize-4) * (1 - tile.SpawnScale) / 2
+							op.GeoM.Translate(float64(x+2)+offset, float64(y+2)+offset)
+						} else {
+							op.GeoM.Translate(float64(x+2), float64(y+2))
+						}
 						op.GeoM.Scale(scale, scale)
 
 						// Выделение выбранного камня (из кэша)
@@ -487,6 +505,8 @@ func (b *Board) ApplyGravity() {
 			b.Tiles[r][c].Gem = GemType(rng.Intn(int(GemCount)))
 			b.Tiles[r][c].Falling = true
 			b.Tiles[r][c].OffsetY = float64((emptyRow - r + 1) * b.TileSize)
+			b.Tiles[r][c].Spawning = true
+			b.Tiles[r][c].SpawnScale = 0.0
 		}
 	}
 }
