@@ -434,7 +434,8 @@ func (b *Board) ApplyGravity() {
 
 // HasValidModes проверяет, есть ли допустимые ходы
 func (b *Board) HasValidMoves() bool {
-	return b.FindHint() != nil
+	tile1, _ := b.FindHint()
+	return tile1 != nil
 }
 
 // FindHint находит один возможный ход и возвращает два камня для обмена

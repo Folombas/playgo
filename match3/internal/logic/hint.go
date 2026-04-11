@@ -2,6 +2,7 @@ package logic
 
 import (
 	"image/color"
+	"math"
 	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -36,7 +37,7 @@ func (h *HintSystem) Update(board *Board) {
 	if h.showHint {
 		h.hintTimer += 0.05
 		// Пульсация прозрачности
-		h.hintAlpha = 0.5 + 0.5*ebiten.Sin(h.hintTimer*3)
+		h.hintAlpha = 0.5 + 0.5*math.Sin(h.hintTimer*3)
 		
 		// Скрываем подсказку через 3 секунды
 		if h.hintTimer > 3 {

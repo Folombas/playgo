@@ -326,17 +326,17 @@ func (g *Game) explodeBomb(bomb *logic.Tile) {
 	
 	// Звук взрыва
 	g.soundManager.Play(SoundMatch) // Можно добавить специальный звук
-	
+
 	// Удаляем камни 3x3
 	radius := 1
 	for r := bomb.Row - radius; r <= bomb.Row+radius; r++ {
 		for c := bomb.Col - radius; c <= bomb.Col+radius; c++ {
 			if r >= 0 && r < g.board.Rows && c >= 0 && c < g.board.Cols {
 				tile := g.board.Tiles[r][c]
-				if tile.Gem != GemType(-1) {
-					tile.Gem = GemType(-1)
+				if tile.Gem != logic.GemType(-1) {
+					tile.Gem = logic.GemType(-1)
 					tile.Removing = true
-					
+
 					// Эффект взрыва
 					x := g.board.OffsetX + c*g.board.TileSize
 					y := g.board.OffsetY + r*g.board.TileSize
