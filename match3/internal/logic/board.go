@@ -53,6 +53,7 @@ type Board struct {
 	OffsetY    int
 	GemSprites map[int]*ebiten.Image
 	SwapAnim   *SwapAnimation // Текущая анимация обмена
+	ImageCache *ImageCache    // Кэш изображений
 }
 
 // GemColors содержит цвета для разных типов камней
@@ -95,12 +96,13 @@ func (b *Board) drawGemFallback(screen *ebiten.Image, x, y int, gemType GemType,
 // NewBoard создаёт новую игровую доску заданного размера
 func NewBoard(rows, cols int) *Board {
 	b := &Board{
-		Tiles:    make([][]*Tile, rows),
-		Rows:     rows,
-		Cols:     cols,
-		TileSize: 60,
-		OffsetX:  40,
-		OffsetY:  150,
+		Tiles:      make([][]*Tile, rows),
+		Rows:       rows,
+		Cols:       cols,
+		TileSize:   60,
+		OffsetX:    40,
+		OffsetY:    150,
+		ImageCache: NewImageCache(),
 	}
 
 	// Инициализация доски случайными камнями
@@ -220,9 +222,8 @@ func (b *Board) Draw(screen *ebiten.Image) {
 				}
 			}
 
-			// Отрисовка фона ячейки
-			rect := ebiten.NewImage(b.TileSize, b.TileSize)
-			rect.Fill(color.RGBA{200, 200, 200, 255})
+			// Отрисовка фона ячейки (из кэша)
+			rect := b.ImageCache.GetTileBackground(b.TileSize)
 
 			op := &ebiten.DrawImageOptions{}
 			op.GeoM.Translate(float64(x), float64(y))
@@ -240,11 +241,9 @@ func (b *Board) Draw(screen *ebiten.Image) {
 						scale := float64(b.TileSize-4) / 32.0
 						op.GeoM.Scale(scale, scale)
 
-						// Выделение выбранного камня
+						// Выделение выбранного камня (из кэша)
 						if tile.Selected {
-							// Рисуем белую рамку
-							highlight := ebiten.NewImage(b.TileSize, b.TileSize)
-							highlight.Fill(color.White)
+							highlight := b.ImageCache.GetHighlight(b.TileSize)
 							hlOp := &ebiten.DrawImageOptions{}
 							hlOp.GeoM.Translate(float64(x), float64(y))
 							screen.DrawImage(highlight, hlOp)
@@ -277,20 +276,16 @@ func (b *Board) Draw(screen *ebiten.Image) {
 
 // drawBombIndicator рисует маленький значок бомбы в углу камня
 func (b *Board) drawBombIndicator(screen *ebiten.Image, x, y, tileSize int) {
-	// Маленький кружок в правом верхнем углу
+	// Маленький кружок в правом верхнем углу (из кэша)
 	bombSize := 12
 	bombX := x + tileSize - bombSize - 2
 	bombY := y + 2
 	
-	bomb := ebiten.NewImage(bombSize, bombSize)
-	bomb.Fill(color.RGBA{255, 50, 50, 255}) // Красный индикатор
+	bomb := b.ImageCache.GetBombIndicator(bombSize)
 	
 	op := &ebiten.DrawImageOptions{}
 	op.GeoM.Translate(float64(bombX), float64(bombY))
 	screen.DrawImage(bomb, op)
-	
-	// Текст "B"
-	// Можно добавить позже
 }
 
 // GetTileAt возвращает камень по экранным координатам
