@@ -18,6 +18,9 @@ const (
 	SoundInvalid
 	SoundCombo
 	SoundGameOver
+	SoundBomb      // Звук взрыва бомбы
+	SoundFire      // Звук огненного камня
+	SoundIce       // Звук разбивания льда
 	SoundCount
 )
 
@@ -48,18 +51,27 @@ func NewSoundManager() *SoundManager {
 func (sm *SoundManager) generateSounds() {
 	// Match sound - приятный восходящий звук
 	sm.players[SoundMatch] = sm.generateTone(440, 0.15, "match")
-	
+
 	// Swap sound - короткий щелчок
 	sm.players[SoundSwap] = sm.generateTone(330, 0.08, "swap")
-	
+
 	// Invalid sound - низкий тон
 	sm.players[SoundInvalid] = sm.generateTone(220, 0.1, "invalid")
-	
+
 	// Combo sound - радостная мелодия
 	sm.players[SoundCombo] = sm.generateTone(550, 0.2, "combo")
-	
+
 	// Game Over sound - грустный нисходящий
 	sm.players[SoundGameOver] = sm.generateTone(330, 0.3, "gameover")
+	
+	// Bomb sound - низкий взрыв
+	sm.players[SoundBomb] = sm.generateTone(150, 0.25, "bomb")
+	
+	// Fire sound - шипящий звук
+	sm.players[SoundFire] = sm.generateTone(600, 0.2, "fire")
+	
+	// Ice sound - звонкий звук
+	sm.players[SoundIce] = sm.generateTone(800, 0.15, "ice")
 }
 
 // generateTone генерирует простой тон заданной частоты и длительности

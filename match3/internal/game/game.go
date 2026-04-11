@@ -415,7 +415,7 @@ func (g *Game) handleTileClick(tile *logic.Tile) {
 				y+g.board.TileSize/2,
 			)
 			
-			g.soundManager.Play(SoundMatch) // Звук разбивания
+			g.soundManager.Play(SoundIce) // Звук разбивания льда
 			return
 		}
 	}
@@ -438,8 +438,8 @@ func (g *Game) handleTileClick(tile *logic.Tile) {
 func (g *Game) activateFireGem(tile *logic.Tile) {
 	fmt.Printf("🔥 ОГНЕННЫЙ КАМЕНЬ! Уничтожен ряд %d!\n", tile.Row)
 
-	// Звук
-	g.soundManager.Play(SoundMatch)
+	// Звук огненного камня
+	g.soundManager.Play(SoundFire)
 
 	// Уничтожаем весь ряд
 	for c := 0; c < g.board.Cols; c++ {
@@ -487,8 +487,8 @@ func (g *Game) activateFireGem(tile *logic.Tile) {
 func (g *Game) explodeBomb(bomb *logic.Tile) {
 	fmt.Printf("💥 БУМ! Бомба взорвалась на (%d, %d)!\n", bomb.Row, bomb.Col)
 
-	// Звук взрыва
-	g.soundManager.Play(SoundMatch) // Можно добавить специальный звук
+	// Звук взрыва бомбы
+	g.soundManager.Play(SoundBomb)
 
 	// Удаляем камни 3x3
 	radius := 1
