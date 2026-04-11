@@ -40,14 +40,27 @@ type Game struct {
 	comboCounter    int
 	lastMatchTime   float64
 	spriteManager   *SpriteManager
-	soundManager    *SoundManager
-	saveManager     *SaveManager
+	soundManager    SoundPlayer
+	saveManager     SaveStorage
 	levelManager    *logic.LevelManager
 	levelStartTime  time.Time
 }
 
-// NewGame создаёт новую игру
-func NewGame() *Game {
+// GameConfig содержит зависимости для создания игры
+// Это позволяет легко инжектить моки для тестирования
+type GameConfig struct {
+	SoundPlayer SoundPlayer
+	SaveStorage SaveStorage
+}
+
+// NewGame создаёт новую игру с опциональной конфигурацией
+// Если config nil, создаются реализации по умолчанию
+func NewGame(config ...GameConfig) *Game {
+	var cfg GameConfig
+	if len(config) > 0 {
+		cfg = config[0]
+	}
+
 	g := &Game{
 		state:         StateMenu,
 		uiManager:     ui.NewManager(),
@@ -56,10 +69,24 @@ func NewGame() *Game {
 		effectSystem:  logic.NewEffectSystem(),
 		scorePopups:   logic.NewScorePopupSystem(),
 		spriteManager: NewSpriteManager(),
-		soundManager:  NewSoundManager(),
-		saveManager:   NewSaveManager(),
-		levelManager:  logic.NewLevelManager(),
 	}
+
+	// Dependency Injection для звуковой системы
+	if cfg.SoundPlayer != nil {
+		g.soundManager = cfg.SoundPlayer
+	} else {
+		g.soundManager = NewSoundManager()
+	}
+
+	// Dependency Injection для системы сохранений
+	if cfg.SaveStorage != nil {
+		g.saveManager = cfg.SaveStorage
+	} else {
+		g.saveManager = NewSaveManager()
+	}
+
+	g.levelManager = logic.NewLevelManager()
+
 	return g
 }
 

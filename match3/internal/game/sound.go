@@ -190,6 +190,11 @@ func (sm *SoundManager) SetVolume(vol float64) {
 	sm.volume = vol
 }
 
+// GetVolume возвращает текущую громкость
+func (sm *SoundManager) GetVolume() float64 {
+	return sm.volume
+}
+
 // ToggleMute переключает режим mute
 func (sm *SoundManager) ToggleMute() bool {
 	sm.muted = !sm.muted
