@@ -175,6 +175,23 @@ func (g *Game) Update() error {
 		if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
 			g.state = StatePaused
 		}
+		
+		// Управление громкостью
+		if inpututil.IsKeyJustPressed(ebiten.KeyEqual) || inpututil.IsKeyJustPressed(ebiten.Key0) { // + or 0
+			vol := g.soundManager.GetVolume()
+			if vol < 1.0 {
+				g.soundManager.SetVolume(vol + 0.1)
+			}
+		}
+		if inpututil.IsKeyJustPressed(ebiten.KeyMinus) { // -
+			vol := g.soundManager.GetVolume()
+			if vol > 0.0 {
+				g.soundManager.SetVolume(vol - 0.1)
+			}
+		}
+		if inpututil.IsKeyJustPressed(ebiten.KeyM) {
+			g.soundManager.ToggleMute()
+		}
 	case StateGameOver:
 		// Обновление экрана Game Over
 		if inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
@@ -254,7 +271,9 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		g.drawGame(screen)
 		g.uiManager.DrawPaused(screen)
 	case StateSettings:
-		g.uiManager.DrawSettings(screen, g.soundManager)
+		vol := g.soundManager.GetVolume()
+		muted := g.soundManager.IsMuted()
+		g.uiManager.DrawSettings(screen, vol, muted)
 	case StateGameOver:
 		g.uiManager.DrawGameOver(screen, g.score, g.moves, g.levelManager.GetCurrentLevelNumber(), g.comboCounter)
 	case StateLevelComplete:

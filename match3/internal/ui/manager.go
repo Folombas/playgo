@@ -247,8 +247,8 @@ func (m *Manager) DrawPaused(screen *ebiten.Image) {
 	text.Draw(screen, quitText, basicfont.Face7x13, 230, 510, color.RGBA{255, 100, 100, 255})
 }
 
-// DrawSettings отрисовывает экран настроек
-func (m *Manager) DrawSettings(screen *ebiten.Image, soundManager interface{}) {
+// DrawSettings отрисовывает экран настроек с управлением громкостью
+func (m *Manager) DrawSettings(screen *ebiten.Image, volume float64, muted bool) {
 	// Фон
 	overlay := ebiten.NewImage(640, 960)
 	overlay.Fill(color.RGBA{20, 20, 40, 255})
@@ -257,17 +257,55 @@ func (m *Manager) DrawSettings(screen *ebiten.Image, soundManager interface{}) {
 	// Заголовок
 	settingsText := "НАСТРОЙКИ"
 	text.Draw(screen, settingsText, basicfont.Face7x13, 250, 200, ColorTitle)
-
-	// Настройки звука
-	volText := "Громкость: 50%"
-	text.Draw(screen, volText, basicfont.Face7x13, 220, 300, ColorHUD)
-
-	muteText := "M - вкл/выкл звук"
-	text.Draw(screen, muteText, basicfont.Face7x13, 210, 350, ColorButton)
+	
+	// Громкость
+	volY := 280
+	volText := fmt.Sprintf("Громкость: %.0f%%", volume*100)
+	text.Draw(screen, volText, basicfont.Face7x13, 220, volY, ColorHUD)
+	
+	// Полоса громкости
+	volBarWidth := 300
+	volBarHeight := 20
+	volBarX := 170
+	volBarY := volY + 30
+	
+	// Фон полосы
+	volBg := ebiten.NewImage(volBarWidth, volBarHeight)
+	volBg.Fill(color.RGBA{60, 60, 80, 255})
+	volBgOp := &ebiten.DrawImageOptions{}
+	volBgOp.GeoM.Translate(float64(volBarX), float64(volBarY))
+	screen.DrawImage(volBg, volBgOp)
+	
+	// Заполнение полосы
+	if volume > 0 {
+		volFillWidth := int(float64(volBarWidth) * volume)
+		volFill := ebiten.NewImage(volFillWidth, volBarHeight)
+		volFill.Fill(color.RGBA{100, 200, 255, 255})
+		volFillOp := &ebiten.DrawImageOptions{}
+		volFillOp.GeoM.Translate(float64(volBarX), float64(volBarY))
+		screen.DrawImage(volFill, volFillOp)
+	}
+	
+	// Индикатор mute
+	muteStatus := "ВКЛ"
+	muteColor := color.RGBA{100, 255, 100, 255}
+	if muted {
+		muteStatus = "ВЫКЛ"
+		muteColor = color.RGBA{255, 100, 100, 255}
+	}
+	
+	muteY := volBarY + 50
+	muteText := fmt.Sprintf("Звук: %s", muteStatus)
+	text.Draw(screen, muteText, basicfont.Face7x13, 240, muteY, muteColor)
+	
+	// Управление
+	ctrlY := muteY + 60
+	text.Draw(screen, "+ / -  - изменить громкость", basicfont.Face7x13, 190, ctrlY, ColorHUD)
+	text.Draw(screen, "M - вкл/выкл звук", basicfont.Face7x13, 210, ctrlY+25, ColorHUD)
 
 	// Назад
 	backText := "ESC - назад"
-	text.Draw(screen, backText, basicfont.Face7x13, 240, 500, color.RGBA{150, 150, 150, 255})
+	text.Draw(screen, backText, basicfont.Face7x13, 240, 600, color.RGBA{150, 150, 150, 255})
 }
 
 // DrawLevelComplete отрисовывает экран завершения уровня со статистикой и звёздами
