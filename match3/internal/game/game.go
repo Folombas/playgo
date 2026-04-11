@@ -57,6 +57,8 @@ type Game struct {
 	levelManager    *logic.LevelManager
 	levelStartTime  time.Time
 	hintSystem      *logic.HintSystem
+	achievementSys  *AchievementSystem
+	bombsCreated    int
 }
 
 // GameConfig содержит зависимости для создания игры
@@ -113,6 +115,8 @@ func NewGame(config ...GameConfig) *Game {
 
 	g.levelManager = logic.NewLevelManager()
 	g.hintSystem = logic.NewHintSystem()
+	g.achievementSys = NewAchievementSystem()
+	g.bombsCreated = 0
 
 	return g
 }
@@ -160,6 +164,16 @@ func (g *Game) Update() error {
 			g.state = StateGameOver
 			g.soundManager.Play(SoundGameOver)
 		}
+		
+		// Проверка достижений
+		g.achievementSys.CheckAndUnlock(
+			g.score,
+			g.moves,
+			g.comboCounter,
+			g.levelManager.GetCurrentLevelNumber(),
+			g.bombsCreated,
+			g.saveManager.GetSaveData().GamesPlayed,
+		)
 
 		// Пауза
 		if inpututil.IsKeyJustPressed(ebiten.KeyEscape) || inpututil.IsKeyJustPressed(ebiten.KeyP) {
@@ -255,6 +269,9 @@ func (g *Game) drawGame(screen *ebiten.Image) {
 
 	// Отрисовка UI (счёт, ходы, таймер, прогресс)
 	g.uiManager.DrawHUD(screen, g.score, g.moves, timeLeft, targetScore)
+	
+	// TODO: Display achievement progress
+	// _ = g.achievementSys.GetProgressString()
 }
 
 // Draw отрисовывает текущий кадр
@@ -443,6 +460,7 @@ func (g *Game) executeSwap(from, to *logic.Tile) {
 			// Эффект для бомбы
 			if bombCreated != nil {
 				fmt.Println("💣 Бомба создана!")
+				g.bombsCreated++
 				// Можно добавить специальный эффект для бомбы
 			}
 
