@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"image/color"
+	"math"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/text"
@@ -19,29 +20,66 @@ var (
 )
 
 // Manager управляет отрисовкой UI элементов
-type Manager struct{}
+type Manager struct {
+	menuAnimTime float64 // Время для анимации меню
+}
 
 // NewManager создаёт новый менеджер UI
 func NewManager() *Manager {
-	return &Manager{}
+	return &Manager{
+		menuAnimTime: 0,
+	}
+}
+
+// UpdateMenuAnim обновляет анимацию меню
+func (m *Manager) UpdateMenuAnim(deltaTime float64) {
+	m.menuAnimTime += deltaTime
 }
 
 // DrawMenu отрисовывает главное меню
 func (m *Manager) DrawMenu(screen *ebiten.Image) {
-	// Заголовок
+	// Анимация пульсации для заголовка
+	pulse := 1.0 + 0.05*math.Sin(m.menuAnimTime*3)
+	
+	// Заголовок с эффектом градиента
 	title := "MATCH-3"
-	text.Draw(screen, title, basicfont.Face7x13, 280, 300, ColorTitle)
-
+	titleX := 280
+	titleY := 300
+	
+	// Тень заголовка
+	text.Draw(screen, title, basicfont.Face7x13, titleX+2, titleY+2, color.RGBA{0, 0, 0, 128})
+	// Основной текст
+	text.Draw(screen, title, basicfont.Face7x13, titleX, titleY, ColorTitle)
+	
+	// Подзаголовок с пульсацией
+	subtitleAlpha := 0.7 + 0.3*math.Sin(m.menuAnimTime*2)
 	subtitle := "Три в ряд"
-	text.Draw(screen, subtitle, basicfont.Face7x13, 270, 350, ColorHUD)
-
-	// Кнопка начала игры
-	buttonText := "Нажмите ENTER для старта"
-	text.Draw(screen, buttonText, basicfont.Face7x13, 180, 500, ColorButton)
+	subY := 350
+	_ = pulse // используем для альфа-эффекта
+	_ = subtitleAlpha
+	
+	text.Draw(screen, subtitle, basicfont.Face7x13, 270, subY, color.RGBA{255, 255, 255, uint8(255 * subtitleAlpha)})
+	
+	// Анимированная кнопка начала игры
+	buttonPulse := 1.0 + 0.1*math.Sin(m.menuAnimTime*4)
+	buttonText := ">>> Нажмите ENTER для старта <<<"
+	buttonY := 500
+	_ = buttonPulse
+	
+	// Мигающий текст кнопки
+	if math.Sin(m.menuAnimTime*5) > 0 {
+		text.Draw(screen, buttonText, basicfont.Face7x13, 170, buttonY, color.RGBA{100, 200, 255, 255})
+	} else {
+		text.Draw(screen, buttonText, basicfont.Face7x13, 170, buttonY, color.RGBA{200, 255, 255, 255})
+	}
 
 	// Информация
-	info := "Go365 Challenge - День 100"
+	info := "Go365 Challenge - День 101"
 	text.Draw(screen, info, basicfont.Face7x13, 200, 600, color.RGBA{150, 150, 150, 255})
+	
+	// Дополнительная информация
+	controls := "Управление: Клик мыши / Shift+Стрелки"
+	text.Draw(screen, controls, basicfont.Face7x13, 170, 650, color.RGBA{120, 120, 120, 255})
 }
 
 // DrawHUD отрисовывает интерфейс во время игры

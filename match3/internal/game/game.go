@@ -124,6 +124,9 @@ func (g *Game) Update() error {
 
 	switch g.state {
 	case StateMenu:
+		// Обновление анимации меню
+		g.uiManager.UpdateMenuAnim(1.0 / 60.0)
+		
 		// Обновление меню
 		if ebiten.IsKeyPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
 			g.startGame()
