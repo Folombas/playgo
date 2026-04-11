@@ -143,17 +143,34 @@ func (b *Board) RemoveInitialMatches() {
 }
 
 // FindAllMatches находит все текущие совпадения на доске
+// Оптимизированная версия без аллокаций строк
 func (b *Board) FindAllMatches() []*Tile {
-	matched := make(map[string]*Tile)
+	// Используем map[int64]*Tile для избежания строковых аллокаций
+	// Ключ: (row << 32) | col
+	matched := make(map[int64]*Tile)
 
 	// Проверка горизонтальных матчей
 	for r := 0; r < b.Rows; r++ {
 		for c := 0; c < b.Cols-2; c++ {
 			gem := b.Tiles[r][c].Gem
 			if gem == b.Tiles[r][c+1].Gem && gem == b.Tiles[r][c+2].Gem {
-				matched[fmt.Sprintf("%d-%d", r, c)] = b.Tiles[r][c]
-				matched[fmt.Sprintf("%d-%d", r, c+1)] = b.Tiles[r][c+1]
-				matched[fmt.Sprintf("%d-%d", r, c+2)] = b.Tiles[r][c+2]
+				// Нашли матч - добавляем все 3 камня
+				key1 := (int64(r) << 32) | int64(c)
+				key2 := (int64(r) << 32) | int64(c+1)
+				key3 := (int64(r) << 32) | int64(c+2)
+				matched[key1] = b.Tiles[r][c]
+				matched[key2] = b.Tiles[r][c+1]
+				matched[key3] = b.Tiles[r][c+2]
+				
+				// Проверяем, есть ли больше 3 в ряд
+				for extra := c + 3; extra < b.Cols; extra++ {
+					if gem == b.Tiles[r][extra].Gem {
+						keyExtra := (int64(r) << 32) | int64(extra)
+						matched[keyExtra] = b.Tiles[r][extra]
+					} else {
+						break
+					}
+				}
 			}
 		}
 	}
@@ -163,15 +180,29 @@ func (b *Board) FindAllMatches() []*Tile {
 		for r := 0; r < b.Rows-2; r++ {
 			gem := b.Tiles[r][c].Gem
 			if gem == b.Tiles[r+1][c].Gem && gem == b.Tiles[r+2][c].Gem {
-				matched[fmt.Sprintf("%d-%d", r, c)] = b.Tiles[r][c]
-				matched[fmt.Sprintf("%d-%d", r+1, c)] = b.Tiles[r+1][c]
-				matched[fmt.Sprintf("%d-%d", r+2, c)] = b.Tiles[r+2][c]
+				// Нашли матч - добавляем все 3 камня
+				key1 := (int64(r) << 32) | int64(c)
+				key2 := (int64(r+1) << 32) | int64(c)
+				key3 := (int64(r+2) << 32) | int64(c)
+				matched[key1] = b.Tiles[r][c]
+				matched[key2] = b.Tiles[r+1][c]
+				matched[key3] = b.Tiles[r+2][c]
+				
+				// Проверяем, есть ли больше 3 в ряд
+				for extra := r + 3; extra < b.Rows; extra++ {
+					if gem == b.Tiles[extra][c].Gem {
+						keyExtra := (int64(extra) << 32) | int64(c)
+						matched[keyExtra] = b.Tiles[extra][c]
+					} else {
+						break
+					}
+				}
 			}
 		}
 	}
 
 	// Преобразование в слайс
-	var result []*Tile
+	result := make([]*Tile, 0, len(matched))
 	for _, t := range matched {
 		result = append(result, t)
 	}
