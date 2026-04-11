@@ -33,14 +33,16 @@ const (
 
 // Tile представляет одну ячейку на доске
 type Tile struct {
-	Gem      GemType
-	Row      int
-	Col      int
-	Selected bool
-	Removing bool
-	Falling  bool
-	OffsetY  float64
-	IsBomb   bool // Является ли этот камень бомбой
+	Gem       GemType
+	Row       int
+	Col       int
+	Selected  bool
+	Removing  bool
+	Falling   bool
+	OffsetY   float64
+	IsBomb    bool    // Является ли этот камень бомбой
+	IsFire    bool    // Огненный камень - уничтожает весь ряд
+	IsIce     bool    // Ледяной камень - требует двойного клика
 }
 
 // Board представляет игровое поле
@@ -396,6 +398,15 @@ func (b *Board) createBomb(matches []*Tile) *Tile {
 	bombTile.IsBomb = true
 	bombTile.Removing = false // Не удалять!
 	
+	// При матче 5+ создаём огненный камень вместо бомбы
+	if len(matches) >= 5 {
+		bombTile.IsBomb = false
+		bombTile.IsFire = true
+		fmt.Printf("🔥 Огненный камень создан на (%d, %d)!\n", bombTile.Row, bombTile.Col)
+	} else {
+		fmt.Printf("💣 Бомба создана на (%d, %d)!\n", bombTile.Row, bombTile.Col)
+	}
+	
 	// Помечаем все остальные камни матча для удаления
 	for _, t := range matches {
 		if t != bombTile {
@@ -403,8 +414,6 @@ func (b *Board) createBomb(matches []*Tile) *Tile {
 			t.Removing = true
 		}
 	}
-	
-	fmt.Printf("💣 Бомба создана на (%d, %d)!\n", bombTile.Row, bombTile.Col)
 	
 	return bombTile
 }

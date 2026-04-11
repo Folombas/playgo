@@ -370,6 +370,13 @@ func (g *Game) handleTileClick(tile *logic.Tile) {
 		return
 	}
 	
+	// Проверяем, является ли камень огненным
+	if tile.IsFire {
+		// Активируем огненный камень!
+		g.activateFireGem(tile)
+		return
+	}
+	
 	if g.selectedTile == nil {
 		// Первый клик - выбор камня
 		g.selectedTile = tile
@@ -382,6 +389,48 @@ func (g *Game) handleTileClick(tile *logic.Tile) {
 		// Клик по другому камню - попытка обмена
 		g.executeSwap(g.selectedTile, tile)
 	}
+}
+
+// activateFireGem активирует огненный камень и уничтожает весь ряд
+func (g *Game) activateFireGem(tile *logic.Tile) {
+	fmt.Printf("🔥 ОГНЕННЫЙ КАМЕНЬ! Уничтожен ряд %d!\n", tile.Row)
+	
+	// Звук
+	g.soundManager.Play(SoundMatch)
+	
+	// Уничтожаем весь ряд
+	for c := 0; c < g.board.Cols; c++ {
+		t := g.board.Tiles[tile.Row][c]
+		if t.Gem != logic.GemType(-1) {
+			t.Gem = logic.GemType(-1)
+			t.Removing = true
+			
+			// Эффект огня
+			x := g.board.OffsetX + c*g.board.TileSize
+			y := g.board.OffsetY + tile.Row*g.board.TileSize
+			g.effectSystem.SpawnMatchEffect(x, y, color.RGBA{255, 100, 0, 255}, 2)
+		}
+	}
+	
+	// Начисляем очки
+	fireScore := g.board.Cols * 20
+	g.score += fireScore
+	g.scorePopups.AddScorePopup(
+		g.board.OffsetX+g.board.Cols*g.board.TileSize/2,
+		g.board.OffsetY+tile.Row*g.board.TileSize,
+		fireScore,
+	)
+	
+	fmt.Printf("+%d очков за огненный камень!\n", fireScore)
+	
+	// Применяем гравитацию
+	g.board.ApplyGravity()
+	
+	// Сбрасываем выбор
+	if g.selectedTile != nil {
+		g.selectedTile.Selected = false
+	}
+	g.selectedTile = nil
 }
 
 // explodeBomb взрывает бомбу и удаляет все камни в радиусе 3x3
