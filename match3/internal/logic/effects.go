@@ -181,7 +181,7 @@ func (es *EffectSystem) SpawnCelebrationEffect(x, y int) {
 		for i := 0; i < 30; i++ {
 			angle := float64(i) * math.Pi * 2 / 30
 			speed := 3 + rng.Float64()*3
-			
+
 			// Разные цвета для каждой волны
 			var c color.Color
 			switch wave {
@@ -192,7 +192,7 @@ func (es *EffectSystem) SpawnCelebrationEffect(x, y int) {
 			case 2:
 				c = color.RGBA{100, 255, 100, 255} // Зелёный
 			}
-			
+
 			p := &Particle{
 				X:    float64(x),
 				Y:    float64(y),
@@ -205,6 +205,138 @@ func (es *EffectSystem) SpawnCelebrationEffect(x, y int) {
 			}
 			es.Particles = append(es.Particles, p)
 		}
+	}
+}
+
+// SpawnFireGemEffect создаёт специальный эффект огненного камня
+// Используется при активации огненного камня для уничтожения ряда
+func (es *EffectSystem) SpawnFireGemEffect(x, y, rowLength int) {
+	// Основной столб огня
+	for i := 0; i < rowLength*3; i++ {
+		p := &Particle{
+			X:    float64(x) + rng.Float64()*float64(rowLength*60),
+			Y:    float64(y),
+			VX:   (rng.Float64() - 0.5) * 2,
+			VY:   -3 - rng.Float64()*5,
+			Life: 1.0 + rng.Float64()*0.5,
+			MaxLife: 1.5,
+			Color: color.RGBA{
+				R: 255,
+				G: uint8(100 + rng.Intn(155)),
+				B: uint8(rng.Intn(50)),
+				A: 255,
+			},
+			Size: 4 + rng.Float64()*6,
+		}
+		es.Particles = append(es.Particles, p)
+	}
+
+	// Искры от огня
+	for i := 0; i < 20; i++ {
+		angle := rng.Float64() * math.Pi * 2
+		speed := 1 + rng.Float64()*3
+
+		p := &Particle{
+			X:    float64(x) + rng.Float64()*float64(rowLength*60),
+			Y:    float64(y),
+			VX:   math.Cos(angle) * speed,
+			VY:   math.Sin(angle) * speed - 2,
+			Life: 0.8,
+			MaxLife: 0.8,
+			Color: color.RGBA{255, 255, 200, 255},
+			Size:  2 + rng.Float64()*2,
+		}
+		es.Particles = append(es.Particles, p)
+	}
+
+	// Эффект теплового искажения (большие полупрозрачные частицы)
+	for i := 0; i < 10; i++ {
+		p := &Particle{
+			X:    float64(x) + rng.Float64()*float64(rowLength*60),
+			Y:    float64(y) + rng.Float64()*20,
+			VX:   (rng.Float64() - 0.5) * 1,
+			VY:   -1 - rng.Float64()*2,
+			Life: 1.5,
+			MaxLife: 1.5,
+			Color: color.RGBA{255, 200, 50, 100},
+			Size:  10 + rng.Float64()*15,
+		}
+		es.Particles = append(es.Particles, p)
+	}
+}
+
+// SpawnIceBreakEffect создаёт эффект разбивания ледяного камня
+func (es *EffectSystem) SpawnIceBreakEffect(x, y int) {
+	// Осколки льда
+	for i := 0; i < 15; i++ {
+		angle := rng.Float64() * math.Pi * 2
+		speed := 2 + rng.Float64()*4
+
+		p := &Particle{
+			X:    float64(x),
+			Y:    float64(y),
+			VX:   math.Cos(angle) * speed,
+			VY:   math.Sin(angle) * speed,
+			Life: 1.0,
+			MaxLife: 1.0,
+			Color: color.RGBA{200, 230, 255, 200},
+			Size:  3 + rng.Float64()*5,
+		}
+		es.Particles = append(es.Particles, p)
+	}
+
+	// Блеск
+	for i := 0; i < 8; i++ {
+		p := &Particle{
+			X:    float64(x) + (rng.Float64()-0.5)*40,
+			Y:    float64(y) + (rng.Float64()-0.5)*40,
+			VX:   (rng.Float64() - 0.5) * 2,
+			VY:   -1 - rng.Float64()*2,
+			Life: 0.6,
+			MaxLife: 0.6,
+			Color: color.RGBA{255, 255, 255, 255},
+			Size:  2,
+		}
+		es.Particles = append(es.Particles, p)
+	}
+}
+
+// SpawnShockwaveEffect создаёт эффект ударной волны при взрыве бомбы
+func (es *EffectSystem) SpawnShockwaveEffect(x, y int) {
+	// Кольцо ударной волны (множество частиц, расширяющихся по кругу)
+	for i := 0; i < 60; i++ {
+		angle := float64(i) * math.Pi * 2 / 60
+		speed := 5 + rng.Float64()*2
+
+		p := &Particle{
+			X:    float64(x),
+			Y:    float64(y),
+			VX:   math.Cos(angle) * speed,
+			VY:   math.Sin(angle) * speed,
+			Life: 1.0,
+			MaxLife: 1.0,
+			Color: color.RGBA{255, 200, 50, 255},
+			Size:  6,
+		}
+		es.Particles = append(es.Particles, p)
+	}
+
+	// Внутренние частицы для объема
+	for i := 0; i < 30; i++ {
+		angle := rng.Float64() * math.Pi * 2
+		speed := 3 + rng.Float64()*3
+
+		p := &Particle{
+			X:    float64(x),
+			Y:    float64(y),
+			VX:   math.Cos(angle) * speed,
+			VY:   math.Sin(angle) * speed,
+			Life: 0.8,
+			MaxLife: 0.8,
+			Color: color.RGBA{255, 100, 0, 200},
+			Size:  4,
+		}
+		es.Particles = append(es.Particles, p)
 	}
 }
 

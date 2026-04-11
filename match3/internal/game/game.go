@@ -409,24 +409,31 @@ func (g *Game) handleTileClick(tile *logic.Tile) {
 // activateFireGem активирует огненный камень и уничтожает весь ряд
 func (g *Game) activateFireGem(tile *logic.Tile) {
 	fmt.Printf("🔥 ОГНЕННЫЙ КАМЕНЬ! Уничтожен ряд %d!\n", tile.Row)
-	
+
 	// Звук
 	g.soundManager.Play(SoundMatch)
-	
+
 	// Уничтожаем весь ряд
 	for c := 0; c < g.board.Cols; c++ {
 		t := g.board.Tiles[tile.Row][c]
 		if t.Gem != logic.GemType(-1) {
 			t.Gem = logic.GemType(-1)
 			t.Removing = true
-			
-			// Эффект огня
+
+			// Эффект огня для каждого камня
 			x := g.board.OffsetX + c*g.board.TileSize
 			y := g.board.OffsetY + tile.Row*g.board.TileSize
 			g.effectSystem.SpawnMatchEffect(x, y, color.RGBA{255, 100, 0, 255}, 2)
 		}
 	}
-	
+
+	// Добавляем специальный эффект огненного камня
+	g.effectSystem.SpawnFireGemEffect(
+		g.board.OffsetX,
+		g.board.OffsetY+tile.Row*g.board.TileSize,
+		g.board.Cols,
+	)
+
 	// Начисляем очки
 	fireScore := g.board.Cols * 20
 	g.score += fireScore
@@ -435,12 +442,12 @@ func (g *Game) activateFireGem(tile *logic.Tile) {
 		g.board.OffsetY+tile.Row*g.board.TileSize,
 		fireScore,
 	)
-	
+
 	fmt.Printf("+%d очков за огненный камень!\n", fireScore)
-	
+
 	// Применяем гравитацию
 	g.board.ApplyGravity()
-	
+
 	// Сбрасываем выбор
 	if g.selectedTile != nil {
 		g.selectedTile.Selected = false
@@ -451,7 +458,7 @@ func (g *Game) activateFireGem(tile *logic.Tile) {
 // explodeBomb взрывает бомбу и удаляет все камни в радиусе 3x3
 func (g *Game) explodeBomb(bomb *logic.Tile) {
 	fmt.Printf("💥 БУМ! Бомба взорвалась на (%d, %d)!\n", bomb.Row, bomb.Col)
-	
+
 	// Звук взрыва
 	g.soundManager.Play(SoundMatch) // Можно добавить специальный звук
 
@@ -465,7 +472,7 @@ func (g *Game) explodeBomb(bomb *logic.Tile) {
 					tile.Gem = logic.GemType(-1)
 					tile.Removing = true
 
-					// Эффект взрыва
+					// Эффект взрыва для каждого камня
 					x := g.board.OffsetX + c*g.board.TileSize
 					y := g.board.OffsetY + r*g.board.TileSize
 					g.effectSystem.SpawnMatchEffect(x, y, color.RGBA{255, 100, 0, 255}, 3)
@@ -473,7 +480,12 @@ func (g *Game) explodeBomb(bomb *logic.Tile) {
 			}
 		}
 	}
-	
+
+	// Добавляем эффект ударной волны (shockwave)
+	bombX := g.board.OffsetX + bomb.Col*g.board.TileSize + g.board.TileSize/2
+	bombY := g.board.OffsetY + bomb.Row*g.board.TileSize + g.board.TileSize/2
+	g.effectSystem.SpawnShockwaveEffect(bombX, bombY)
+
 	// Начисляем очки за взрыв
 	bombScore := 50
 	g.score += bombScore
@@ -482,12 +494,12 @@ func (g *Game) explodeBomb(bomb *logic.Tile) {
 		g.board.OffsetY+bomb.Row*g.board.TileSize,
 		bombScore,
 	)
-	
+
 	fmt.Printf("+%d очков за взрыв!\n", bombScore)
-	
+
 	// Применяем гравитацию после взрыва
 	g.board.ApplyGravity()
-	
+
 	// Сбрасываем выбор
 	if g.selectedTile != nil {
 		g.selectedTile.Selected = false
