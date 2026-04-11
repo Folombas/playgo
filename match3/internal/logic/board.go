@@ -368,6 +368,9 @@ func (b *Board) RemoveMatches() (score int, bombCreated *Tile) {
 		// createBomb уже пометил камни для удаления
 		b.ApplyGravity()
 		return score, bombCreated
+	} else if len(matches) == 3 {
+		// Обычный матч 3
+		score = 30
 	}
 
 	// Удаление камней (обычный матч 3)
