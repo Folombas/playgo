@@ -43,6 +43,7 @@ type Tile struct {
 	IsBomb    bool    // Является ли этот камень бомбой
 	IsFire    bool    // Огненный камень - уничтожает весь ряд
 	IsIce     bool    // Ледяной камень - требует двойного клика
+	ClickCount int    // Счётчик кликов (для ледяных камней)
 }
 
 // Board представляет игровое поле
@@ -123,12 +124,19 @@ func NewBoard(rows, cols int) *Board {
 
 // createRandomTile создаёт случайный камень
 func (b *Board) createRandomTile(row, col int) *Tile {
-	return &Tile{
+	tile := &Tile{
 		Gem:     GemType(rng.Intn(int(GemCount))),
 		Row:     row,
 		Col:     col,
 		OffsetY: 0,
 	}
+	
+	// 5% шанс создать ледяной камень (начиная с уровня 3)
+	if rng.Float64() < 0.05 {
+		tile.IsIce = true
+	}
+	
+	return tile
 }
 
 // RemoveInitialMatches убирает начальные совпадения при генерации
@@ -292,10 +300,15 @@ func (b *Board) Draw(screen *ebiten.Image) {
 						}
 
 						screen.DrawImage(sprite, op)
-						
+
 						// Если это бомба, рисуем индикатор
 						if tile.IsBomb {
 							b.drawBombIndicator(screen, x, y, b.TileSize)
+						}
+						
+						// Если это ледяной камень, рисуем ледяной overlay
+						if tile.IsIce {
+							b.drawIceOverlay(screen, x, y, b.TileSize, tile.ClickCount)
 						}
 					} else {
 						// Fallback на цвета
@@ -322,12 +335,37 @@ func (b *Board) drawBombIndicator(screen *ebiten.Image, x, y, tileSize int) {
 	bombSize := 12
 	bombX := x + tileSize - bombSize - 2
 	bombY := y + 2
-	
+
 	bomb := b.ImageCache.GetBombIndicator(bombSize)
-	
+
 	op := &ebiten.DrawImageOptions{}
 	op.GeoM.Translate(float64(bombX), float64(bombY))
 	screen.DrawImage(bomb, op)
+}
+
+// drawIceOverlay рисует ледяной overlay на камне
+func (b *Board) drawIceOverlay(screen *ebiten.Image, x, y, tileSize int, clickCount int) {
+	// Создаем полупрозрачный белый/голубой overlay
+	iceImg := ebiten.NewImage(tileSize-4, tileSize-4)
+	
+	// Более непрозрачный после первого клика (показывает прогресс)
+	alpha := uint8(120)
+	if clickCount > 0 {
+		alpha = 180 // Более заметный после первого клика
+	}
+	
+	iceColor := color.RGBA{200, 230, 255, alpha}
+	iceImg.Fill(iceColor)
+
+	op := &ebiten.DrawImageOptions{}
+	op.GeoM.Translate(float64(x+2), float64(y+2))
+	screen.DrawImage(iceImg, op)
+	
+	// Добавляем эффект "трещин" после первого клика
+	if clickCount > 0 {
+		// Можно добавить линии трещин в будущем
+		// Пока просто более яркий overlay
+	}
 }
 
 // GetTileAt возвращает камень по экранным координатам

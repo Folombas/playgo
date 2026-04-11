@@ -377,21 +377,49 @@ func (g *Game) handleInput() {
 func (g *Game) handleTileClick(tile *logic.Tile) {
 	// Сбрасываем подсказку при любом взаимодействии
 	g.hintSystem.HideHint()
-	
+
 	// Проверяем, является ли камень бомбой
 	if tile.IsBomb {
 		// Взрываем бомбу!
 		g.explodeBomb(tile)
 		return
 	}
-	
+
 	// Проверяем, является ли камень огненным
 	if tile.IsFire {
 		// Активируем огненный камень!
 		g.activateFireGem(tile)
 		return
 	}
-	
+
+	// Проверяем, является ли камень ледяным
+	if tile.IsIce {
+		// Ледяной камень требует двойного клика
+		if tile.ClickCount == 0 {
+			// Первый клик - помечаем
+			tile.ClickCount = 1
+			fmt.Printf("❄️ Ледяной камень - нужен ещё один клик!\n")
+			g.soundManager.Play(SoundSwap) // Звук первого клика
+			return
+		} else {
+			// Второй клик - разбиваем лёд
+			fmt.Printf("💔 Ледяной камень разбит!\n")
+			tile.IsIce = false
+			tile.ClickCount = 0
+			
+			// Эффект разбивания льда
+			x := g.board.OffsetX + tile.Col*g.board.TileSize
+			y := g.board.OffsetY + tile.Row*g.board.TileSize
+			g.effectSystem.SpawnIceBreakEffect(
+				x+g.board.TileSize/2,
+				y+g.board.TileSize/2,
+			)
+			
+			g.soundManager.Play(SoundMatch) // Звук разбивания
+			return
+		}
+	}
+
 	if g.selectedTile == nil {
 		// Первый клик - выбор камня
 		g.selectedTile = tile
