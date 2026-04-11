@@ -256,7 +256,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	case StateSettings:
 		g.uiManager.DrawSettings(screen, g.soundManager)
 	case StateGameOver:
-		g.uiManager.DrawGameOver(screen, g.score)
+		g.uiManager.DrawGameOver(screen, g.score, g.moves, g.levelManager.GetCurrentLevelNumber(), g.comboCounter)
 	case StateLevelComplete:
 		g.uiManager.DrawLevelComplete(screen, g.levelManager.GetCurrentLevelNumber())
 	}
