@@ -59,6 +59,7 @@ type Game struct {
 	hintSystem      *logic.HintSystem
 	achievementSys  *AchievementSystem
 	leaderboard     *Leaderboard
+	bgEffect        *logic.BackgroundEffect
 	bombsCreated    int
 }
 
@@ -118,6 +119,7 @@ func NewGame(config ...GameConfig) *Game {
 	g.hintSystem = logic.NewHintSystem()
 	g.achievementSys = NewAchievementSystem()
 	g.leaderboard = NewLeaderboard()
+	g.bgEffect = logic.NewBackgroundEffect(640, 960)
 	g.bombsCreated = 0
 
 	return g
@@ -132,6 +134,7 @@ func (g *Game) Update() error {
 	case StateMenu:
 		// Обновление анимации меню
 		g.uiManager.UpdateMenuAnim(1.0 / 60.0)
+		g.bgEffect.Update(1.0 / 60.0)
 		
 		// Обновление меню
 		if ebiten.IsKeyPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
@@ -312,6 +315,8 @@ func (g *Game) Draw(screen *ebiten.Image) {
 
 	switch g.state {
 	case StateMenu:
+		// Отрисовка фона
+		g.bgEffect.Draw(screen)
 		g.uiManager.DrawMenu(screen)
 	case StatePlaying:
 		g.drawGame(screen)
