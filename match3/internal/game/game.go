@@ -63,6 +63,7 @@ type Game struct {
 	bombsCreated    int
 	fireGemsDestroyed int
 	iceBroken      int
+	powerUpSys     *PowerUpSystem
 }
 
 // GameConfig содержит зависимости для создания игры
@@ -123,6 +124,9 @@ func NewGame(config ...GameConfig) *Game {
 	g.leaderboard = NewLeaderboard()
 	g.bgEffect = logic.NewBackgroundEffect(640, 960)
 	g.bombsCreated = 0
+	g.fireGemsDestroyed = 0
+	g.iceBroken = 0
+	g.powerUpSys = NewPowerUpSystem()
 
 	return g
 }
@@ -584,6 +588,12 @@ func (g *Game) executeSwap(from, to *logic.Tile) {
 				score *= g.comboCounter
 				g.effectSystem.SpawnComboEffect(from.Col*60+40, from.Row*60+150, g.comboCounter)
 				g.soundManager.Play(SoundCombo)
+				
+				// Награждаем бонусами за высокие комбо
+				awarded := g.powerUpSys.AwardPowerUpsForCombo(g.comboCounter)
+				for range awarded {
+					fmt.Printf("🎁 Получлен бонус за комбо x%d!\n", g.comboCounter)
+				}
 			}
 			
 			// Эффект для бомбы
