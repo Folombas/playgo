@@ -45,7 +45,7 @@ func (m *Manager) DrawMenu(screen *ebiten.Image) {
 }
 
 // DrawHUD отрисовывает интерфейс во время игры
-func (m *Manager) DrawHUD(screen *ebiten.Image, score int, moves int, timeLeft int) {
+func (m *Manager) DrawHUD(screen *ebiten.Image, score int, moves int, timeLeft int, targetScore int) {
 	// Фон HUD
 	hudBg := ebiten.NewImage(640, 80)
 	hudBg.Fill(color.RGBA{40, 40, 60, 255})
@@ -56,6 +56,51 @@ func (m *Manager) DrawHUD(screen *ebiten.Image, score int, moves int, timeLeft i
 	// Счёт
 	scoreText := fmt.Sprintf("Счёт: %d", score)
 	text.Draw(screen, scoreText, basicfont.Face7x13, 20, 30, ColorScore)
+	
+	// Прогресс-бар к целевому счёту
+	if targetScore > 0 {
+		progress := float64(score) / float64(targetScore)
+		if progress > 1.0 {
+			progress = 1.0
+		}
+		
+		barWidth := 200
+		barHeight := 12
+		barX := 150
+		barY := 25
+		
+		// Фон прогресс-бара
+		bgBar := ebiten.NewImage(barWidth, barHeight)
+		bgBar.Fill(color.RGBA{60, 60, 80, 255})
+		bgOp := &ebiten.DrawImageOptions{}
+		bgOp.GeoM.Translate(float64(barX), float64(barY))
+		screen.DrawImage(bgBar, bgOp)
+		
+		// Заполнение прогресса
+		if progress > 0 {
+			fillWidth := int(float64(barWidth) * progress)
+			fillBar := ebiten.NewImage(fillWidth, barHeight)
+			
+			// Цвет зависит от прогресса
+			var fillColor color.Color
+			if progress < 0.33 {
+				fillColor = color.RGBA{255, 100, 100, 255} // Красный
+			} else if progress < 0.66 {
+				fillColor = color.RGBA{255, 255, 100, 255} // Жёлтый
+			} else {
+				fillColor = color.RGBA{100, 255, 100, 255} // Зелёный
+			}
+			
+			fillBar.Fill(fillColor)
+			fillOp := &ebiten.DrawImageOptions{}
+			fillOp.GeoM.Translate(float64(barX), float64(barY))
+			screen.DrawImage(fillBar, fillOp)
+		}
+		
+		// Текст процента
+		percentText := fmt.Sprintf("%d%%", int(progress*100))
+		text.Draw(screen, percentText, basicfont.Face7x13, barX+barWidth+10, barY+10, ColorHUD)
+	}
 
 	// Ходы
 	movesText := fmt.Sprintf("Ходы: %d", moves)

@@ -228,9 +228,13 @@ func (g *Game) drawGame(screen *ebiten.Image) {
 	
 	// Рассчитываем оставшееся время
 	timeLeft := g.getTimeLeft()
+	
+	// Получаем целевой счёт уровня
+	level := g.levelManager.GetCurrentLevel()
+	targetScore := level.TargetScore
 
-	// Отрисовка UI (счёт, ходы, таймер)
-	g.uiManager.DrawHUD(screen, g.score, g.moves, timeLeft)
+	// Отрисовка UI (счёт, ходы, таймер, прогресс)
+	g.uiManager.DrawHUD(screen, g.score, g.moves, timeLeft, targetScore)
 }
 
 // Draw отрисовывает текущий кадр
