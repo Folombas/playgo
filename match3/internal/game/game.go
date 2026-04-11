@@ -579,12 +579,30 @@ func abs(x int) int {
 
 // nextLevel переходит к следующему уровню
 func (g *Game) nextLevel() {
+	// Переходим к следующему уровню через levelManager
+	g.levelManager.NextLevel()
+	
 	g.state = StatePlaying
-	g.board = logic.NewBoard(8, 8)
+	level := g.levelManager.GetCurrentLevel()
+	
+	// Создаем доску с параметрами из уровня
+	g.board = logic.NewBoard(level.BoardRows, level.BoardCols)
+	
+	// Устанавливаем спрайты для нового уровня
+	if g.spriteManager.IsLoaded() {
+		sprites := make(map[int]*ebiten.Image)
+		for i := 0; i < level.GemTypes; i++ {
+			sprites[i] = g.spriteManager.GetGemSprite(i)
+		}
+		g.board.SetGemSprites(sprites)
+	}
+	
 	g.score = 0
 	g.moves = 0
 	g.comboCounter = 0
-	fmt.Println("Следующий уровень!")
+	g.levelStartTime = time.Now()
+	
+	fmt.Printf("Следующий уровень! Уровень %d\n", level.Number)
 }
 
 // getTimeLeft возвращает оставшееся время уровня в секундах
