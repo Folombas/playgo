@@ -115,10 +115,23 @@ func (g *Game) Update() error {
 		
 		// Обновление системы подсказок
 		g.hintSystem.Update(g.board)
+		
+		// Проверка на победу (достигнут ли целевой счёт)
+		if g.levelManager.IsLevelComplete(g.score) {
+			g.state = StateLevelComplete
+			g.soundManager.Play(SoundGameOver)
+		}
+		
+		// Проверка на проигрыш по времени
+		if g.getTimeLeft() == 0 && g.levelManager.GetCurrentLevel().TimeLimit > 0 {
+			g.state = StateGameOver
+			g.soundManager.Play(SoundGameOver)
+		}
 
 		// Проверка на доступные ходы
 		if !g.board.HasValidMoves() {
 			g.state = StateGameOver
+			g.soundManager.Play(SoundGameOver)
 		}
 
 		// Пауза
