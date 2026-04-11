@@ -188,9 +188,12 @@ func (g *Game) drawGame(screen *ebiten.Image) {
 	
 	// Отрисовка подсказок
 	g.hintSystem.Draw(screen, g.board.OffsetX, g.board.OffsetY, g.board.TileSize)
+	
+	// Рассчитываем оставшееся время
+	timeLeft := g.getTimeLeft()
 
-	// Отрисовка UI (счёт, ходы)
-	g.uiManager.DrawHUD(screen, g.score, g.moves)
+	// Отрисовка UI (счёт, ходы, таймер)
+	g.uiManager.DrawHUD(screen, g.score, g.moves, timeLeft)
 }
 
 // Draw отрисовывает текущий кадр
@@ -416,6 +419,23 @@ func (g *Game) nextLevel() {
 	g.moves = 0
 	g.comboCounter = 0
 	fmt.Println("Следующий уровень!")
+}
+
+// getTimeLeft возвращает оставшееся время уровня в секундах
+func (g *Game) getTimeLeft() int {
+	level := g.levelManager.GetCurrentLevel()
+	if level.TimeLimit == 0 {
+		return 0 // Без лимита времени
+	}
+	
+	elapsed := int(time.Since(g.levelStartTime).Seconds())
+	remaining := level.TimeLimit - elapsed
+	
+	if remaining < 0 {
+		return 0
+	}
+	
+	return remaining
 }
 
 // toggleMute переключает режим mute

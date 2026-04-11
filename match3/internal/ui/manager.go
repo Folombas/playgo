@@ -45,7 +45,7 @@ func (m *Manager) DrawMenu(screen *ebiten.Image) {
 }
 
 // DrawHUD отрисовывает интерфейс во время игры
-func (m *Manager) DrawHUD(screen *ebiten.Image, score int, moves int) {
+func (m *Manager) DrawHUD(screen *ebiten.Image, score int, moves int, timeLeft int) {
 	// Фон HUD
 	hudBg := ebiten.NewImage(640, 80)
 	hudBg.Fill(color.RGBA{40, 40, 60, 255})
@@ -60,6 +60,23 @@ func (m *Manager) DrawHUD(screen *ebiten.Image, score int, moves int) {
 	// Ходы
 	movesText := fmt.Sprintf("Ходы: %d", moves)
 	text.Draw(screen, movesText, basicfont.Face7x13, 20, 50, ColorHUD)
+	
+	// Таймер (если есть лимит времени)
+	if timeLeft > 0 {
+		timerColor := ColorHUD
+		// Мигание при < 10 секунд
+		if timeLeft < 10 {
+			// Простая пульсация через остаток от деления
+			if timeLeft%2 == 0 {
+				timerColor = color.RGBA{255, 50, 50, 255} // Красный
+			}
+		}
+		
+		minutes := timeLeft / 60
+		seconds := timeLeft % 60
+		timerText := fmt.Sprintf("⏱ %d:%02d", minutes, seconds)
+		text.Draw(screen, timerText, basicfont.Face7x13, 280, 30, timerColor)
+	}
 
 	// Подсказка
 	hint := "Клик - выбор, Shift+Клик - обмен"
