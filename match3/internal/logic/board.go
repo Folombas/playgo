@@ -28,6 +28,7 @@ const (
 	GemPurple
 	GemOrange
 	GemCount
+	GemBomb GemType = -1 // Специальная бомба (при матче 4+)
 )
 
 // Tile представляет одну ячейку на доске
@@ -39,6 +40,7 @@ type Tile struct {
 	Removing bool
 	Falling  bool
 	OffsetY  float64
+	IsBomb   bool // Является ли этот камень бомбой
 }
 
 // Board представляет игровое поле
@@ -202,7 +204,7 @@ func (b *Board) Draw(screen *ebiten.Image) {
 			// Отрисовка фона ячейки
 			rect := ebiten.NewImage(b.TileSize, b.TileSize)
 			rect.Fill(color.RGBA{200, 200, 200, 255})
-			
+
 			op := &ebiten.DrawImageOptions{}
 			op.GeoM.Translate(float64(x), float64(y))
 			screen.DrawImage(rect, op)
@@ -214,11 +216,11 @@ func (b *Board) Draw(screen *ebiten.Image) {
 					if sprite, ok := b.GemSprites[int(tile.Gem)]; ok && sprite != nil {
 						op := &ebiten.DrawImageOptions{}
 						op.GeoM.Translate(float64(x+2), float64(y+2))
-						
+
 						// Масштабирование до размера ячейки
 						scale := float64(b.TileSize-4) / 32.0
 						op.GeoM.Scale(scale, scale)
-						
+
 						// Выделение выбранного камня
 						if tile.Selected {
 							// Рисуем белую рамку
@@ -228,19 +230,48 @@ func (b *Board) Draw(screen *ebiten.Image) {
 							hlOp.GeoM.Translate(float64(x), float64(y))
 							screen.DrawImage(highlight, hlOp)
 						}
-						
+
 						screen.DrawImage(sprite, op)
+						
+						// Если это бомба, рисуем индикатор
+						if tile.IsBomb {
+							b.drawBombIndicator(screen, x, y, b.TileSize)
+						}
 					} else {
 						// Fallback на цвета
 						b.drawGemFallback(screen, x, y, tile.Gem, tile.Selected)
+						if tile.IsBomb {
+							b.drawBombIndicator(screen, x, y, b.TileSize)
+						}
 					}
 				} else {
 					// Fallback на цвета
 					b.drawGemFallback(screen, x, y, tile.Gem, tile.Selected)
+					if tile.IsBomb {
+						b.drawBombIndicator(screen, x, y, b.TileSize)
+					}
 				}
 			}
 		}
 	}
+}
+
+// drawBombIndicator рисует маленький значок бомбы в углу камня
+func (b *Board) drawBombIndicator(screen *ebiten.Image, x, y, tileSize int) {
+	// Маленький кружок в правом верхнем углу
+	bombSize := 12
+	bombX := x + tileSize - bombSize - 2
+	bombY := y + 2
+	
+	bomb := ebiten.NewImage(bombSize, bombSize)
+	bomb.Fill(color.RGBA{255, 50, 50, 255}) // Красный индикатор
+	
+	op := &ebiten.DrawImageOptions{}
+	op.GeoM.Translate(float64(bombX), float64(bombY))
+	screen.DrawImage(bomb, op)
+	
+	// Текст "B"
+	// Можно добавить позже
 }
 
 // GetTileAt возвращает камень по экранным координатам
@@ -272,19 +303,26 @@ func (b *Board) SwapTiles(t1, t2 *Tile) bool {
 }
 
 // RemoveMatches удаляет найденные совпадения и возвращает очки
-func (b *Board) RemoveMatches() int {
+// При матче 4+ создаёт специальную бомбу
+func (b *Board) RemoveMatches() (score int, bombCreated *Tile) {
 	matches := b.FindAllMatches()
 	if len(matches) == 0 {
-		return 0
+		return 0, nil
 	}
 
 	// Бонус за большее количество
-	score := len(matches) * 10
-	if len(matches) > 3 {
+	score = len(matches) * 10
+	if len(matches) >= 4 {
 		score *= 2
+		
+		// Создаём бомбу на месте центрального камня матча
+		bombCreated = b.createBomb(matches)
+		// createBomb уже пометил камни для удаления
+		b.ApplyGravity()
+		return score, bombCreated
 	}
 
-	// Удаление камней
+	// Удаление камней (обычный матч 3)
 	for _, t := range matches {
 		t.Gem = GemType(-1) // Пустая ячейка
 		t.Removing = true
@@ -293,7 +331,31 @@ func (b *Board) RemoveMatches() int {
 	// Падение камней сверху
 	b.ApplyGravity()
 
-	return score
+	return score, nil
+}
+
+// createBomb создаёт бомбу на месте центрального камня из матча
+func (b *Board) createBomb(matches []*Tile) *Tile {
+	// Выбираем центральный камень
+	centerIdx := len(matches) / 2
+	bombTile := matches[centerIdx]
+	
+	// Превращаем в бомбу
+	bombTile.Gem = GemType(rng.Intn(int(GemCount))) // Обычный камень для отображения
+	bombTile.IsBomb = true
+	bombTile.Removing = false // Не удалять!
+	
+	// Помечаем все остальные камни матча для удаления
+	for _, t := range matches {
+		if t != bombTile {
+			t.Gem = GemType(-1)
+			t.Removing = true
+		}
+	}
+	
+	fmt.Printf("💣 Бомба создана на (%d, %d)!\n", bombTile.Row, bombTile.Col)
+	
+	return bombTile
 }
 
 // ApplyGravity применяет гравитацию к камням

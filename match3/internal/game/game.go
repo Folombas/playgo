@@ -2,6 +2,7 @@ package game
 
 import (
 	"fmt"
+	"image/color"
 	"match3/internal/logic"
 	"match3/internal/ui"
 	"time"
@@ -258,6 +259,13 @@ func (g *Game) handleTileClick(tile *logic.Tile) {
 	// Сбрасываем подсказку при любом взаимодействии
 	g.hintSystem.HideHint()
 	
+	// Проверяем, является ли камень бомбой
+	if tile.IsBomb {
+		// Взрываем бомбу!
+		g.explodeBomb(tile)
+		return
+	}
+	
 	if g.selectedTile == nil {
 		// Первый клик - выбор камня
 		g.selectedTile = tile
@@ -270,6 +278,53 @@ func (g *Game) handleTileClick(tile *logic.Tile) {
 		// Клик по другому камню - попытка обмена
 		g.executeSwap(g.selectedTile, tile)
 	}
+}
+
+// explodeBomb взрывает бомбу и удаляет все камни в радиусе 3x3
+func (g *Game) explodeBomb(bomb *logic.Tile) {
+	fmt.Printf("💥 БУМ! Бомба взорвалась на (%d, %d)!\n", bomb.Row, bomb.Col)
+	
+	// Звук взрыва
+	g.soundManager.Play(SoundMatch) // Можно добавить специальный звук
+	
+	// Удаляем камни 3x3
+	radius := 1
+	for r := bomb.Row - radius; r <= bomb.Row+radius; r++ {
+		for c := bomb.Col - radius; c <= bomb.Col+radius; c++ {
+			if r >= 0 && r < g.board.Rows && c >= 0 && c < g.board.Cols {
+				tile := g.board.Tiles[r][c]
+				if tile.Gem != GemType(-1) {
+					tile.Gem = GemType(-1)
+					tile.Removing = true
+					
+					// Эффект взрыва
+					x := g.board.OffsetX + c*g.board.TileSize
+					y := g.board.OffsetY + r*g.board.TileSize
+					g.effectSystem.SpawnMatchEffect(x, y, color.RGBA{255, 100, 0, 255}, 3)
+				}
+			}
+		}
+	}
+	
+	// Начисляем очки за взрыв
+	bombScore := 50
+	g.score += bombScore
+	g.scorePopups.AddScorePopup(
+		g.board.OffsetX+bomb.Col*g.board.TileSize,
+		g.board.OffsetY+bomb.Row*g.board.TileSize,
+		bombScore,
+	)
+	
+	fmt.Printf("+%d очков за взрыв!\n", bombScore)
+	
+	// Применяем гравитацию после взрыва
+	g.board.ApplyGravity()
+	
+	// Сбрасываем выбор
+	if g.selectedTile != nil {
+		g.selectedTile.Selected = false
+	}
+	g.selectedTile = nil
 }
 
 // executeSwap выполняет обмен между двумя камнями
@@ -304,14 +359,14 @@ func (g *Game) executeSwap(from, to *logic.Tile) {
 		matches := g.board.FindAllMatches()
 		if len(matches) > 0 {
 			// Есть матчи - удаляем и начисляем очки
-			score := g.board.RemoveMatches()
-			
+			score, bombCreated := g.board.RemoveMatches()
+
 			// Звук матча
 			g.soundManager.Play(SoundMatch)
-			
+
 			// Комбо система
 			g.comboCounter++
-			
+
 			// Бонус за комбо
 			if g.comboCounter > 1 {
 				score *= g.comboCounter
@@ -319,6 +374,12 @@ func (g *Game) executeSwap(from, to *logic.Tile) {
 				g.soundManager.Play(SoundCombo)
 			}
 			
+			// Эффект для бомбы
+			if bombCreated != nil {
+				fmt.Println("💣 Бомба создана!")
+				// Можно добавить специальный эффект для бомбы
+			}
+
 			// Эффекты для каждого матча
 			for _, m := range matches {
 				x := g.board.OffsetX + m.Col*g.board.TileSize
@@ -326,7 +387,7 @@ func (g *Game) executeSwap(from, to *logic.Tile) {
 				g.effectSystem.SpawnMatchEffect(x, y, logic.GemColors[m.Gem], 1)
 				g.scorePopups.AddScorePopup(x, y, score/len(matches))
 			}
-			
+
 			g.score += score
 			fmt.Printf("Матч! +%d очков (комбо x%d, всего: %d)\n", score, g.comboCounter, g.score)
 		} else {
