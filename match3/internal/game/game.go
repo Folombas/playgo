@@ -44,6 +44,7 @@ type Game struct {
 	saveManager     SaveStorage
 	levelManager    *logic.LevelManager
 	levelStartTime  time.Time
+	hintSystem      *logic.HintSystem
 }
 
 // GameConfig содержит зависимости для создания игры
@@ -86,6 +87,7 @@ func NewGame(config ...GameConfig) *Game {
 	}
 
 	g.levelManager = logic.NewLevelManager()
+	g.hintSystem = logic.NewHintSystem()
 
 	return g
 }
@@ -105,16 +107,19 @@ func (g *Game) Update() error {
 		g.handleInput()
 		// Обновление игровой логики
 		g.board.Update()
-		
+
 		// Обновление эффектов
 		g.effectSystem.Update()
 		g.scorePopups.Update()
 		
+		// Обновление системы подсказок
+		g.hintSystem.Update(g.board)
+
 		// Проверка на доступные ходы
 		if !g.board.HasValidMoves() {
 			g.state = StateGameOver
 		}
-		
+
 		// Пауза
 		if inpututil.IsKeyJustPressed(ebiten.KeyEscape) || inpututil.IsKeyJustPressed(ebiten.KeyP) {
 			g.state = StatePaused
@@ -180,6 +185,9 @@ func (g *Game) drawGame(screen *ebiten.Image) {
 	// Отрисовка доски
 	g.board.Draw(screen)
 	
+	// Отрисовка подсказок
+	g.hintSystem.Draw(screen, g.board.OffsetX, g.board.OffsetY, g.board.TileSize)
+
 	// Отрисовка UI (счёт, ходы)
 	g.uiManager.DrawHUD(screen, g.score, g.moves)
 }
@@ -247,6 +255,9 @@ func (g *Game) handleInput() {
 
 // handleTileClick обрабатывает клик по камню
 func (g *Game) handleTileClick(tile *logic.Tile) {
+	// Сбрасываем подсказку при любом взаимодействии
+	g.hintSystem.HideHint()
+	
 	if g.selectedTile == nil {
 		// Первый клик - выбор камня
 		g.selectedTile = tile

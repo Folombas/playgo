@@ -324,6 +324,12 @@ func (b *Board) ApplyGravity() {
 
 // HasValidModes проверяет, есть ли допустимые ходы
 func (b *Board) HasValidMoves() bool {
+	return b.FindHint() != nil
+}
+
+// FindHint находит один возможный ход и возвращает два камня для обмена
+// Возвращает nil, если ходов нет
+func (b *Board) FindHint() (tile1, tile2 *Tile) {
 	// Проверка всех возможных обменов
 	for r := 0; r < b.Rows; r++ {
 		for c := 0; c < b.Cols; c++ {
@@ -332,23 +338,23 @@ func (b *Board) HasValidMoves() bool {
 				b.Tiles[r][c].Gem, b.Tiles[r][c+1].Gem = b.Tiles[r][c+1].Gem, b.Tiles[r][c].Gem
 				if len(b.FindAllMatches()) > 0 {
 					b.Tiles[r][c].Gem, b.Tiles[r][c+1].Gem = b.Tiles[r][c+1].Gem, b.Tiles[r][c].Gem
-					return true
+					return b.Tiles[r][c], b.Tiles[r][c+1]
 				}
 				b.Tiles[r][c].Gem, b.Tiles[r][c+1].Gem = b.Tiles[r][c+1].Gem, b.Tiles[r][c].Gem
 			}
-			
+
 			// Проверка обмена вниз
 			if r < b.Rows-1 {
 				b.Tiles[r][c].Gem, b.Tiles[r+1][c].Gem = b.Tiles[r+1][c].Gem, b.Tiles[r][c].Gem
 				if len(b.FindAllMatches()) > 0 {
 					b.Tiles[r][c].Gem, b.Tiles[r+1][c].Gem = b.Tiles[r+1][c].Gem, b.Tiles[r][c].Gem
-					return true
+					return b.Tiles[r][c], b.Tiles[r+1][c]
 				}
 				b.Tiles[r][c].Gem, b.Tiles[r+1][c].Gem = b.Tiles[r+1][c].Gem, b.Tiles[r][c].Gem
 			}
 		}
 	}
-	return false
+	return nil, nil
 }
 
 // abs возвращает абсолютное значение
