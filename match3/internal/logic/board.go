@@ -219,19 +219,28 @@ func (b *Board) Update() {
 		b.SwapAnim.Update(1.0 / 60.0) // Предполагаем 60 FPS
 	}
 	
-	// Анимация падения
+	// Анимация падения с ускорением
 	for r := 0; r < b.Rows; r++ {
 		for c := 0; c < b.Cols; c++ {
 			tile := b.Tiles[r][c]
 			if tile.Falling && tile.OffsetY > 0 {
-				tile.OffsetY -= 5
+				// Ускорение падения (гравитация)
+				tile.OffsetY -= 8 + tile.OffsetY*0.05
 				if tile.OffsetY <= 0 {
 					tile.OffsetY = 0
 					tile.Falling = false
+					// Эффект приземления
+					b.SpawnLandEffect(r, c)
 				}
 			}
 		}
 	}
+}
+
+// SpawnLandEffect создаёт эффект приземления камня
+func (b *Board) SpawnLandEffect(row, col int) {
+	// Можно добавить мелкие эффекты приземления
+	// Пока оставим пустым для будущей реализации
 }
 
 // Draw отрисовывает доску
