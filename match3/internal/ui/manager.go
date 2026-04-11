@@ -83,7 +83,7 @@ func (m *Manager) DrawMenu(screen *ebiten.Image) {
 }
 
 // DrawHUD отрисовывает интерфейс во время игры
-func (m *Manager) DrawHUD(screen *ebiten.Image, score int, moves int, timeLeft int, targetScore int) {
+func (m *Manager) DrawHUD(screen *ebiten.Image, score int, moves int, timeLeft int, targetScore int, showHint bool) {
 	// Фон HUD
 	hudBg := ebiten.NewImage(640, 80)
 	hudBg.Fill(color.RGBA{40, 40, 60, 255})
@@ -168,6 +168,15 @@ func (m *Manager) DrawHUD(screen *ebiten.Image, score int, moves int, timeLeft i
 	// Кнопка выхода
 	exitText := "ESC - меню"
 	text.Draw(screen, exitText, basicfont.Face7x13, 520, 30, color.RGBA{255, 100, 100, 255})
+	
+	// Кнопка подсказки
+	if showHint {
+		hintBtnText := "[H] Подсказка"
+		text.Draw(screen, hintBtnText, basicfont.Face7x13, 500, 50, color.RGBA{255, 255, 100, 255})
+	} else {
+		hintBtnText := "[H] Подсказка"
+		text.Draw(screen, hintBtnText, basicfont.Face7x13, 500, 50, color.RGBA{150, 150, 150, 255})
+	}
 }
 
 // DrawGameOver отрисовывает экран окончания игры с расширенной статистикой

@@ -179,6 +179,12 @@ func (g *Game) Update() error {
 		if inpututil.IsKeyJustPressed(ebiten.KeyEscape) || inpututil.IsKeyJustPressed(ebiten.KeyP) {
 			g.state = StatePaused
 		}
+		
+		// Показать подсказку вручную
+		if inpututil.IsKeyJustPressed(ebiten.KeyH) {
+			g.hintSystem.ShowHint(g.board)
+			g.soundManager.Play(SoundSwap) // Звук для подсказки
+		}
 	case StatePaused:
 		// Обновление паузы
 		if inpututil.IsKeyJustPressed(ebiten.KeyEscape) || inpututil.IsKeyJustPressed(ebiten.KeyP) {
@@ -268,7 +274,8 @@ func (g *Game) drawGame(screen *ebiten.Image) {
 	targetScore := level.TargetScore
 
 	// Отрисовка UI (счёт, ходы, таймер, прогресс)
-	g.uiManager.DrawHUD(screen, g.score, g.moves, timeLeft, targetScore)
+	showHint := g.hintSystem.IsVisible()
+	g.uiManager.DrawHUD(screen, g.score, g.moves, timeLeft, targetScore, showHint)
 	
 	// TODO: Display achievement progress
 	// _ = g.achievementSys.GetProgressString()
