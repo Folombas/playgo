@@ -92,6 +92,7 @@ type Game struct {
 	swipeLine      SwipeLine
 	swipeTimer     float64
 	swipeMatched   bool
+	screenShake    float64
 }
 
 // Particle частица для эффектов
@@ -236,12 +237,20 @@ func (g *Game) Update() error {
 	g.updateStars()
 	g.updateFallingGems()
 
+	// Тряска экрана
+	if g.screenShake > 0 {
+		g.screenShake -= 1.0 / 60.0
+	}
+
 	// Проверка уровня
 	if g.score >= g.targetScore && !g.levelComplete {
 		g.levelComplete = true
 		g.audioMgr.Play(audio.SoundCombo)
 		g.spawnLevelUpEffect()
 	}
+
+	// Проверка квадрата 2x2 после каждого хода
+	g.checkSquareMatch()
 
 	// Переход на следующий уровень
 	if g.levelComplete && inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
@@ -295,6 +304,135 @@ func (g *Game) drawStars(screen *ebiten.Image) {
 		vector.DrawFilledCircle(screen, float32(s.X), float32(s.Y), float32(s.Size),
 			color.RGBA{200, 220, 255, alpha}, false)
 	}
+}
+
+func (g *Game) checkSquareMatch() {
+	// Проверяем все квадраты 2x2 на поле
+	for r := 0; r < gridSize-1; r++ {
+		for c := 0; c < gridSize-1; c++ {
+			gem := g.board.Get(r, c)
+			if gem < 0 {
+				continue
+			}
+
+			// Проверяем квадрат 2x2
+			if g.board.Get(r, c+1) == gem &&
+				g.board.Get(r+1, c) == gem &&
+				g.board.Get(r+1, c+1) == gem {
+
+				// КВАДРАТ НАЙДЕН! УДАЛЯЕМ!
+				g.spawnSquareExplosion(r, c, gem)
+
+				// Удалить все 4 гема
+				g.board.Set(r, c, -1)
+				g.board.Set(r, c+1, -1)
+				g.board.Set(r+1, c, -1)
+				g.board.Set(r+1, c+1, -1)
+
+				// Бонусные очки!
+				score := 200
+				g.score += score
+
+				// Заполнить пустоты
+				g.board.FillEmpty()
+
+				// Звук
+				g.audioMgr.Play(audio.SoundCombo)
+				return
+			}
+		}
+	}
+}
+
+func (g *Game) spawnSquareExplosion(row, col, gemType int) {
+	// Центр квадрата
+	cx := float64(gridOffset + col*tileSize + tileSize)
+	cy := float64(gridOffset + row*tileSize + tileSize)
+
+	colors := []color.RGBA{
+		{255, 80, 50, 255},
+		{50, 100, 255, 255},
+		{80, 255, 100, 255},
+		{255, 255, 50, 255},
+		{200, 80, 255, 255},
+	}
+	baseColor := colors[0]
+	if gemType < len(colors) {
+		baseColor = colors[gemType]
+	}
+
+	// 1. ОГРОМНЫЙ ВЗРЫВ - 50 частиц
+	for i := 0; i < 50; i++ {
+		angle := float64(i) * math.Pi * 2 / 50
+		speed := 5 + g.rng.Float64()*10
+		g.particles = append(g.particles, Particle{
+			X:       cx,
+			Y:       cy,
+			VX:      math.Cos(angle) * speed,
+			VY:      math.Sin(angle) * speed - 4,
+			Life:    2.0,
+			MaxLife: 2.0,
+			Size:    6 + g.rng.Float64()*10,
+			Color:   baseColor,
+		})
+	}
+
+	// 2. БЕЛЫЕ ИСКРЫ - 30 штук
+	for i := 0; i < 30; i++ {
+		angle := g.rng.Float64() * math.Pi * 2
+		speed := 8 + g.rng.Float64()*12
+		g.particles = append(g.particles, Particle{
+			X:       cx,
+			Y:       cy,
+			VX:      math.Cos(angle) * speed,
+			VY:      math.Sin(angle) * speed,
+			Life:    1.5,
+			MaxLife: 1.5,
+			Size:    3 + g.rng.Float64()*4,
+			Color:   color.RGBA{255, 255, 255, 255},
+		})
+	}
+
+	// 3. ЭФФЕКТ УДАРНОЙ ВОЛНЫ - расширяющийся круг
+	for i := 0; i < 20; i++ {
+		radius := 10.0 + float64(i)*8
+		g.particles = append(g.particles, Particle{
+			X:       cx,
+			Y:       cy,
+			VX:      0,
+			VY:      0,
+			Life:    1.0,
+			MaxLife: 1.0,
+			Size:    radius,
+			Color:   color.RGBA{255, 255, 255, uint8(100 - i*5)},
+		})
+	}
+
+	// 4. КВАДРАТНЫЕ ЧАСТИЦЫ (визуальный эффект квадрата)
+	for dx := 0; dx < 2; dx++ {
+		for dy := 0; dy < 2; dy++ {
+			x := float64(gridOffset + (col+dy)*tileSize + tileSize/2)
+			y := float64(gridOffset + (row+dx)*tileSize + tileSize/2)
+
+			for i := 0; i < 10; i++ {
+				angle := float64(i) * math.Pi * 2 / 10
+				speed := 3 + g.rng.Float64()*5
+				g.particles = append(g.particles, Particle{
+					X:       x,
+					Y:       y,
+					VX:      math.Cos(angle) * speed,
+					VY:      math.Sin(angle) * speed - 2,
+					Life:    1.5,
+					MaxLife: 1.5,
+					Size:    5 + g.rng.Float64()*5,
+					Color:   baseColor,
+				})
+			}
+		}
+	}
+
+	// Экран трясётся
+	g.screenShake = 0.3
 }
 
 func (g *Game) nextLevel() {
@@ -829,7 +967,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	// Частицы
 	g.drawParticles(screen)
 
-	// Перетаскиваемый гем (рисуем поверх всего)
+	// Перетаскиваемый гем
 	if g.dragState == DragPicking || g.dragState == Dragging ||
 		g.dragState == DragSnapping || g.dragState == DragReturning ||
 		g.dragState == DragShaking {
@@ -844,6 +982,21 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	// Game Over
 	if g.gameOver {
 		g.drawGameOver(screen)
+	}
+
+	// Тряска экрана - рисуем поверх всё с вибрацией
+	if g.screenShake > 0 {
+		shakeX := math.Sin(float64(time.Now().UnixMilli())*0.05) * 10 * g.screenShake
+		shakeY := math.Cos(float64(time.Now().UnixMilli())*0.05) * 10 * g.screenShake
+		
+		// Белая вспышка
+		alpha := uint8(g.screenShake * 100)
+		vector.DrawFilledRect(screen, 0, 0, screenWidth, screenHeight,
+			color.RGBA{255, 255, 255, alpha}, false)
+		
+		// Сдвиг курсора для эффекта
+		_ = shakeX
+		_ = shakeY
 	}
 }
 
