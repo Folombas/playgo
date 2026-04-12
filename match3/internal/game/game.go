@@ -1,12 +1,10 @@
-// Package game содержит основную игровую логику для Match-3 игры.
-//
-// Этот пакет реализует основной игровой цикл, управление состояниями,
-// обработку ввода и интеграцию всех систем (звуки, спрайты, сохранения).
 package game
 
 import (
 	"fmt"
 	"image/color"
+	"math"
+	"math/rand"
 	"match3/internal/logic"
 	"match3/internal/ui"
 	"time"
@@ -15,669 +13,621 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 )
 
-// GameState определяет текущее состояние игры
-//
-// Используется для управления переходами между различными экранами:
-// меню, игра, пауза, настройки, game over, завершение уровня.
+const (
+	screenWidth  = 450
+	screenHeight = 800
+)
+
 type GameState int
 
 const (
-	StateMenu GameState = iota // Главное меню
-	StatePlaying               // Игровой процесс
-	StatePaused                // Пауза
-	StateSettings              // Настройки
-	StateGameOver              // Игра окончена
-	StateLevelComplete         // Уровень пройден
+	StateMap GameState = iota
+	StatePlaying
+	StatePause
+	StateWin
+	StateLose
 )
 
-// Game - основная структура игры, реализует ebiten.Game
-//
-// Game управляет всеми аспектами игры: состояниями, доской, UI,
-// звуками, сохранениями, уровнями и специальными эффектами.
-// Это центральный компонент архитектуры игры.
 type Game struct {
-	state           GameState
-	board           *logic.Board
-	uiManager       *ui.Manager
-	score           int
-	moves           int
-	selectedTile    *logic.Tile
-	isSwapping      bool
-	swapFrom        *logic.Tile
-	swapTo          *logic.Tile
-	mouseX          int
-	mouseY          int
-	effectSystem    *logic.EffectSystem
-	scorePopups     *logic.ScorePopupSystem
-	comboCounter    int
-	lastMatchTime   float64
-	spriteManager   *SpriteManager
-	soundManager    SoundPlayer
-	saveManager     SaveStorage
-	levelManager    *logic.LevelManager
-	levelStartTime  time.Time
-	hintSystem      *logic.HintSystem
-	achievementSys  *AchievementSystem
-	leaderboard     *Leaderboard
-	bgEffect        *logic.BackgroundEffect
-	bombsCreated    int
-	fireGemsDestroyed int
-	iceBroken      int
-	powerUpSys     *PowerUpSystem
+	state        GameState
+	board        *logic.Board
+	score        int
+	moves        int
+	combo        int
+	maxCombo     int
+	level        int
+	targetScore  int
+	energy       int
+	coins        int
+	stars        map[int]int
+	particles    *logic.ParticleSystem
+	screenShake  float64
+	rng          *rand.Rand
+	lastAction   time.Time
+	soundManager *SoundManager
+
+	// Mouse input
+	selectedTile *logic.Tile
+	hintTimer    time.Time
+	hintActive   bool
+	hintTile1    *logic.Tile
+	hintTile2    *logic.Tile
 }
 
-// GameConfig содержит зависимости для создания игры
-// Это позволяет легко инжектить моки для тестирования
-type GameConfig struct {
-	SoundPlayer SoundPlayer
-	SaveStorage SaveStorage
-}
-
-// NewGame создаёт новую игру с опциональной конфигурацией
-//
-// Если config nil, создаются реализации по умолчанию для звуков и сохранений.
-// Это позволяет инжектить моки для тестирования.
-//
-// Пример использования:
-//
-//	// Создание игры с настройками по умолчанию
-//	game := NewGame()
-//
-//	// Или с кастомными зависимостями для тестов
-//	game := NewGame(GameConfig{
-//	    SoundPlayer: mockSoundPlayer,
-//	    SaveStorage: mockSaveStorage,
-//	})
-func NewGame(config ...GameConfig) *Game {
-	var cfg GameConfig
-	if len(config) > 0 {
-		cfg = config[0]
-	}
+func NewGame() *Game {
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 
 	g := &Game{
-		state:         StateMenu,
-		uiManager:     ui.NewManager(),
-		score:         0,
-		moves:         0,
-		effectSystem:  logic.NewEffectSystem(),
-		scorePopups:   logic.NewScorePopupSystem(),
-		spriteManager: NewSpriteManager(),
+		state:        StateMap,
+		level:        1,
+		energy:       5,
+		coins:        1000,
+		stars:        make(map[int]int),
+		rng:          rng,
+		lastAction:   time.Now(),
+		particles:    logic.NewParticleSystem(rng),
+		soundManager: NewSoundManager(),
 	}
 
-	// Dependency Injection для звуковой системы
-	if cfg.SoundPlayer != nil {
-		g.soundManager = cfg.SoundPlayer
-	} else {
-		g.soundManager = NewSoundManager()
-	}
-
-	// Dependency Injection для системы сохранений
-	if cfg.SaveStorage != nil {
-		g.saveManager = cfg.SaveStorage
-	} else {
-		g.saveManager = NewSaveManager()
-	}
-
-	g.levelManager = logic.NewLevelManager()
-	g.hintSystem = logic.NewHintSystem()
-	g.achievementSys = NewAchievementSystem()
-	g.leaderboard = NewLeaderboard()
-	g.bgEffect = logic.NewBackgroundEffect(640, 960)
-	g.bombsCreated = 0
-	g.fireGemsDestroyed = 0
-	g.iceBroken = 0
-	g.powerUpSys = NewPowerUpSystem()
-
+	g.loadProgress()
 	return g
 }
 
-// Update обновляет логику игры каждый кадр
 func (g *Game) Update() error {
-	// Отслеживание позиции мыши
-	g.mouseX, g.mouseY = ebiten.CursorPosition()
-
 	switch g.state {
-	case StateMenu:
-		// Обновление анимации меню
-		g.uiManager.UpdateMenuAnim(1.0 / 60.0)
-		g.bgEffect.Update(1.0 / 60.0)
-		
-		// Обновление меню
-		if ebiten.IsKeyPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
-			g.startGame()
-		}
+	case StateMap:
+		g.updateMap()
 	case StatePlaying:
-		g.handleInput()
-		// Обновление игровой логики
-		g.board.Update()
-
-		// Обновление эффектов
-		g.effectSystem.Update()
-		g.scorePopups.Update()
-		
-		// Обновление системы подсказок
-		g.hintSystem.Update(g.board)
-		
-		// Проверка на победу (достигнут ли целевой счёт)
-		if g.levelManager.IsLevelComplete(g.score) {
-			g.state = StateLevelComplete
-			g.soundManager.Play(SoundGameOver)
-		}
-		
-		// Проверка на проигрыш по времени
-		if g.getTimeLeft() == 0 && g.levelManager.GetCurrentLevel().TimeLimit > 0 {
-			g.state = StateGameOver
-			g.soundManager.Play(SoundGameOver)
-		}
-
-		// Проверка на доступные ходы
-		if !g.board.HasValidMoves() {
-			// Показываем подсказку сначала
-			if !g.hintSystem.IsVisible() {
-				g.hintSystem.ShowHint(g.board)
-			} else {
-				// Если подсказка уже показана и ходов нет - перемешиваем
-				fmt.Println("Нет доступных ходов - перемешиваем доску!")
-				g.board.Shuffle()
-				g.hintSystem.Reset()
-				g.soundManager.Play(SoundMatch)
-				
-				// Если после перемешивания всё равно нет ходов - game over
-				if !g.board.HasValidMoves() {
-					g.state = StateGameOver
-					g.soundManager.Play(SoundGameOver)
-				}
-			}
-		}
-		
-		// Проверка достижений
-		g.achievementSys.CheckAndUnlock(
-			g.score,
-			g.moves,
-			g.comboCounter,
-			g.levelManager.GetCurrentLevelNumber(),
-			g.bombsCreated,
-			g.saveManager.GetSaveData().GamesPlayed,
-		)
-
-		// Пауза
-		if inpututil.IsKeyJustPressed(ebiten.KeyEscape) || inpututil.IsKeyJustPressed(ebiten.KeyP) {
-			g.state = StatePaused
-		}
-		
-		// Показать подсказку вручную
-		if inpututil.IsKeyJustPressed(ebiten.KeyH) {
-			g.hintSystem.ShowHint(g.board)
-			g.soundManager.Play(SoundSwap) // Звук для подсказки
-		}
-	case StatePaused:
-		// Обновление паузы
-		if inpututil.IsKeyJustPressed(ebiten.KeyEscape) || inpututil.IsKeyJustPressed(ebiten.KeyP) {
+		g.updatePlaying()
+	case StatePause:
+		if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
 			g.state = StatePlaying
 		}
-	case StateSettings:
-		// Обновление настроек
-		if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
-			g.state = StatePaused
-		}
-		
-		// Управление громкостью
-		if inpututil.IsKeyJustPressed(ebiten.KeyEqual) || inpututil.IsKeyJustPressed(ebiten.Key0) { // + or 0
-			vol := g.soundManager.GetVolume()
-			if vol < 1.0 {
-				g.soundManager.SetVolume(vol + 0.1)
-			}
-		}
-		if inpututil.IsKeyJustPressed(ebiten.KeyMinus) { // -
-			vol := g.soundManager.GetVolume()
-			if vol > 0.0 {
-				g.soundManager.SetVolume(vol - 0.1)
-			}
-		}
-		if inpututil.IsKeyJustPressed(ebiten.KeyM) {
-			g.soundManager.ToggleMute()
-		}
-	case StateGameOver:
-		// Обновление экрана Game Over
+	case StateWin:
 		if inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
-			g.startGame()
-		}
-		if ebiten.IsKeyPressed(ebiten.KeyEscape) {
-			g.state = StateMenu
-		}
-	case StateLevelComplete:
-		// Обновление экрана завершения уровня
-		if inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
-			// Добавляем в таблицу рекордов
-			g.leaderboard.AddEntry(LeaderboardEntry{
-				PlayerName: "Player",
-				Score:      g.score,
-				Level:      g.levelManager.GetCurrentLevelNumber(),
-				Moves:      g.moves,
-				Date:       time.Now(),
-			})
 			g.nextLevel()
 		}
+	case StateLose:
+		if inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
+			g.retryLevel()
+		}
 	}
+	
+	g.updateParticles()
 	return nil
 }
 
-// Layout возвращает размеры экрана
-func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
-	return outsideWidth, outsideHeight
-}
-
-// startGame начинает новую игру
-func (g *Game) startGame() {
-	g.state = StatePlaying
-	level := g.levelManager.GetCurrentLevel()
-	g.board = logic.NewBoard(level.BoardRows, level.BoardCols)
-	
-	// Передаём спрайты доске
-	if g.spriteManager.IsLoaded() {
-		sprites := make(map[int]*ebiten.Image)
-		for i := 0; i < level.GemTypes; i++ {
-			sprites[i] = g.spriteManager.GetGemSprite(i)
-		}
-		g.board.SetGemSprites(sprites)
-	}
-	
-	g.score = 0
-	g.moves = 0
-	g.comboCounter = 0
-	g.levelStartTime = time.Now()
-	g.levelManager.Reset()
-	
-	fmt.Printf("Новая игра! Уровень %d\n", level.Number)
-}
-
-// drawGame отрисовывает игровое поле и UI
-func (g *Game) drawGame(screen *ebiten.Image) {
-	// Отрисовка доски
-	g.board.Draw(screen)
-	
-	// Отрисовка подсказок
-	g.hintSystem.Draw(screen, g.board.OffsetX, g.board.OffsetY, g.board.TileSize)
-	
-	// Рассчитываем оставшееся время
-	timeLeft := g.getTimeLeft()
-	
-	// Получаем целевой счёт уровня
-	level := g.levelManager.GetCurrentLevel()
-	targetScore := level.TargetScore
-
-	// Отрисовка UI (счёт, ходы, таймер, прогресс)
-	showHint := g.hintSystem.IsVisible()
-	g.uiManager.DrawHUD(screen, g.score, g.moves, timeLeft, targetScore, showHint)
-	
-	// TODO: Display achievement progress
-	// _ = g.achievementSys.GetProgressString()
-}
-
-// Draw отрисовывает текущий кадр
-func (g *Game) Draw(screen *ebiten.Image) {
-	// Очистка экрана
-	screen.Fill(ui.ColorBackground)
-
-	switch g.state {
-	case StateMenu:
-		// Отрисовка фона
-		g.bgEffect.Draw(screen)
-		g.uiManager.DrawMenu(screen)
-	case StatePlaying:
-		g.drawGame(screen)
-	case StatePaused:
-		g.drawGame(screen)
-		g.uiManager.DrawPaused(screen)
-	case StateSettings:
-		vol := g.soundManager.GetVolume()
-		muted := g.soundManager.IsMuted()
-		g.uiManager.DrawSettings(screen, vol, muted)
-	case StateGameOver:
-		g.uiManager.DrawGameOver(screen, g.score, g.moves, g.levelManager.GetCurrentLevelNumber(), g.comboCounter, g.bombsCreated, g.fireGemsDestroyed, g.iceBroken)
-	case StateLevelComplete:
-		g.uiManager.DrawLevelComplete(screen, g.levelManager.GetCurrentLevelNumber(), g.score, g.moves)
-	}
-}
-
-// handleInput обрабатывает ввод игрока
-func (g *Game) handleInput() {
-	// Выход в меню
-	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
-		g.state = StateMenu
-		return
-	}
-
-	// Обработка клика мыши
-	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
-		tile := g.board.GetTileAt(g.mouseX, g.mouseY)
-		if tile != nil {
-			g.handleTileClick(tile)
+func (g *Game) updateMap() {
+	if g.inputClicked() {
+		if g.energy > 0 {
+			g.startLevel(g.level)
 		}
 	}
-
-	// Обработка клавиш для обмена (Shift + стрелки)
-	if ebiten.IsKeyPressed(ebiten.KeyShift) || ebiten.IsKeyPressed(ebiten.KeyShiftLeft) || ebiten.IsKeyPressed(ebiten.KeyShiftRight) {
-		if g.selectedTile != nil {
-			targetRow, targetCol := g.selectedTile.Row, g.selectedTile.Col
-			
-			if inpututil.IsKeyJustPressed(ebiten.KeyUp) && targetRow > 0 {
-				targetRow--
-			} else if inpututil.IsKeyJustPressed(ebiten.KeyDown) && targetRow < g.board.Rows-1 {
-				targetRow++
-			} else if inpututil.IsKeyJustPressed(ebiten.KeyLeft) && targetCol > 0 {
-				targetCol--
-			} else if inpututil.IsKeyJustPressed(ebiten.KeyRight) && targetCol < g.board.Cols-1 {
-				targetCol++
-			} else {
-				return
-			}
-			
-			targetTile := g.board.Tiles[targetRow][targetCol]
-			g.executeSwap(g.selectedTile, targetTile)
-		}
-	}
-}
-
-// handleTileClick обрабатывает клик по камню
-func (g *Game) handleTileClick(tile *logic.Tile) {
-	// Сбрасываем подсказку при любом взаимодействии
-	g.hintSystem.HideHint()
-
-	// Проверяем, является ли камень бомбой
-	if tile.IsBomb {
-		// Взрываем бомбу!
-		g.explodeBomb(tile)
-		return
-	}
-
-	// Проверяем, является ли камень огненным
-	if tile.IsFire {
-		// Активируем огненный камень!
-		g.activateFireGem(tile)
-		return
-	}
-
-	// Проверяем, является ли камень ледяным
-	if tile.IsIce {
-		// Ледяной камень требует двойного клика
-		if tile.ClickCount == 0 {
-			// Первый клик - помечаем
-			tile.ClickCount = 1
-			fmt.Printf("❄️ Ледяной камень - нужен ещё один клик!\n")
-			g.soundManager.Play(SoundSwap) // Звук первого клика
-			return
-		} else {
-			// Второй клик - разбиваем лёд
-			fmt.Printf("💔 Ледяной камень разбит!\n")
-			tile.IsIce = false
-			tile.ClickCount = 0
-			g.iceBroken++
-			
-			// Эффект разбивания льда
-			x := g.board.OffsetX + tile.Col*g.board.TileSize
-			y := g.board.OffsetY + tile.Row*g.board.TileSize
-			g.effectSystem.SpawnIceBreakEffect(
-				x+g.board.TileSize/2,
-				y+g.board.TileSize/2,
-			)
-			
-			g.soundManager.Play(SoundIce) // Звук разбивания льда
-			return
-		}
-	}
-
-	if g.selectedTile == nil {
-		// Первый клик - выбор камня
-		g.selectedTile = tile
-		tile.Selected = true
-	} else if g.selectedTile == tile {
-		// Повторный клик - отмена выбора
-		g.selectedTile.Selected = false
-		g.selectedTile = nil
-	} else {
-		// Клик по другому камню - попытка обмена
-		g.executeSwap(g.selectedTile, tile)
-	}
-}
-
-// activateFireGem активирует огненный камень и уничтожает весь ряд
-func (g *Game) activateFireGem(tile *logic.Tile) {
-	fmt.Printf("🔥 ОГНЕННЫЙ КАМЕНЬ! Уничтожен ряд %d!\n", tile.Row)
-
-	// Звук огненного камня
-	g.soundManager.Play(SoundFire)
-
-	// Уничтожаем весь ряд
-	for c := 0; c < g.board.Cols; c++ {
-		t := g.board.Tiles[tile.Row][c]
-		if t.Gem != logic.GemType(-1) {
-			t.Gem = logic.GemType(-1)
-			t.Removing = true
-
-			// Эффект огня для каждого камня
-			x := g.board.OffsetX + c*g.board.TileSize
-			y := g.board.OffsetY + tile.Row*g.board.TileSize
-			g.effectSystem.SpawnMatchEffect(x, y, color.RGBA{255, 100, 0, 255}, 2)
-		}
-	}
-
-	// Добавляем специальный эффект огненного камня
-	g.effectSystem.SpawnFireGemEffect(
-		g.board.OffsetX,
-		g.board.OffsetY+tile.Row*g.board.TileSize,
-		g.board.Cols,
-	)
-
-	// Начисляем очки
-	fireScore := g.board.Cols * 20
-	g.score += fireScore
-	g.fireGemsDestroyed += g.board.Cols // Считаем уничтоженные камни
-	g.scorePopups.AddScorePopup(
-		g.board.OffsetX+g.board.Cols*g.board.TileSize/2,
-		g.board.OffsetY+tile.Row*g.board.TileSize,
-		fireScore,
-	)
-
-	fmt.Printf("+%d очков за огненный камень!\n", fireScore)
-
-	// Применяем гравитацию
-	g.board.ApplyGravity()
-
-	// Сбрасываем выбор
-	if g.selectedTile != nil {
-		g.selectedTile.Selected = false
-	}
-	g.selectedTile = nil
-}
-
-// explodeBomb взрывает бомбу и удаляет все камни в радиусе 3x3
-func (g *Game) explodeBomb(bomb *logic.Tile) {
-	fmt.Printf("💥 БУМ! Бомба взорвалась на (%d, %d)!\n", bomb.Row, bomb.Col)
-
-	// Звук взрыва бомбы
-	g.soundManager.Play(SoundBomb)
-
-	// Удаляем камни 3x3
-	radius := 1
-	for r := bomb.Row - radius; r <= bomb.Row+radius; r++ {
-		for c := bomb.Col - radius; c <= bomb.Col+radius; c++ {
-			if r >= 0 && r < g.board.Rows && c >= 0 && c < g.board.Cols {
-				tile := g.board.Tiles[r][c]
-				if tile.Gem != logic.GemType(-1) {
-					tile.Gem = logic.GemType(-1)
-					tile.Removing = true
-
-					// Эффект взрыва для каждого камня
-					x := g.board.OffsetX + c*g.board.TileSize
-					y := g.board.OffsetY + r*g.board.TileSize
-					g.effectSystem.SpawnMatchEffect(x, y, color.RGBA{255, 100, 0, 255}, 3)
-				}
-			}
-		}
-	}
-
-	// Добавляем эффект ударной волны (shockwave)
-	bombX := g.board.OffsetX + bomb.Col*g.board.TileSize + g.board.TileSize/2
-	bombY := g.board.OffsetY + bomb.Row*g.board.TileSize + g.board.TileSize/2
-	g.effectSystem.SpawnShockwaveEffect(bombX, bombY)
-
-	// Начисляем очки за взрыв
-	bombScore := 50
-	g.score += bombScore
-	g.scorePopups.AddScorePopup(
-		g.board.OffsetX+bomb.Col*g.board.TileSize,
-		g.board.OffsetY+bomb.Row*g.board.TileSize,
-		bombScore,
-	)
-
-	fmt.Printf("+%d очков за взрыв!\n", bombScore)
-
-	// Применяем гравитацию после взрыва
-	g.board.ApplyGravity()
-
-	// Сбрасываем выбор
-	if g.selectedTile != nil {
-		g.selectedTile.Selected = false
-	}
-	g.selectedTile = nil
-}
-
-// executeSwap выполняет обмен между двумя камнями
-func (g *Game) executeSwap(from, to *logic.Tile) {
-	// Сброс выделения
-	if g.selectedTile != nil {
-		g.selectedTile.Selected = false
-	}
-	g.selectedTile = nil
-
-	// Проверка на соседство
-	dr := abs(from.Row - to.Row)
-	dc := abs(from.Col - to.Col)
 	
-	if dr+dc != 1 {
-		// Не соседние - просто выбрать новый
-		to.Selected = true
-		g.selectedTile = to
-		return
+	if ebiten.IsKeyPressed(ebiten.KeyRight) {
+		g.level = min(g.level+1, 50)
+		time.Sleep(150 * time.Millisecond)
 	}
+	if ebiten.IsKeyPressed(ebiten.KeyLeft) {
+		g.level = max(1, g.level-1)
+		time.Sleep(150 * time.Millisecond)
+	}
+}
 
-	// Выполнение обмена
-	success := g.board.SwapTiles(from, to)
-	
-	if success {
-		g.moves++
-		
-		// Звук обмена
-		g.soundManager.Play(SoundSwap)
-		
-		// Проверка на матчи
-		matches := g.board.FindAllMatches()
+func (g *Game) updatePlaying() {
+	if g.board != nil {
+		// Обработка кликов мыши
+		g.handleMouseInput()
+
+		// Проверка на бездействие для подсказок
+		if time.Since(g.lastAction) > 5*time.Second && !g.hintActive {
+			g.showHint()
+		}
+
+		g.board.Update()
+
+		matches := g.board.ProcessMatches()
 		if len(matches) > 0 {
-			// Есть матчи - удаляем и начисляем очки
-			score, bombCreated := g.board.RemoveMatches()
+			g.combo++
+			multiplier := 1.0 + float64(g.combo-1)*0.5
+			score := int(float64(len(matches)*10) * multiplier)
+			g.score += score
+
+			g.spawnParticles(matches)
 
 			// Звук матча
-			g.soundManager.Play(SoundMatch)
-
-			// Комбо система
-			g.comboCounter++
-
-			// Бонус за комбо
-			if g.comboCounter > 1 {
-				score *= g.comboCounter
-				g.effectSystem.SpawnComboEffect(from.Col*60+40, from.Row*60+150, g.comboCounter)
-				g.soundManager.Play(SoundCombo)
-				
-				// Награждаем бонусами за высокие комбо
-				awarded := g.powerUpSys.AwardPowerUpsForCombo(g.comboCounter)
-				for range awarded {
-					fmt.Printf("🎁 Получлен бонус за комбо x%d!\n", g.comboCounter)
+			if g.soundManager != nil {
+				if g.combo >= 3 {
+					g.soundManager.Play(SoundCombo)
+				} else {
+					g.soundManager.Play(SoundMatch)
 				}
 			}
-			
-			// Эффект для бомбы
-			if bombCreated != nil {
-				fmt.Println("💣 Бомба создана!")
-				g.bombsCreated++
-				// Можно добавить специальный эффект для бомбы
+
+			if g.combo > g.maxCombo {
+				g.maxCombo = g.combo
 			}
 
-			// Эффекты для каждого матча
-			for _, m := range matches {
-				x := g.board.OffsetX + m.Col*g.board.TileSize
-				y := g.board.OffsetY + m.Row*g.board.TileSize
-				g.effectSystem.SpawnMatchEffect(x, y, logic.GemColors[m.Gem], 1)
-				g.scorePopups.AddScorePopup(x, y, score/len(matches))
+			if g.combo >= 3 {
+				g.screenShake = 0.2
 			}
 
-			g.score += score
-			fmt.Printf("Матч! +%d очков (комбо x%d, всего: %d)\n", score, g.comboCounter, g.score)
+			g.lastAction = time.Now()
+			g.hintActive = false
 		} else {
-			// Нет матчей - отменить обмен
-			g.board.SwapTiles(from, to)
-			g.comboCounter = 0 // Сброс комбо
-			g.soundManager.Play(SoundInvalid)
-			fmt.Println("Нет матча - обмен отменён")
+			g.combo = 0
+		}
+
+		if g.score >= g.targetScore {
+			g.state = StateWin
+			g.calculateStars()
+		}
+
+		if g.moves <= 0 && g.score < g.targetScore {
+			g.state = StateLose
+		}
+
+		if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
+			g.state = StatePause
+		}
+
+		// Клавиша H для ручной подсказки
+		if inpututil.IsKeyJustPressed(ebiten.KeyH) {
+			g.showHint()
 		}
 	}
 }
 
-// abs возвращает абсолютное значение
-func abs(x int) int {
+func (g *Game) updateParticles() {
+	g.particles.Update()
+
+	if g.screenShake > 0 {
+		g.screenShake -= 1.0 / 60.0
+	}
+}
+
+func (g *Game) spawnParticles(tiles []*logic.Tile) {
+	for _, tile := range tiles {
+		x := float64(45 + tile.Col*50 + 25)
+		y := float64(150 + tile.Row*50 + 25)
+
+		// Разные эффекты для разных типов камней
+		if tile.IsBomb {
+			// Взрыв бомбы
+			g.particles.Emit(x, y, logic.ParticleBomb, 20,
+				logic.WithColor(color.RGBA{255, 100, 0, 255}),
+			)
+		} else if tile.IsRainbow {
+			// Радужный эффект
+			g.particles.Emit(x, y, logic.ParticleRainbow, 30)
+		} else if tile.IsRocketH || tile.IsRocketV {
+			// Огненный эффект для ракет
+			g.particles.Emit(x, y, logic.ParticleFire, 15,
+				logic.WithColor(color.RGBA{255, 200, 50, 255}),
+			)
+		} else {
+			// Обычный взрыв
+			g.particles.Emit(x, y, logic.ParticleExplosion, 10,
+				logic.WithColor(logic.GemColors[tile.Gem]),
+			)
+			g.particles.Emit(x, y, logic.ParticleSparkle, 5,
+				logic.WithColor(color.RGBA{255, 255, 255, 200}),
+			)
+		}
+	}
+}
+
+func (g *Game) calculateStars() {
+	ratio := float64(g.score) / float64(g.targetScore)
+	stars := 0
+	if ratio >= 0.5 {
+		stars = 1
+	}
+	if ratio >= 0.8 {
+		stars = 2
+	}
+	if ratio >= 1.0 {
+		stars = 3
+	}
+	
+	if stars > g.stars[g.level] {
+		g.stars[g.level] = stars
+	}
+	
+	g.coins += g.score / 10
+	g.energy = min(g.energy+1, 5)
+}
+
+func (g *Game) startLevel(level int) {
+	g.level = level
+	g.state = StatePlaying
+	g.score = 0
+	g.moves = 20 + level*2
+	g.combo = 0
+	g.maxCombo = 0
+	g.targetScore = 500 + level*200
+	g.energy--
+	g.particles = nil
+	g.screenShake = 0
+	
+	g.board = logic.NewBoard(8, 8, level)
+	g.lastAction = time.Now()
+}
+
+func (g *Game) nextLevel() {
+	g.level = min(g.level+1, 50)
+	g.startLevel(g.level)
+}
+
+func (g *Game) retryLevel() {
+	if g.energy > 0 {
+		g.startLevel(g.level)
+	} else {
+		g.state = StateMap
+	}
+}
+
+func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
+	return screenWidth, screenHeight
+}
+
+func (g *Game) Draw(screen *ebiten.Image) {
+	screen.Fill(ui.ColorDeepPurple)
+	
+	switch g.state {
+	case StateMap:
+		g.drawMap(screen)
+	case StatePlaying:
+		g.drawGame(screen)
+	case StatePause:
+		g.drawGame(screen)
+		g.drawOverlay(screen, "ПАУЗА", "ESC - продолжить")
+	case StateWin:
+		g.drawGame(screen)
+		g.drawWinScreen(screen)
+	case StateLose:
+		g.drawGame(screen)
+		g.drawLoseScreen(screen)
+	}
+}
+
+func (g *Game) drawMap(screen *ebiten.Image) {
+	ui.DrawCenteredText(screen, screenWidth/2, 100, "FRUIT CRUSH", 28, ui.ColorHotPink)
+	ui.DrawCenteredText(screen, screenWidth/2, 130, "SAGA", 20, ui.ColorCyan)
+	
+	// Энергия и монеты
+	ui.DrawText(screen, 20, 20, fmt.Sprintf("Energy: %d/5", g.energy), 16, ui.ColorGold)
+	ui.DrawText(screen, 20, 45, fmt.Sprintf("Coins: %d", g.coins), 16, ui.ColorGold)
+	
+	// Карта уровней
+	startX := 60
+	startY := 200
+	spacing := 65
+	
+	for level := 1; level <= 50; level++ {
+		col := (level - 1) % 5
+		row := (level - 1) / 5
+		
+		x := startX + col*spacing
+		y := startY + row*spacing
+		
+		// Фон
+		var bgColor color.Color
+		if level == g.level {
+			bgColor = ui.ColorCyan
+		} else if g.stars[level] > 0 {
+			bgColor = ui.ColorGreen
+		} else {
+			bgColor = ui.ColorDarkGray
+		}
+		
+		circle := g.createCircle(50, bgColor)
+		op := &ebiten.DrawImageOptions{}
+		op.GeoM.Translate(float64(x-25), float64(y-25))
+		screen.DrawImage(circle, op)
+		
+		ui.DrawCenteredText(screen, x, y+5, fmt.Sprintf("%d", level), 16, ui.ColorWhite)
+		
+		if g.stars[level] > 0 {
+			stars := ""
+			for i := 0; i < g.stars[level]; i++ {
+				stars += "*"
+			}
+			ui.DrawCenteredText(screen, x, y+30, stars, 10, ui.ColorGold)
+		}
+	}
+	
+	ui.DrawCenteredText(screen, screenWidth/2, 700, fmt.Sprintf("Level %d", g.level), 18, ui.ColorWhite)
+	ui.DrawCenteredText(screen, screenWidth/2, 730, "Click to play", 14, ui.ColorCyan)
+	ui.DrawCenteredText(screen, screenWidth/2, 760, "< > to change level", 12, ui.ColorGray)
+}
+
+func (g *Game) drawGame(screen *ebiten.Image) {
+	// HUD
+	ui.DrawCenteredText(screen, screenWidth/2, 30, fmt.Sprintf("%d", g.score), 36, ui.ColorGold)
+	ui.DrawCenteredText(screen, screenWidth/2, 65, fmt.Sprintf("/ %d", g.targetScore), 14, ui.ColorGray)
+	
+	// Прогресс-бар
+	progress := float64(g.score) / float64(g.targetScore)
+	if progress > 1.0 {
+		progress = 1.0
+	}
+	
+	bar := g.createProgressBar(300, 15, progress)
+	op := &ebiten.DrawImageOptions{}
+	op.GeoM.Translate(75, 80)
+	screen.DrawImage(bar, op)
+	
+	ui.DrawText(screen, 20, 115, fmt.Sprintf("Moves: %d", g.moves), 16, ui.ColorWhite)
+	
+	if g.combo > 1 {
+		ui.DrawCenteredText(screen, screenWidth/2, 115, fmt.Sprintf("COMBO x%d!", g.combo), 18, ui.ColorOrange)
+	}
+	
+	ui.DrawText(screen, 20, 15, fmt.Sprintf("Level %d", g.level), 14, ui.ColorCyan)
+	
+	// Доска
+	if g.board != nil {
+		g.board.Draw(screen)
+	}
+
+	// Подсказки
+	if g.hintActive && g.hintTile1 != nil && g.hintTile2 != nil {
+		g.drawHint(screen, g.hintTile1)
+		g.drawHint(screen, g.hintTile2)
+	}
+
+	// Частицы
+	g.drawParticles(screen)
+}
+
+// drawHint рисует подсветку для подсказки
+func (g *Game) drawHint(screen *ebiten.Image, tile *logic.Tile) {
+	if tile == nil {
+		return
+	}
+
+	x := float64(tile.Col * 50 + 45)
+	y := float64(tile.Row * 50 + 150)
+
+	// Пульсирующая подсветка
+	pulse := math.Sin(float64(time.Now().UnixMilli())*0.008) * 0.3 + 0.7
+	alpha := uint8(200 * pulse)
+
+	hint := ebiten.NewImage(54, 54)
+	hint.Fill(color.RGBA{0, 255, 255, alpha})
+	op := &ebiten.DrawImageOptions{}
+	op.GeoM.Translate(x-2, y-2)
+	screen.DrawImage(hint, op)
+}
+
+func (g *Game) drawOverlay(screen *ebiten.Image, title, subtitle string) {
+	overlay := ebiten.NewImage(screenWidth, screenHeight)
+	overlay.Fill(color.RGBA{0, 0, 0, 180})
+	screen.DrawImage(overlay, nil)
+	
+	ui.DrawCenteredText(screen, screenWidth/2, 350, title, 28, ui.ColorWhite)
+	ui.DrawCenteredText(screen, screenWidth/2, 400, subtitle, 16, ui.ColorCyan)
+}
+
+func (g *Game) drawWinScreen(screen *ebiten.Image) {
+	g.drawOverlay(screen, "LEVEL COMPLETE!", "ENTER - next level")
+	
+	// Звёзды
+	starCount := g.stars[g.level]
+	starStr := ""
+	for i := 0; i < 3; i++ {
+		if i < starCount {
+			starStr += "* "
+		} else {
+			starStr += "o "
+		}
+	}
+	ui.DrawCenteredText(screen, screenWidth/2, 450, starStr, 36, ui.ColorGold)
+	
+	ui.DrawCenteredText(screen, screenWidth/2, 520, fmt.Sprintf("Score: %d", g.score), 18, ui.ColorWhite)
+	ui.DrawCenteredText(screen, screenWidth/2, 550, fmt.Sprintf("Max Combo: x%d", g.maxCombo), 16, ui.ColorOrange)
+}
+
+func (g *Game) drawLoseScreen(screen *ebiten.Image) {
+	g.drawOverlay(screen, "NO MOVES LEFT", "ENTER - retry | ESC - menu")
+}
+
+func (g *Game) drawParticles(screen *ebiten.Image) {
+	g.particles.Draw(screen)
+}
+
+func (g *Game) createCircle(size int, c color.Color) *ebiten.Image {
+	img := ebiten.NewImage(size, size)
+	center := float64(size) / 2
+	radius := float64(size) / 2
+	
+	for y := 0; y < size; y++ {
+		for x := 0; x < size; x++ {
+			dx := float64(x) - center
+			dy := float64(y) - center
+			if math.Sqrt(dx*dx+dy*dy) <= radius {
+				img.Set(x, y, c)
+			}
+		}
+	}
+	
+	return img
+}
+
+func (g *Game) createProgressBar(width, height int, progress float64) *ebiten.Image {
+	img := ebiten.NewImage(width, height)
+	
+	// Фон
+	for y := 0; y < height; y++ {
+		for x := 0; x < width; x++ {
+			img.Set(x, y, ui.ColorDarkerPurple)
+		}
+	}
+	
+	// Заполнение
+	if progress > 0 {
+		fillWidth := int(float64(width) * progress)
+		var c color.RGBA
+		if progress < 0.33 {
+			c = color.RGBA{255, 100, 100, 255}
+		} else if progress < 0.66 {
+			c = color.RGBA{255, 215, 0, 255}
+		} else {
+			c = color.RGBA{100, 255, 100, 255}
+		}
+		
+		for y := 0; y < height; y++ {
+			for x := 0; x < fillWidth; x++ {
+				img.Set(x, y, c)
+			}
+		}
+	}
+	
+	return img
+}
+
+func (g *Game) inputClicked() bool {
+	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
+		time.Sleep(50 * time.Millisecond) // Debounce
+		return true
+	}
+	return false
+}
+
+// handleMouseInput обрабатывает клики мыши для выбора и обмена фишек
+func (g *Game) handleMouseInput() {
+	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
+		x, y := ebiten.CursorPosition()
+
+		tile := g.board.GetTileAt(x, y)
+		if tile == nil {
+			// Клик вне доски - сбросить выделение
+			if g.selectedTile != nil {
+				g.selectedTile.Selected = false
+				g.selectedTile = nil
+			}
+			return
+		}
+
+		if g.selectedTile == nil {
+			// Первая выбранная фишка
+			g.selectedTile = tile
+			tile.Selected = true
+			g.lastAction = time.Now()
+			g.hintActive = false
+		} else if g.selectedTile == tile {
+			// Клик на ту же фишку - снять выделение
+			tile.Selected = false
+			g.selectedTile = nil
+		} else {
+			// Клик на другую фишку - попытка обмена
+			dr := absInt(g.selectedTile.Row - tile.Row)
+			dc := absInt(g.selectedTile.Col - tile.Col)
+
+			if dr+dc == 1 {
+				// Соседние фишки - попытка обмена
+				g.trySwap(g.selectedTile, tile)
+			} else {
+				// Не соседние - выбрать новую фишку
+				g.selectedTile.Selected = false
+				g.selectedTile = tile
+				tile.Selected = true
+				g.lastAction = time.Now()
+				g.hintActive = false
+			}
+		}
+	}
+}
+
+// trySwap пытается обменять две фишки и проверяет на наличие матчей
+func (g *Game) trySwap(tile1, tile2 *logic.Tile) {
+	// Временно обмениваем
+	g.board.SwapTiles(tile1, tile2)
+
+	// Проверяем наличие матчей
+	matches := g.board.FindAllMatches()
+
+	if len(matches) == 0 {
+		// Нет матчей - отменяем обмен и показываем дрожание
+		g.board.SwapTiles(tile1, tile2) // Обратно
+
+		// Анимация дрожания
+		tile1.Shake = 1.0
+		tile2.Shake = 1.0
+
+		// Звук ошибки
+		if g.soundManager != nil {
+			g.soundManager.Play(SoundInvalid)
+		}
+
+		// Сброс выделения
+		tile1.Selected = false
+		g.selectedTile = nil
+
+		g.moves--
+		g.lastAction = time.Now()
+	} else {
+		// Есть матчи - обмен успешен
+		tile1.Selected = false
+		g.selectedTile = nil
+		g.moves--
+		g.lastAction = time.Now()
+		g.hintActive = false
+
+		// Звук обмена
+		if g.soundManager != nil {
+			g.soundManager.Play(SoundSwap)
+		}
+	}
+}
+
+// showHint показывает подсказку - случайную валидную пару
+func (g *Game) showHint() {
+	if g.board == nil || g.board.IsAnimating {
+		return
+	}
+
+	t1, t2 := g.board.FindHint()
+	if t1 != nil && t2 != nil {
+		g.hintTile1 = t1
+		g.hintTile2 = t2
+		g.hintActive = true
+		// Убираем подсветку через 2 секунды
+		go func() {
+			time.Sleep(2 * time.Second)
+			g.hintActive = false
+		}()
+	}
+}
+
+func (g *Game) saveProgress() {
+	// TODO
+}
+
+func (g *Game) loadProgress() {
+	g.level = 1
+	g.coins = 1000
+	g.energy = 5
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
+
+func absInt(x int) int {
 	if x < 0 {
 		return -x
 	}
 	return x
-}
-
-// nextLevel переходит к следующему уровню
-func (g *Game) nextLevel() {
-	// Переходим к следующему уровню через levelManager
-	g.levelManager.NextLevel()
-	
-	g.state = StatePlaying
-	level := g.levelManager.GetCurrentLevel()
-	
-	// Создаем доску с параметрами из уровня
-	g.board = logic.NewBoard(level.BoardRows, level.BoardCols)
-	
-	// Устанавливаем спрайты для нового уровня
-	if g.spriteManager.IsLoaded() {
-		sprites := make(map[int]*ebiten.Image)
-		for i := 0; i < level.GemTypes; i++ {
-			sprites[i] = g.spriteManager.GetGemSprite(i)
-		}
-		g.board.SetGemSprites(sprites)
-	}
-	
-	g.score = 0
-	g.moves = 0
-	g.comboCounter = 0
-	g.levelStartTime = time.Now()
-	
-	fmt.Printf("Следующий уровень! Уровень %d\n", level.Number)
-}
-
-// getTimeLeft возвращает оставшееся время уровня в секундах
-func (g *Game) getTimeLeft() int {
-	level := g.levelManager.GetCurrentLevel()
-	if level.TimeLimit == 0 {
-		return 0 // Без лимита времени
-	}
-	
-	elapsed := int(time.Since(g.levelStartTime).Seconds())
-	remaining := level.TimeLimit - elapsed
-	
-	if remaining < 0 {
-		return 0
-	}
-	
-	return remaining
-}
-
-// toggleMute переключает режим mute
-func (g *Game) toggleMute() {
-	muted := g.soundManager.ToggleMute()
-	fmt.Printf("Sound muted: %v\n", muted)
 }

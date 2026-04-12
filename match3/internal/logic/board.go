@@ -1,184 +1,295 @@
 package logic
 
 import (
-	"fmt"
 	"image/color"
+	"math"
 	"math/rand"
 	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// rng - глобальный генератор случайных чисел (потокобезопасный в Go 1.20+)
-var rng = rand.New(rand.NewSource(time.Now().UnixNano()))
-
-// GetRNG возвращает генератор случайных чисел
-func GetRNG() *rand.Rand {
-	return rng
-}
-
-// GemType определяет тип драгоценного камня
 type GemType int
 
 const (
-	GemRed GemType = iota
-	GemBlue
-	GemGreen
-	GemYellow
-	GemPurple
+	GemApple GemType = iota
 	GemOrange
+	GemLemon
+	GemGrape
+	GemBerry
+	GemMelon
 	GemCount
-	GemBomb GemType = -1 // Специальная бомба (при матче 4+)
 )
 
-// Tile представляет одну ячейку на доске
+var GemColors = []color.RGBA{
+	{255, 50, 50, 255},    // Apple - Red
+	{255, 165, 0, 255},    // Orange
+	{255, 255, 0, 255},    // Lemon - Yellow
+	{50, 205, 50, 255},    // Grape - Green
+	{0, 191, 255, 255},    // Berry - Blue
+	{148, 0, 211, 255},    // Melon - Purple
+}
+
+var GemEmojis = []string{"🍎", "🍊", "🍋", "🍇", "🫐", "🍈"}
+
 type Tile struct {
-	Gem       GemType
-	Row       int
-	Col       int
-	Selected  bool
-	Removing  bool
-	Falling   bool
-	OffsetY   float64
-	IsBomb    bool    // Является ли этот камень бомбой
-	IsFire    bool    // Огненный камень - уничтожает весь ряд
-	IsIce     bool    // Ледяной камень - требует двойного клика
-	ClickCount int    // Счётчик кликов (для ледяных камней)
-	Spawning  bool    // Анимация появления
-	SpawnScale float64 // Масштаб при появлении (0.0 - 1.0)
+	Gem         GemType
+	Row, Col    int
+	X, Y        float64
+	TargetX     float64
+	TargetY     float64
+	Selected    bool
+	Removing    bool
+	Falling     bool
+	Scale       float64
+	Alpha       float64
+	Shake       float64 // Анимация дрожания при невалидном обмене
+	IsBomb      bool
+	IsRocketV   bool
+	IsRocketH   bool
+	IsRainbow   bool
 }
 
-// Board представляет игровое поле
 type Board struct {
-	Tiles      [][]*Tile
-	Rows       int
-	Cols       int
-	TileSize   int
-	OffsetX    int
-	OffsetY    int
-	GemSprites map[int]*ebiten.Image
-	SwapAnim   *SwapAnimation // Текущая анимация обмена
-	ImageCache *ImageCache    // Кэш изображений
+	Tiles       [][]*Tile
+	Rows        int
+	Cols        int
+	TileSize    int
+	OffsetX     int
+	OffsetY     int
+	IsAnimating bool
+	rng         *rand.Rand
+	selected    *Tile
 }
 
-// GemColors содержит цвета для разных типов камней
-var GemColors = []color.Color{
-	color.RGBA{255, 50, 50, 255},    // Red
-	color.RGBA{50, 100, 255, 255},   // Blue
-	color.RGBA{50, 200, 50, 255},    // Green
-	color.RGBA{255, 255, 50, 255},   // Yellow
-	color.RGBA{180, 50, 255, 255},   // Purple
-	color.RGBA{255, 165, 0, 255},    // Orange
-}
-
-// Цвета для разных типов камней (внутренняя)
-var gemColors = GemColors
-
-// SetGemSprites устанавливает спрайты камней
-func (b *Board) SetGemSprites(sprites map[int]*ebiten.Image) {
-	b.GemSprites = sprites
-}
-
-// drawGemFallback отрисовывает камень цветом (fallback)
-func (b *Board) drawGemFallback(screen *ebiten.Image, x, y int, gemType GemType, selected bool) {
-	gemImg := ebiten.NewImage(b.TileSize-4, b.TileSize-4)
-	gemImg.Fill(gemColors[gemType])
+func NewBoard(rows, cols, level int) *Board {
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 	
-	op := &ebiten.DrawImageOptions{}
-	op.GeoM.Translate(float64(x+2), float64(y+2))
-	
-	if selected {
-		op.GeoM.Translate(-2, -2)
-		gemOut := ebiten.NewImage(b.TileSize+2, b.TileSize+2)
-		gemOut.Fill(color.White)
-		gemOut.DrawImage(gemImg, nil)
-		screen.DrawImage(gemOut, op)
-	} else {
-		screen.DrawImage(gemImg, op)
-	}
-}
-
-// NewBoard создаёт новую игровую доску заданного размера
-func NewBoard(rows, cols int) *Board {
 	b := &Board{
-		Tiles:      make([][]*Tile, rows),
-		Rows:       rows,
-		Cols:       cols,
-		TileSize:   60,
-		OffsetX:    40,
-		OffsetY:    150,
-		ImageCache: NewImageCache(),
+		Tiles:    make([][]*Tile, rows),
+		Rows:     rows,
+		Cols:     cols,
+		TileSize: 50,
+		OffsetX:  45,
+		OffsetY:  150,
+		rng:      rng,
 	}
-
-	// Инициализация доски случайными камнями
+	
+	// Создание доски
 	for r := 0; r < rows; r++ {
 		b.Tiles[r] = make([]*Tile, cols)
 		for c := 0; c < cols; c++ {
-			b.Tiles[r][c] = b.createRandomTile(r, c)
+			b.Tiles[r][c] = b.createTile(r, c)
 		}
 	}
-
+	
 	// Убрать начальные матчи
 	b.RemoveInitialMatches()
-
+	
 	return b
 }
 
-// createRandomTile создаёт случайный камень
-func (b *Board) createRandomTile(row, col int) *Tile {
-	tile := &Tile{
-		Gem:     GemType(rng.Intn(int(GemCount))),
-		Row:     row,
-		Col:     col,
-		OffsetY: 0,
+func (b *Board) createTile(row, col int) *Tile {
+	return &Tile{
+		Gem:      GemType(b.rng.Intn(int(GemCount))),
+		Row:      row,
+		Col:      col,
+		X:        float64(b.OffsetX + col*b.TileSize),
+		Y:        float64(b.OffsetY + row*b.TileSize),
+		TargetX:  float64(b.OffsetX + col*b.TileSize),
+		TargetY:  float64(b.OffsetY + row*b.TileSize),
+		Scale:    1.0,
+		Alpha:    1.0,
 	}
-	
-	// 5% шанс создать ледяной камень (начиная с уровня 3)
-	if rng.Float64() < 0.05 {
-		tile.IsIce = true
-	}
-	
-	return tile
 }
 
-// RemoveInitialMatches убирает начальные совпадения при генерации
 func (b *Board) RemoveInitialMatches() {
 	for {
 		matches := b.FindAllMatches()
 		if len(matches) == 0 {
 			break
 		}
-		for _, m := range matches {
-			b.Tiles[m.Row][m.Col].Gem = GemType(rng.Intn(int(GemCount)))
+		for _, t := range matches {
+			t.Gem = GemType(b.rng.Intn(int(GemCount)))
 		}
 	}
 }
 
-// FindAllMatches находит все текущие совпадения на доске
-// Оптимизированная версия без аллокаций строк
-func (b *Board) FindAllMatches() []*Tile {
-	// Используем map[int64]*Tile для избежания строковых аллокаций
-	// Ключ: (row << 32) | col
-	matched := make(map[int64]*Tile)
+func (b *Board) Update() {
+	// Анимация перемещения
+	for r := 0; r < b.Rows; r++ {
+		for c := 0; c < b.Cols; c++ {
+			tile := b.Tiles[r][c]
+			if tile != nil {
+				// Плавное перемещение
+				tile.X += (tile.TargetX - tile.X) * 0.2
+				tile.Y += (tile.TargetY - tile.Y) * 0.2
 
-	// Проверка горизонтальных матчей
+				// Анимация дрожания
+				if tile.Shake > 0 {
+					tile.Shake -= 0.05
+					if tile.Shake < 0 {
+						tile.Shake = 0
+					}
+				}
+
+				// Анимация удаления
+				if tile.Removing {
+					tile.Scale *= 0.8
+					tile.Alpha *= 0.8
+				}
+			}
+		}
+	}
+}
+
+func (b *Board) Draw(screen *ebiten.Image) {
+	// Фон доски
+	bg := ebiten.NewImage(b.Cols*b.TileSize+10, b.Rows*b.TileSize+10)
+	bg.Fill(color.RGBA{20, 10, 40, 255})
+	bgOp := &ebiten.DrawImageOptions{}
+	bgOp.GeoM.Translate(float64(b.OffsetX-5), float64(b.OffsetY-5))
+	screen.DrawImage(bg, bgOp)
+	
+	// Ячейки
+	for r := 0; r < b.Rows; r++ {
+		for c := 0; c < b.Cols; c++ {
+			x := b.OffsetX + c*b.TileSize
+			y := b.OffsetY + r*b.TileSize
+			
+			// Фон ячейки
+			cellColor := color.RGBA{50, 40, 70, 255}
+			if (r+c)%2 == 0 {
+				cellColor = color.RGBA{60, 50, 80, 255}
+			}
+			
+			cell := ebiten.NewImage(b.TileSize-4, b.TileSize-4)
+			cell.Fill(cellColor)
+			
+			op := &ebiten.DrawImageOptions{}
+			op.GeoM.Translate(float64(x+2), float64(y+2))
+			screen.DrawImage(cell, op)
+		}
+	}
+	
+	// Фрукты
+	for r := 0; r < b.Rows; r++ {
+		for c := 0; c < b.Cols; c++ {
+			tile := b.Tiles[r][c]
+			if tile != nil && !tile.Removing {
+				b.drawTile(screen, tile)
+			}
+		}
+	}
+}
+
+func (b *Board) drawTile(screen *ebiten.Image, tile *Tile) {
+	x := int(tile.X)
+	y := int(tile.Y)
+	size := b.TileSize - 4
+
+	// Анимация дрожания - смещение туда-сюда
+	if tile.Shake > 0 {
+		shakeOffset := math.Sin(tile.Shake*math.Pi*10) * 5 * tile.Shake
+		x += int(shakeOffset)
+	}
+
+	// Выделение
+	if tile.Selected {
+		highlight := ebiten.NewImage(size+4, size+4)
+		highlight.Fill(color.RGBA{255, 215, 0, 200})
+		op := &ebiten.DrawImageOptions{}
+		op.GeoM.Translate(float64(x-2), float64(y-2))
+		screen.DrawImage(highlight, op)
+	}
+
+	// Круглый фрукт
+	centerX := x + size/2
+	centerY := y + size/2
+	radius := size / 2
+
+	circleColor := GemColors[tile.Gem]
+
+	circle := b.createCircle(radius*2, circleColor)
+	op := &ebiten.DrawImageOptions{}
+	op.GeoM.Translate(float64(centerX-radius), float64(centerY-radius))
+	screen.DrawImage(circle, op)
+
+	// Блик
+	highlight := b.createCircle(radius/2, color.RGBA{255, 255, 255, 100})
+	hlOp := &ebiten.DrawImageOptions{}
+	hlOp.GeoM.Translate(float64(centerX-radius/3-radius/4), float64(centerY-radius/3-radius/4))
+	screen.DrawImage(highlight, hlOp)
+
+	// Индикаторы бонусов
+	if tile.IsBomb {
+		// Бомба - чёрный кружок
+		bomb := ebiten.NewImage(12, 12)
+		bomb.Fill(color.RGBA{0, 0, 0, 255})
+		bombOp := &ebiten.DrawImageOptions{}
+		bombOp.GeoM.Translate(float64(x+size-10), float64(y+6))
+		screen.DrawImage(bomb, bombOp)
+	}
+
+	if tile.IsRocketH || tile.IsRocketV {
+		// Ракета - стрелка
+		arrow := ebiten.NewImage(10, 10)
+		arrowColor := color.RGBA{255, 165, 0, 255}
+		if tile.IsRocketV {
+			arrowColor = color.RGBA{255, 255, 0, 255}
+		}
+		arrow.Fill(arrowColor)
+		arrowOp := &ebiten.DrawImageOptions{}
+		arrowOp.GeoM.Translate(float64(x+size-8), float64(y+6))
+		screen.DrawImage(arrow, arrowOp)
+	}
+
+	if tile.IsRainbow {
+		// Радуга - переливающийся кружок
+		rainbow := ebiten.NewImage(size, size)
+		hue := (time.Now().UnixMilli() / 20) % 360
+		rainbowColor := hslToRgb(float64(hue), 1.0, 0.5)
+		rainbow.Fill(color.RGBA{rainbowColor[0], rainbowColor[1], rainbowColor[2], 200})
+		rainbowOp := &ebiten.DrawImageOptions{}
+		rainbowOp.GeoM.Translate(float64(x), float64(y))
+		screen.DrawImage(rainbow, rainbowOp)
+	}
+}
+
+func (b *Board) createCircle(diameter int, c color.RGBA) *ebiten.Image {
+	img := ebiten.NewImage(diameter, diameter)
+	center := float64(diameter) / 2
+	radius := float64(diameter) / 2
+	
+	for y := 0; y < diameter; y++ {
+		for x := 0; x < diameter; x++ {
+			dx := float64(x) - center
+			dy := float64(y) - center
+			if math.Sqrt(dx*dx+dy*dy) <= radius {
+				img.Set(x, y, c)
+			}
+		}
+	}
+	
+	return img
+}
+
+func (b *Board) FindAllMatches() []*Tile {
+	matched := make(map[int]*Tile)
+	
+	// Горизонтальные
 	for r := 0; r < b.Rows; r++ {
 		for c := 0; c < b.Cols-2; c++ {
 			gem := b.Tiles[r][c].Gem
 			if gem == b.Tiles[r][c+1].Gem && gem == b.Tiles[r][c+2].Gem {
-				// Нашли матч - добавляем все 3 камня
-				key1 := (int64(r) << 32) | int64(c)
-				key2 := (int64(r) << 32) | int64(c+1)
-				key3 := (int64(r) << 32) | int64(c+2)
-				matched[key1] = b.Tiles[r][c]
-				matched[key2] = b.Tiles[r][c+1]
-				matched[key3] = b.Tiles[r][c+2]
+				matched[r*b.Cols+c] = b.Tiles[r][c]
+				matched[r*b.Cols+c+1] = b.Tiles[r][c+1]
+				matched[r*b.Cols+c+2] = b.Tiles[r][c+2]
 				
-				// Проверяем, есть ли больше 3 в ряд
+				// 4+ в ряд
 				for extra := c + 3; extra < b.Cols; extra++ {
 					if gem == b.Tiles[r][extra].Gem {
-						keyExtra := (int64(r) << 32) | int64(extra)
-						matched[keyExtra] = b.Tiles[r][extra]
+						matched[r*b.Cols+extra] = b.Tiles[r][extra]
 					} else {
 						break
 					}
@@ -186,25 +297,20 @@ func (b *Board) FindAllMatches() []*Tile {
 			}
 		}
 	}
-
-	// Проверка вертикальных матчей
+	
+	// Вертикальные
 	for c := 0; c < b.Cols; c++ {
 		for r := 0; r < b.Rows-2; r++ {
 			gem := b.Tiles[r][c].Gem
 			if gem == b.Tiles[r+1][c].Gem && gem == b.Tiles[r+2][c].Gem {
-				// Нашли матч - добавляем все 3 камня
-				key1 := (int64(r) << 32) | int64(c)
-				key2 := (int64(r+1) << 32) | int64(c)
-				key3 := (int64(r+2) << 32) | int64(c)
-				matched[key1] = b.Tiles[r][c]
-				matched[key2] = b.Tiles[r+1][c]
-				matched[key3] = b.Tiles[r+2][c]
+				matched[r*b.Cols+c] = b.Tiles[r][c]
+				matched[(r+1)*b.Cols+c] = b.Tiles[r+1][c]
+				matched[(r+2)*b.Cols+c] = b.Tiles[r+2][c]
 				
-				// Проверяем, есть ли больше 3 в ряд
+				// 4+ в ряд
 				for extra := r + 3; extra < b.Rows; extra++ {
 					if gem == b.Tiles[extra][c].Gem {
-						keyExtra := (int64(extra) << 32) | int64(c)
-						matched[keyExtra] = b.Tiles[extra][c]
+						matched[extra*b.Cols+c] = b.Tiles[extra][c]
 					} else {
 						break
 					}
@@ -212,318 +318,206 @@ func (b *Board) FindAllMatches() []*Tile {
 			}
 		}
 	}
-
-	// Преобразование в слайс
+	
 	result := make([]*Tile, 0, len(matched))
 	for _, t := range matched {
 		result = append(result, t)
 	}
-
+	
 	return result
 }
 
-// Update обновляет состояние доски каждый кадр
-func (b *Board) Update() {
-	// Обновление анимации обмена
-	if b.SwapAnim != nil && !b.SwapAnim.IsComplete() {
-		b.SwapAnim.Update(1.0 / 60.0) // Предполагаем 60 FPS
+func (b *Board) ProcessMatches() []*Tile {
+	matches := b.FindAllMatches()
+	
+	if len(matches) == 0 {
+		return nil
+	}
+	
+	// Проверка на 4+ и 5+ для бонусов
+	b.checkSpecialCreation(matches)
+	
+	// Удаление
+	for _, t := range matches {
+		t.Removing = true
+	}
+	
+	// Гравитация и заполнение
+	time.Sleep(100 * time.Millisecond)
+	b.ApplyGravity()
+	b.FillEmpty()
+	
+	return matches
+}
+
+func (b *Board) checkSpecialCreation(matches []*Tile) {
+	// Группировка по рядам и колонкам для определения линий
+	rowGroups := make(map[int][]*Tile)
+	colGroups := make(map[int][]*Tile)
+
+	for _, t := range matches {
+		rowGroups[t.Row] = append(rowGroups[t.Row], t)
+		colGroups[t.Col] = append(colGroups[t.Col], t)
 	}
 
-	// Анимация падения с ускорением
-	for r := 0; r < b.Rows; r++ {
-		for c := 0; c < b.Cols; c++ {
-			tile := b.Tiles[r][c]
-			if tile.Falling && tile.OffsetY > 0 {
-				// Ускорение падения (гравитация)
-				tile.OffsetY -= 8 + tile.OffsetY*0.05
-				if tile.OffsetY <= 0 {
-					tile.OffsetY = 0
-					tile.Falling = false
-					// Эффект приземления
-					b.SpawnLandEffect(r, c)
+	// Определяем позицию для создания бонуса (центр матча)
+	getCenterTile := func(tiles []*Tile) *Tile {
+		if len(tiles) == 0 {
+			return nil
+		}
+		return tiles[len(tiles)/2]
+	}
+
+	// Проверка горизонтальных линий
+	for row, tiles := range rowGroups {
+		if len(tiles) >= 5 {
+			// 5+ в ряд = радужный шар
+			center := getCenterTile(tiles)
+			if center != nil {
+				b.createSpecialTile(center.Row, center.Col, "rainbow")
+			}
+		} else if len(tiles) == 4 {
+			// 4 в ряд = ракета
+			center := getCenterTile(tiles)
+			if center != nil {
+				b.createSpecialTile(center.Row, center.Col, "rocket_h")
+			}
+		}
+		_ = row
+	}
+
+	// Проверка вертикальных линий
+	for col, tiles := range colGroups {
+		if len(tiles) >= 5 {
+			// 5+ в ряд = радужный шар (приоритет над ракетой)
+			center := getCenterTile(tiles)
+			if center != nil && !center.IsRainbow {
+				b.createSpecialTile(center.Row, center.Col, "rainbow")
+			}
+		} else if len(tiles) == 4 {
+			// 4 в ряд = ракета
+			center := getCenterTile(tiles)
+			if center != nil {
+				b.createSpecialTile(center.Row, center.Col, "rocket_v")
+			}
+		}
+		_ = col
+	}
+
+	// L/T формы - проверка пересечений
+	// Если есть и горизонталь и вертикаль с 3+ = бомба
+	for row, hTiles := range rowGroups {
+		if len(hTiles) == 3 {
+			for _, t := range hTiles {
+				if len(colGroups[t.Col]) >= 3 {
+					// L/T форма - создать бомбу
+					b.createSpecialTile(t.Row, t.Col, "bomb")
+					break
 				}
 			}
-			
-			// Анимация появления новых камней
-			if tile.Spawning && tile.SpawnScale < 1.0 {
-				tile.SpawnScale += 0.08 // Скорость анимации
-				if tile.SpawnScale >= 1.0 {
-					tile.SpawnScale = 1.0
-					tile.Spawning = false
+		}
+		_ = row
+	}
+}
+
+// createSpecialTile создаёт специальный бонусный камень
+func (b *Board) createSpecialTile(row, col int, specialType string) {
+	tile := b.Tiles[row][col]
+	if tile == nil {
+		return
+	}
+
+	// Сбросить удаление
+	tile.Removing = false
+
+	switch specialType {
+	case "bomb":
+		tile.IsBomb = true
+		tile.Gem = GemApple // Красный с бомбой
+	case "rocket_h":
+		tile.IsRocketH = true
+		tile.Gem = GemOrange // Оранжевый
+	case "rocket_v":
+		tile.IsRocketV = true
+		tile.Gem = GemLemon // Жёлтый
+	case "rainbow":
+		tile.IsRainbow = true
+		tile.Gem = GemBerry // Синий/радужный
+	}
+}
+
+func (b *Board) ApplyGravity() {
+	for c := 0; c < b.Cols; c++ {
+		emptyRow := b.Rows - 1
+		
+		for r := b.Rows - 1; r >= 0; r-- {
+			if !b.Tiles[r][c].Removing {
+				if r != emptyRow {
+					b.Tiles[emptyRow][c] = b.Tiles[r][c]
+					b.Tiles[emptyRow][c].Row = emptyRow
+					b.Tiles[emptyRow][c].TargetY = float64(b.OffsetY + emptyRow*b.TileSize)
+					b.Tiles[r][c] = nil
 				}
+				emptyRow--
 			}
 		}
 	}
 }
 
-// SpawnLandEffect создаёт эффект приземления камня
-func (b *Board) SpawnLandEffect(row, col int) {
-	// Можно добавить мелкие эффекты приземления
-	// Пока оставим пустым для будущей реализации
-}
-
-// Draw отрисовывает доску
-func (b *Board) Draw(screen *ebiten.Image) {
-	for r := 0; r < b.Rows; r++ {
-		for c := 0; c < b.Cols; c++ {
-			tile := b.Tiles[r][c]
-			x := b.OffsetX + c*b.TileSize
-			y := b.OffsetY + r*b.TileSize + int(tile.OffsetY)
-			
-			// Применяем смещение анимации, если есть
-			if b.SwapAnim != nil && !b.SwapAnim.IsComplete() {
-				if tile == b.SwapAnim.Tile1 {
-					offX, offY := b.SwapAnim.GetOffset1()
-					x += int(offX)
-					y += int(offY)
-				} else if tile == b.SwapAnim.Tile2 {
-					offX, offY := b.SwapAnim.GetOffset2()
-					x += int(offX)
-					y += int(offY)
-				}
-			}
-
-			// Отрисовка фона ячейки (из кэша)
-			rect := b.ImageCache.GetTileBackground(b.TileSize)
-
-			op := &ebiten.DrawImageOptions{}
-			op.GeoM.Translate(float64(x), float64(y))
-			screen.DrawImage(rect, op)
-
-			// Отрисовка камня
-			if tile.Gem >= 0 && tile.Gem < GemCount {
-				// Используем спрайт если доступен
-				if b.GemSprites != nil {
-					if sprite, ok := b.GemSprites[int(tile.Gem)]; ok && sprite != nil {
-						op := &ebiten.DrawImageOptions{}
-						
-						// Применяем масштабирование для анимации появления
-						scale := float64(b.TileSize-4) / 32.0
-						if tile.Spawning {
-							scale *= tile.SpawnScale
-							// Центрируем при масштабировании
-							offset := float64(b.TileSize-4) * (1 - tile.SpawnScale) / 2
-							op.GeoM.Translate(float64(x+2)+offset, float64(y+2)+offset)
-						} else {
-							op.GeoM.Translate(float64(x+2), float64(y+2))
-						}
-						op.GeoM.Scale(scale, scale)
-
-						// Выделение выбранного камня (из кэша)
-						if tile.Selected {
-							highlight := b.ImageCache.GetHighlight(b.TileSize)
-							hlOp := &ebiten.DrawImageOptions{}
-							hlOp.GeoM.Translate(float64(x), float64(y))
-							screen.DrawImage(highlight, hlOp)
-						}
-
-						screen.DrawImage(sprite, op)
-
-						// Если это бомба, рисуем индикатор
-						if tile.IsBomb {
-							b.drawBombIndicator(screen, x, y, b.TileSize)
-						}
-						
-						// Если это ледяной камень, рисуем ледяной overlay
-						if tile.IsIce {
-							b.drawIceOverlay(screen, x, y, b.TileSize, tile.ClickCount)
-						}
-					} else {
-						// Fallback на цвета
-						b.drawGemFallback(screen, x, y, tile.Gem, tile.Selected)
-						if tile.IsBomb {
-							b.drawBombIndicator(screen, x, y, b.TileSize)
-						}
-					}
-				} else {
-					// Fallback на цвета
-					b.drawGemFallback(screen, x, y, tile.Gem, tile.Selected)
-					if tile.IsBomb {
-						b.drawBombIndicator(screen, x, y, b.TileSize)
-					}
-				}
+func (b *Board) FillEmpty() {
+	for c := 0; c < b.Cols; c++ {
+		for r := 0; r < b.Rows; r++ {
+			if b.Tiles[r][c] == nil {
+				b.Tiles[r][c] = b.createTile(r, c)
+				b.Tiles[r][c].Y = float64(b.OffsetY - (b.Rows-r)*b.TileSize)
+				b.Tiles[r][c].TargetY = float64(b.OffsetY + r*b.TileSize)
 			}
 		}
 	}
 }
 
-// drawBombIndicator рисует маленький значок бомбы в углу камня
-func (b *Board) drawBombIndicator(screen *ebiten.Image, x, y, tileSize int) {
-	// Маленький кружок в правом верхнем углу (из кэша)
-	bombSize := 12
-	bombX := x + tileSize - bombSize - 2
-	bombY := y + 2
-
-	bomb := b.ImageCache.GetBombIndicator(bombSize)
-
-	op := &ebiten.DrawImageOptions{}
-	op.GeoM.Translate(float64(bombX), float64(bombY))
-	screen.DrawImage(bomb, op)
-}
-
-// drawIceOverlay рисует ледяной overlay на камне
-func (b *Board) drawIceOverlay(screen *ebiten.Image, x, y, tileSize int, clickCount int) {
-	// Создаем полупрозрачный белый/голубой overlay
-	iceImg := ebiten.NewImage(tileSize-4, tileSize-4)
+func (b *Board) SwapTiles(t1, t2 *Tile) bool {
+	// Проверка соседства
+	dr := absInt(t1.Row - t2.Row)
+	dc := absInt(t1.Col - t2.Col)
 	
-	// Более непрозрачный после первого клика (показывает прогресс)
-	alpha := uint8(120)
-	if clickCount > 0 {
-		alpha = 180 // Более заметный после первого клика
+	if dr+dc != 1 {
+		return false
 	}
 	
-	iceColor := color.RGBA{200, 230, 255, alpha}
-	iceImg.Fill(iceColor)
-
-	op := &ebiten.DrawImageOptions{}
-	op.GeoM.Translate(float64(x+2), float64(y+2))
-	screen.DrawImage(iceImg, op)
+	// Обмен
+	b.Tiles[t1.Row][t1.Col], b.Tiles[t2.Row][t2.Col] = b.Tiles[t2.Row][t2.Col], b.Tiles[t1.Row][t1.Col]
+	t1.Row, t2.Row = t2.Row, t1.Row
+	t1.Col, t2.Col = t2.Col, t1.Col
 	
-	// Добавляем эффект "трещин" после первого клика
-	if clickCount > 0 {
-		// Можно добавить линии трещин в будущем
-		// Пока просто более яркий overlay
-	}
+	t1.TargetX = float64(b.OffsetX + t1.Col*b.TileSize)
+	t1.TargetY = float64(b.OffsetY + t1.Row*b.TileSize)
+	t2.TargetX = float64(b.OffsetX + t2.Col*b.TileSize)
+	t2.TargetY = float64(b.OffsetY + t2.Row*b.TileSize)
+	
+	return true
 }
 
-// GetTileAt возвращает камень по экранным координатам
 func (b *Board) GetTileAt(x, y int) *Tile {
 	col := (x - b.OffsetX) / b.TileSize
 	row := (y - b.OffsetY) / b.TileSize
-
+	
 	if row >= 0 && row < b.Rows && col >= 0 && col < b.Cols {
 		return b.Tiles[row][col]
 	}
 	return nil
 }
 
-// SwapTiles меняет местами два соседних камня и создаёт анимацию
-func (b *Board) SwapTiles(t1, t2 *Tile) bool {
-	// Проверка на соседство
-	dr := abs(t1.Row - t2.Row)
-	dc := abs(t1.Col - t2.Col)
-
-	if dr+dc != 1 {
-		return false
-	}
-
-	// Создаём анимацию
-	b.SwapAnim = NewSwapAnimation(t1, t2, b.TileSize)
-
-	// Обмен камнями (визуально будет через анимацию)
-	b.Tiles[t1.Row][t1.Col].Gem, b.Tiles[t2.Row][t2.Col].Gem =
-		b.Tiles[t2.Row][t2.Col].Gem, b.Tiles[t1.Row][t1.Col].Gem
-
+func (b *Board) HasValidMoves() bool {
+	// TODO: Проверить наличие возможных ходов
 	return true
 }
 
-// RemoveMatches удаляет найденные совпадения и возвращает очки
-// При матче 4+ создаёт специальную бомбу
-func (b *Board) RemoveMatches() (score int, bombCreated *Tile) {
-	matches := b.FindAllMatches()
-	if len(matches) == 0 {
-		return 0, nil
-	}
-
-	// Бонус за большее количество
-	score = len(matches) * 10
-	if len(matches) >= 4 {
-		score *= 2
-		
-		// Создаём бомбу на месте центрального камня матча
-		bombCreated = b.createBomb(matches)
-		// createBomb уже пометил камни для удаления
-		b.ApplyGravity()
-		return score, bombCreated
-	} else if len(matches) == 3 {
-		// Обычный матч 3
-		score = 30
-	}
-
-	// Удаление камней (обычный матч 3)
-	for _, t := range matches {
-		t.Gem = GemType(-1) // Пустая ячейка
-		t.Removing = true
-	}
-
-	// Падение камней сверху
-	b.ApplyGravity()
-
-	return score, nil
-}
-
-// createBomb создаёт бомбу на месте центрального камня из матча
-func (b *Board) createBomb(matches []*Tile) *Tile {
-	// Выбираем центральный камень
-	centerIdx := len(matches) / 2
-	bombTile := matches[centerIdx]
-	
-	// Превращаем в бомбу
-	bombTile.Gem = GemType(rng.Intn(int(GemCount))) // Обычный камень для отображения
-	bombTile.IsBomb = true
-	bombTile.Removing = false // Не удалять!
-	
-	// При матче 5+ создаём огненный камень вместо бомбы
-	if len(matches) >= 5 {
-		bombTile.IsBomb = false
-		bombTile.IsFire = true
-		fmt.Printf("🔥 Огненный камень создан на (%d, %d)!\n", bombTile.Row, bombTile.Col)
-	} else {
-		fmt.Printf("💣 Бомба создана на (%d, %d)!\n", bombTile.Row, bombTile.Col)
-	}
-	
-	// Помечаем все остальные камни матча для удаления
-	for _, t := range matches {
-		if t != bombTile {
-			t.Gem = GemType(-1)
-			t.Removing = true
-		}
-	}
-	
-	return bombTile
-}
-
-// ApplyGravity применяет гравитацию к камням
-func (b *Board) ApplyGravity() {
-	for c := 0; c < b.Cols; c++ {
-		emptyRow := b.Rows - 1
-		
-		for r := b.Rows - 1; r >= 0; r-- {
-			if b.Tiles[r][c].Gem != GemType(-1) {
-				if r != emptyRow {
-					b.Tiles[emptyRow][c].Gem = b.Tiles[r][c].Gem
-					b.Tiles[emptyRow][c].Falling = true
-					b.Tiles[emptyRow][c].OffsetY = float64((emptyRow - r) * b.TileSize)
-					b.Tiles[r][c].Gem = GemType(-1)
-				}
-				emptyRow--
-			}
-		}
-
-		// Заполнение пустых ячеек сверху новыми камнями
-		for r := emptyRow; r >= 0; r-- {
-			b.Tiles[r][c].Gem = GemType(rng.Intn(int(GemCount)))
-			b.Tiles[r][c].Falling = true
-			b.Tiles[r][c].OffsetY = float64((emptyRow - r + 1) * b.TileSize)
-			b.Tiles[r][c].Spawning = true
-			b.Tiles[r][c].SpawnScale = 0.0
-		}
-	}
-}
-
-// HasValidModes проверяет, есть ли допустимые ходы
-func (b *Board) HasValidMoves() bool {
-	tile1, _ := b.FindHint()
-	return tile1 != nil
-}
-
-// FindHint находит один возможный ход и возвращает два камня для обмена
-// Возвращает nil, если ходов нет
 func (b *Board) FindHint() (tile1, tile2 *Tile) {
 	// Проверка всех возможных обменов
 	for r := 0; r < b.Rows; r++ {
 		for c := 0; c < b.Cols; c++ {
-			// Проверка обмена вправо
+			// Вправо
 			if c < b.Cols-1 {
 				b.Tiles[r][c].Gem, b.Tiles[r][c+1].Gem = b.Tiles[r][c+1].Gem, b.Tiles[r][c].Gem
 				if len(b.FindAllMatches()) > 0 {
@@ -532,8 +526,7 @@ func (b *Board) FindHint() (tile1, tile2 *Tile) {
 				}
 				b.Tiles[r][c].Gem, b.Tiles[r][c+1].Gem = b.Tiles[r][c+1].Gem, b.Tiles[r][c].Gem
 			}
-
-			// Проверка обмена вниз
+			// Вниз
 			if r < b.Rows-1 {
 				b.Tiles[r][c].Gem, b.Tiles[r+1][c].Gem = b.Tiles[r+1][c].Gem, b.Tiles[r][c].Gem
 				if len(b.FindAllMatches()) > 0 {
@@ -547,47 +540,50 @@ func (b *Board) FindHint() (tile1, tile2 *Tile) {
 	return nil, nil
 }
 
-// Shuffle перемешивает доску случайным образом
-func (b *Board) Shuffle() {
-	// Собираем все камни
-	allGems := make([]GemType, 0, b.Rows*b.Cols)
-	for r := 0; r < b.Rows; r++ {
-		for c := 0; c < b.Cols; c++ {
-			if b.Tiles[r][c].Gem != GemType(-1) {
-				allGems = append(allGems, b.Tiles[r][c].Gem)
-			}
-		}
-	}
-	
-	// Перемешиваем
-	rng.Shuffle(len(allGems), func(i, j int) {
-		allGems[i], allGems[j] = allGems[j], allGems[i]
-	})
-	
-	// Возвращаем на доску
-	idx := 0
-	for r := 0; r < b.Rows; r++ {
-		for c := 0; c < b.Cols; c++ {
-			if idx < len(allGems) {
-				b.Tiles[r][c].Gem = allGems[idx]
-				b.Tiles[r][c].IsBomb = false // Сбрасываем бомбы
-				b.Tiles[r][c].Falling = true
-				b.Tiles[r][c].OffsetY = float64(rng.Intn(b.TileSize * 2))
-				idx++
-			}
-		}
-	}
-	
-	// Убираем начальные матчи
-	b.RemoveInitialMatches()
-	
-	fmt.Println("🔀 Доска перемешана!")
+func absInt(x int) int {
+	return int(math.Abs(float64(x)))
 }
 
-// abs возвращает абсолютное значение
-func abs(x int) int {
-	if x < 0 {
-		return -x
+// hslToRgb преобразует HSL в RGB (упрощённая версия)
+func hslToRgb(h, s, l float64) [3]uint8 {
+	var r, g, b float64
+
+	if s == 0 {
+		r, g, b = l, l, l
+	} else {
+		var q float64
+		if l < 0.5 {
+			q = l * (1 + s)
+		} else {
+			q = l + s - l*s
+		}
+		p := 2*l - s
+
+		h /= 360.0
+
+		r = hueToRgb(p, q, h+1.0/3.0)
+		g = hueToRgb(p, q, h)
+		b = hueToRgb(p, q, h-1.0/3.0)
 	}
-	return x
+
+	return [3]uint8{uint8(r * 255), uint8(g * 255), uint8(b * 255)}
+}
+
+func hueToRgb(p, q, t float64) float64 {
+	if t < 0 {
+		t += 1
+	}
+	if t > 1 {
+		t -= 1
+	}
+	if t < 1.0/6.0 {
+		return p + (q-p)*6*t
+	}
+	if t < 1.0/2.0 {
+		return q
+	}
+	if t < 2.0/3.0 {
+		return p + (q-p)*(2.0/3.0-t)*6
+	}
+	return p
 }

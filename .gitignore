@@ -45,3 +45,7 @@ snake/go.sum
 # Qwen
 .qwen/
 city_platformer/pixel_quest
+
+# Match-3
+match3/*.exe
+match3/assets/
