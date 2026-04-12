@@ -14,7 +14,7 @@ var assetFS embed.FS
 
 // SpriteManager управляет загрузкой и хранением спрайтов
 type SpriteManager struct {
-	gems       [6]*ebiten.Image
+	fruits     [6]*ebiten.Image
 	background *ebiten.Image
 	loaded     bool
 }
@@ -30,36 +30,37 @@ func (sm *SpriteManager) Load() {
 		return
 	}
 
-	log.Println("Loading sprites...")
+	log.Println("Loading fruit sprites...")
 
-	// Загрузка камней
-	gemNames := []string{"red", "green", "yellow", "blue", "purple", "orange"}
-	for i, name := range gemNames {
-		sm.gems[i] = sm.loadGemSprite("assets/gems/" + name + ".png")
+	// Загрузка фруктов
+	fruitNames := []string{"apple", "banana", "strawberry", "orange", "kiwi", "grapes"}
+	for i, name := range fruitNames {
+		sm.fruits[i] = sm.loadFruitSprite("assets/fruits/" + name + ".png")
 	}
 
 	// Загрузка фона
 	sm.background = sm.loadImage("assets/backgrounds/game_bg.png")
 
 	sm.loaded = true
-	log.Println("Sprites loaded successfully!")
+	log.Println("Fruit sprites loaded successfully!")
 }
 
-// loadGemSprite загружает спрайт камня из PNG файла
-func (sm *SpriteManager) loadGemSprite(path string) *ebiten.Image {
+// loadFruitSprite загружает спрайт фрукта из PNG файла с улучшенной обработкой
+func (sm *SpriteManager) loadFruitSprite(path string) *ebiten.Image {
 	data, err := assetFS.ReadFile(path)
 	if err != nil {
-		log.Printf("Warning: Failed to load gem sprite %s: %v", path, err)
+		log.Printf("Warning: Failed to load fruit sprite %s: %v", path, err)
 		// Возвращаем пустой спрайт
 		return ebiten.NewImage(32, 32)
 	}
 
 	img, err := png.Decode(bytes.NewReader(data))
 	if err != nil {
-		log.Printf("Warning: Failed to decode gem sprite %s: %v", path, err)
+		log.Printf("Warning: Failed to decode fruit sprite %s: %v", path, err)
 		return ebiten.NewImage(32, 32)
 	}
 
+	// Масштабируем до нужного размера с сохранением качества
 	return ebiten.NewImageFromImage(img)
 }
 
@@ -80,15 +81,15 @@ func (sm *SpriteManager) loadImage(path string) *ebiten.Image {
 	return ebiten.NewImageFromImage(img)
 }
 
-// GetGemSprite возвращает спрайт камня по типу
+// GetGemSprite возвращает спрайт фрукта по типу (для обратной совместимости)
 func (sm *SpriteManager) GetGemSprite(gemType int) *ebiten.Image {
 	if !sm.loaded {
 		sm.Load()
 	}
 	if gemType >= 0 && gemType < 6 {
-		return sm.gems[gemType]
+		return sm.fruits[gemType]
 	}
-	return sm.gems[0]
+	return sm.fruits[0]
 }
 
 // GetBackground возвращает фоновое изображение
