@@ -1022,16 +1022,83 @@ func (g *Game) drawDraggedGem(screen *ebiten.Image) {
 		drawY = g.dragCurrentY
 	}
 
-	// Свечение
+	// ОГНЕННОЕ КОЛЬЦО вместо белого круга!
 	if g.dragState == Dragging {
-		glowSize := 40 + g.dragGlowPulse*10
-		vector.DrawFilledCircle(screen, float32(drawX), float32(drawY), float32(glowSize),
-			color.RGBA{255, 255, 255, 30}, false)
+		g.drawFireRing(screen, drawX, drawY, gemType)
 	}
 
 	// Сам гем
 	g.drawGem(screen, int(drawX-tileSize/2+5), int(drawY-tileSize/2+5), gemType,
 		g.dragScale, g.dragRotation, 0.9)
+}
+
+// drawFireRing рисует огненное кольцо вокруг перетаскиваемого гема
+func (g *Game) drawFireRing(screen *ebiten.Image, x, y float64, gemType int) {
+	time := float64(time.Now().UnixMilli()) * 0.003
+
+	// Цвета огня в зависимости от типа гема
+	colors := []color.RGBA{
+		{255, 80, 50, 200},   // красный - огненное кольцо
+		{50, 100, 255, 200},  // синий - ледяное кольцо
+		{80, 255, 100, 200},  // зелёный - токсичное кольцо
+		{255, 255, 50, 200},  // жёлтый - электрическое кольцо
+		{200, 80, 255, 200},  // фиолетовый - магическое кольцо
+	}
+
+	baseColor := colors[0]
+	if gemType < len(colors) {
+		baseColor = colors[gemType]
+	}
+
+	// Вращающиеся сегменты кольца
+	for i := 0; i < 12; i++ {
+		angle := float64(i)*math.Pi*2/12 + time
+		nextAngle := float64(i+1)*math.Pi*2/12 + time
+
+		radius := 45.0 + math.Sin(time*2+float64(i))*5
+
+		// Внешнее кольцо
+		x1 := x + math.Cos(angle)*radius
+		y1 := y + math.Sin(angle)*radius
+		x2 := x + math.Cos(nextAngle)*radius
+		y2 := y + math.Sin(nextAngle)*radius
+
+		alpha := uint8(150 + math.Sin(time+float64(i)*0.5)*100)
+		vector.StrokeLine(screen,
+			float32(x1), float32(y1),
+			float32(x2), float32(y2),
+			4, color.RGBA{baseColor.R, baseColor.G, baseColor.B, alpha}, false)
+
+		// Огненные частицы
+		if i%3 == 0 {
+			particleRadius := radius + 10 + math.Sin(time*3+float64(i))*8
+			px := x + math.Cos(angle+time)*particleRadius
+			py := y + math.Sin(angle+time)*particleRadius
+
+			size := 3 + math.Sin(time*4+float64(i))*2
+			vector.DrawFilledCircle(screen, float32(px), float32(py), float32(size),
+				color.RGBA{baseColor.R, baseColor.G, baseColor.B, uint8(180 + math.Sin(time*2)*75)}, false)
+		}
+	}
+
+	// Внутреннее вращающееся кольцо
+	for i := 0; i < 8; i++ {
+		angle := float64(i)*math.Pi*2/8 - time*1.5
+		radius := 35.0 + math.Cos(time*1.5+float64(i))*3
+
+		x1 := x + math.Cos(angle)*radius
+		y1 := y + math.Sin(angle)*radius
+
+		size := 2 + math.Sin(time*3+float64(i))*1.5
+		vector.DrawFilledCircle(screen, float32(x1), float32(y1), float32(size),
+			color.RGBA{255, 255, 255, uint8(100 + math.Sin(time+float64(i))*50)}, false)
+	}
+
+	// Пульсирующее свечение
+	glowRadius := 55.0 + math.Sin(time*2)*10
+	alpha := uint8(40 + math.Sin(time*3)*20)
+	vector.DrawFilledCircle(screen, float32(x), float32(y), float32(glowRadius),
+		color.RGBA{baseColor.R, baseColor.G, baseColor.B, alpha}, false)
 }
 
 func (g *Game) drawTrails(screen *ebiten.Image) {
