@@ -466,9 +466,13 @@ func (g *Game) handleDragDrop() {
 					}
 				}
 				if !alreadyAdded {
-					// Проверяем соседство с последней точкой
+					// Проверяем соседство (ВКЛЮЧАЯ ДИАГОНАЛИ!)
 					lastPt := g.swipeLine.Points[len(g.swipeLine.Points)-1]
-					if abs(lastPt.X-row)+abs(lastPt.Y-col) == 1 {
+					dr := abs(lastPt.X - row)
+					dc := abs(lastPt.Y - col)
+					
+					// Соседство включая диагонали: max(dr, dc) == 1
+					if dr <= 1 && dc <= 1 && (dr+dc) > 0 {
 						g.swipeLine.Points = append(g.swipeLine.Points, image.Point{row, col})
 						g.swipeLine.LinePoints = append(g.swipeLine.LinePoints, struct{ X, Y float64 }{float64(mx), float64(my)})
 
@@ -913,6 +917,26 @@ func (g *Game) drawBoard(screen *ebiten.Image) {
 					uint8(50 + 100*pulse),
 					uint8(150 + 100*pulse),
 					255,
+				}
+			}
+			
+			// Подсветка при свайпе (одинаковые гемы включая диагонали)
+			if g.dragState == Dragging && len(g.swipeLine.Points) > 0 {
+				gemAtCell := g.board.Get(r, c)
+				if gemAtCell == g.swipeLine.GemType && gemAtCell >= 0 {
+					lastPt := g.swipeLine.Points[len(g.swipeLine.Points)-1]
+					dr := abs(lastPt.X - r)
+					dc := abs(lastPt.Y - c)
+					if dr <= 1 && dc <= 1 && (dr+dc) > 0 {
+						// Можно свапнуть по диагонали!
+						pulse := math.Sin(float64(time.Now().UnixMilli())*0.015)*0.4 + 0.6
+						cellColor = color.RGBA{
+							uint8(50 + 200*pulse),
+							uint8(200 + 55*pulse),
+							uint8(50),
+							255,
+						}
+					}
 				}
 			}
 
