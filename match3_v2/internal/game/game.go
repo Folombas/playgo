@@ -9,6 +9,7 @@ import (
 	"os"
 	"time"
 
+	"match3_v2/internal/audio"
 	"match3_v2/internal/logic"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -43,6 +44,7 @@ const (
 // Game основной игровой объект
 type Game struct {
 	board       *logic.Board
+	audioMgr    *audio.SoundManager
 	score       int
 	combo       int
 	maxCombo    int
@@ -52,7 +54,7 @@ type Game struct {
 	hintPair    [2]image.Point
 	showHint    bool
 	particles   []Particle
-	trails      []Trail      // Следы при перетаскивании
+	trails      []Trail
 	gemImages   map[int]*ebiten.Image
 	selectorImg *ebiten.Image
 	rng         *rand.Rand
@@ -96,6 +98,7 @@ func NewGame() *Game {
 
 	g := &Game{
 		board:       logic.NewBoard(gridSize, rng),
+		audioMgr:    audio.NewSoundManager(),
 		score:       0,
 		combo:       0,
 		maxCombo:    0,
@@ -179,6 +182,7 @@ func (g *Game) Update() error {
 	if time.Since(g.hintTime) > 5*time.Second && g.dragState == DragNone {
 		g.showHint = true
 		g.hintPair = g.board.FindHint()
+		g.audioMgr.Play(audio.SoundHint)
 	}
 
 	// Обновление частиц и следов
@@ -232,6 +236,9 @@ func (g *Game) handleDragDrop() {
 
 			// Эффект поднятия - всплеск частиц
 			g.spawnLiftEffect(hoverPos)
+			
+			// Звук поднятия
+			g.audioMgr.Play(audio.SoundPickUp)
 		} else if hoverValid {
 			// Наведение
 			g.hoverGem = hoverPos
@@ -283,6 +290,9 @@ func (g *Game) handleDragDrop() {
 				// Выполнить обмен
 				g.board.Swap(g.dragGem.X, g.dragGem.Y, hoverPos.X, hoverPos.Y)
 
+				// Звук обмена
+				g.audioMgr.Play(audio.SoundDrop)
+
 				// Проверить матчи
 				matches := g.board.FindMatches()
 				if len(matches) > 0 {
@@ -292,18 +302,31 @@ func (g *Game) handleDragDrop() {
 						g.maxCombo = g.combo
 					}
 					g.spawnSuccessEffect(hoverPos)
+					
+					// Звук матча
+					if g.combo >= 3 {
+						g.audioMgr.Play(audio.SoundCombo)
+					} else {
+						g.audioMgr.Play(audio.SoundMatch)
+					}
 				} else {
 					// Вернуть обратно
 					g.board.Swap(g.dragGem.X, g.dragGem.Y, hoverPos.X, hoverPos.Y)
 					g.dragState = DragShaking
 					g.dragAnimTime = 0
 					g.spawnFailEffect()
+					
+					// Звук ошибки
+					g.audioMgr.Play(audio.SoundFail)
 				}
 			} else {
 				// Вернуть на место
 				g.dragTargetPos = g.dragStartPos
 				g.dragState = DragReturning
 				g.dragAnimTime = 0
+				
+				// Звук возврата
+				g.audioMgr.Play(audio.SoundSnap)
 			}
 		}
 
