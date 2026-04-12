@@ -55,6 +55,7 @@ type Game struct {
 	showHint    bool
 	particles   []Particle
 	trails      []Trail
+	stars       []Star
 	gemImages   map[int]*ebiten.Image
 	selectorImg *ebiten.Image
 	rng         *rand.Rand
@@ -92,6 +93,14 @@ type Trail struct {
 	Size  float64
 }
 
+// Star звезда на фоне
+type Star struct {
+	X, Y   float64
+	Size   float64
+	Twinkle float64
+	Speed  float64
+}
+
 // NewGame создаёт новую игру
 func NewGame() *Game {
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
@@ -115,6 +124,8 @@ func NewGame() *Game {
 		hoverGem:    image.Point{-1, -1},
 		dragScale:   1.0,
 	}
+
+	g.stars = g.generateStars(100)
 
 	g.loadImages()
 
@@ -188,6 +199,7 @@ func (g *Game) Update() error {
 	// Обновление частиц и следов
 	g.updateParticles()
 	g.updateTrails()
+	g.updateStars()
 
 	// Рестарт
 	if inpututil.IsKeyJustPressed(ebiten.KeyR) {
@@ -208,6 +220,34 @@ func (g *Game) resetGame() {
 	g.dragState = DragNone
 	g.dragGem = image.Point{-1, -1}
 	g.hoverGem = image.Point{-1, -1}
+}
+
+func (g *Game) generateStars(count int) []Star {
+	stars := make([]Star, count)
+	for i := range stars {
+		stars[i] = Star{
+			X:       g.rng.Float64() * screenWidth,
+			Y:       g.rng.Float64() * screenHeight,
+			Size:    1 + g.rng.Float64()*2,
+			Twinkle: g.rng.Float64() * math.Pi * 2,
+			Speed:   0.5 + g.rng.Float64()*2,
+		}
+	}
+	return stars
+}
+
+func (g *Game) updateStars() {
+	for i := range g.stars {
+		g.stars[i].Twinkle += g.stars[i].Speed / 60.0
+	}
+}
+
+func (g *Game) drawStars(screen *ebiten.Image) {
+	for _, s := range g.stars {
+		alpha := uint8(100 + 155*(math.Sin(s.Twinkle)*0.5+0.5))
+		vector.DrawFilledCircle(screen, float32(s.X), float32(s.Y), float32(s.Size),
+			color.RGBA{200, 220, 255, alpha}, false)
+	}
 }
 
 func (g *Game) handleDragDrop() {
@@ -516,7 +556,10 @@ func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
 
 func (g *Game) Draw(screen *ebiten.Image) {
 	// Фон
-	screen.Fill(color.RGBA{20, 10, 40, 255})
+	screen.Fill(color.RGBA{10, 5, 30, 255})
+
+	// Звёзды
+	g.drawStars(screen)
 
 	// Заголовок
 	g.drawHeader(screen)
