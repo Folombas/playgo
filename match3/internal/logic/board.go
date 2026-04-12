@@ -223,11 +223,36 @@ func (b *Board) drawTile(screen *ebiten.Image, tile *Tile) {
 
 	// Индикаторы бонусов
 	if tile.IsBomb {
+		// Бомба - чёрный кружок
 		bomb := ebiten.NewImage(12, 12)
 		bomb.Fill(color.RGBA{0, 0, 0, 255})
 		bombOp := &ebiten.DrawImageOptions{}
 		bombOp.GeoM.Translate(float64(x+size-10), float64(y+6))
 		screen.DrawImage(bomb, bombOp)
+	}
+
+	if tile.IsRocketH || tile.IsRocketV {
+		// Ракета - стрелка
+		arrow := ebiten.NewImage(10, 10)
+		arrowColor := color.RGBA{255, 165, 0, 255}
+		if tile.IsRocketV {
+			arrowColor = color.RGBA{255, 255, 0, 255}
+		}
+		arrow.Fill(arrowColor)
+		arrowOp := &ebiten.DrawImageOptions{}
+		arrowOp.GeoM.Translate(float64(x+size-8), float64(y+6))
+		screen.DrawImage(arrow, arrowOp)
+	}
+
+	if tile.IsRainbow {
+		// Радуга - переливающийся кружок
+		rainbow := ebiten.NewImage(size, size)
+		hue := (time.Now().UnixMilli() / 20) % 360
+		rainbowColor := hslToRgb(float64(hue), 1.0, 0.5)
+		rainbow.Fill(color.RGBA{rainbowColor[0], rainbowColor[1], rainbowColor[2], 200})
+		rainbowOp := &ebiten.DrawImageOptions{}
+		rainbowOp.GeoM.Translate(float64(x), float64(y))
+		screen.DrawImage(rainbow, rainbowOp)
 	}
 }
 
@@ -326,40 +351,98 @@ func (b *Board) ProcessMatches() []*Tile {
 }
 
 func (b *Board) checkSpecialCreation(matches []*Tile) {
-	// Группировка по рядам и колонкам
-	rowGroups := make(map[int]int)
-	colGroups := make(map[int]int)
-	
+	// Группировка по рядам и колонкам для определения линий
+	rowGroups := make(map[int][]*Tile)
+	colGroups := make(map[int][]*Tile)
+
 	for _, t := range matches {
-		rowGroups[t.Row]++
-		colGroups[t.Col]++
+		rowGroups[t.Row] = append(rowGroups[t.Row], t)
+		colGroups[t.Col] = append(colGroups[t.Col], t)
 	}
-	
-	// 5 в ряд = радужный шар
-	for _, count := range rowGroups {
-		if count >= 5 {
-			// Создать радужный шар
-			// (будет добавлен позже)
+
+	// Определяем позицию для создания бонуса (центр матча)
+	getCenterTile := func(tiles []*Tile) *Tile {
+		if len(tiles) == 0 {
+			return nil
 		}
+		return tiles[len(tiles)/2]
 	}
-	
-	for _, count := range colGroups {
-		if count >= 5 {
-			// Создать радужный шар
+
+	// Проверка горизонтальных линий
+	for row, tiles := range rowGroups {
+		if len(tiles) >= 5 {
+			// 5+ в ряд = радужный шар
+			center := getCenterTile(tiles)
+			if center != nil {
+				b.createSpecialTile(center.Row, center.Col, "rainbow")
+			}
+		} else if len(tiles) == 4 {
+			// 4 в ряд = ракета
+			center := getCenterTile(tiles)
+			if center != nil {
+				b.createSpecialTile(center.Row, center.Col, "rocket_h")
+			}
 		}
+		_ = row
 	}
-	
-	// 4 в ряд = бомба/ракета
-	for _, count := range rowGroups {
-		if count == 4 {
-			// Создать ракету
+
+	// Проверка вертикальных линий
+	for col, tiles := range colGroups {
+		if len(tiles) >= 5 {
+			// 5+ в ряд = радужный шар (приоритет над ракетой)
+			center := getCenterTile(tiles)
+			if center != nil && !center.IsRainbow {
+				b.createSpecialTile(center.Row, center.Col, "rainbow")
+			}
+		} else if len(tiles) == 4 {
+			// 4 в ряд = ракета
+			center := getCenterTile(tiles)
+			if center != nil {
+				b.createSpecialTile(center.Row, center.Col, "rocket_v")
+			}
 		}
+		_ = col
 	}
-	
-	for _, count := range colGroups {
-		if count == 4 {
-			// Создать ракету
+
+	// L/T формы - проверка пересечений
+	// Если есть и горизонталь и вертикаль с 3+ = бомба
+	for row, hTiles := range rowGroups {
+		if len(hTiles) == 3 {
+			for _, t := range hTiles {
+				if len(colGroups[t.Col]) >= 3 {
+					// L/T форма - создать бомбу
+					b.createSpecialTile(t.Row, t.Col, "bomb")
+					break
+				}
+			}
 		}
+		_ = row
+	}
+}
+
+// createSpecialTile создаёт специальный бонусный камень
+func (b *Board) createSpecialTile(row, col int, specialType string) {
+	tile := b.Tiles[row][col]
+	if tile == nil {
+		return
+	}
+
+	// Сбросить удаление
+	tile.Removing = false
+
+	switch specialType {
+	case "bomb":
+		tile.IsBomb = true
+		tile.Gem = GemApple // Красный с бомбой
+	case "rocket_h":
+		tile.IsRocketH = true
+		tile.Gem = GemOrange // Оранжевый
+	case "rocket_v":
+		tile.IsRocketV = true
+		tile.Gem = GemLemon // Жёлтый
+	case "rainbow":
+		tile.IsRainbow = true
+		tile.Gem = GemBerry // Синий/радужный
 	}
 }
 
@@ -459,4 +542,48 @@ func (b *Board) FindHint() (tile1, tile2 *Tile) {
 
 func absInt(x int) int {
 	return int(math.Abs(float64(x)))
+}
+
+// hslToRgb преобразует HSL в RGB (упрощённая версия)
+func hslToRgb(h, s, l float64) [3]uint8 {
+	var r, g, b float64
+
+	if s == 0 {
+		r, g, b = l, l, l
+	} else {
+		var q float64
+		if l < 0.5 {
+			q = l * (1 + s)
+		} else {
+			q = l + s - l*s
+		}
+		p := 2*l - s
+
+		h /= 360.0
+
+		r = hueToRgb(p, q, h+1.0/3.0)
+		g = hueToRgb(p, q, h)
+		b = hueToRgb(p, q, h-1.0/3.0)
+	}
+
+	return [3]uint8{uint8(r * 255), uint8(g * 255), uint8(b * 255)}
+}
+
+func hueToRgb(p, q, t float64) float64 {
+	if t < 0 {
+		t += 1
+	}
+	if t > 1 {
+		t -= 1
+	}
+	if t < 1.0/6.0 {
+		return p + (q-p)*6*t
+	}
+	if t < 1.0/2.0 {
+		return q
+	}
+	if t < 2.0/3.0 {
+		return p + (q-p)*(2.0/3.0-t)*6
+	}
+	return p
 }

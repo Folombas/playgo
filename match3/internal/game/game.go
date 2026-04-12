@@ -388,7 +388,7 @@ func (g *Game) drawHint(screen *ebiten.Image, tile *logic.Tile) {
 	y := float64(tile.Row * 50 + 150)
 
 	// Пульсирующая подсветка
-	pulse := math.Sin(time.Now().UnixMilli()*0.008) * 0.3 + 0.7
+	pulse := math.Sin(float64(time.Now().UnixMilli())*0.008) * 0.3 + 0.7
 	alpha := uint8(200 * pulse)
 
 	hint := ebiten.NewImage(54, 54)
@@ -618,4 +618,11 @@ func max(a, b int) int {
 		return a
 	}
 	return b
+}
+
+func absInt(x int) int {
+	if x < 0 {
+		return -x
+	}
+	return x
 }
