@@ -43,22 +43,26 @@ const (
 
 // Game основной игровой объект
 type Game struct {
-	board       *logic.Board
-	audioMgr    *audio.SoundManager
-	score       int
-	combo       int
-	maxCombo    int
-	timeLeft    int
-	gameOver    bool
-	hintTime    time.Time
-	hintPair    [2]image.Point
-	showHint    bool
-	particles   []Particle
-	trails      []Trail
-	stars       []Star
-	gemImages   map[int]*ebiten.Image
-	selectorImg *ebiten.Image
-	rng         *rand.Rand
+	board         *logic.Board
+	audioMgr      *audio.SoundManager
+	score         int
+	combo         int
+	maxCombo      int
+	timeLeft      int
+	level         int
+	targetScore   int
+	gameOver      bool
+	levelComplete bool
+	hintTime      time.Time
+	hintPair      [2]image.Point
+	showHint      bool
+	particles     []Particle
+	trails        []Trail
+	stars         []Star
+	fallingGems   []FallingGem
+	gemImages     map[int]*ebiten.Image
+	selectorImg   *ebiten.Image
+	rng           *rand.Rand
 
 	// Drag & Drop
 	dragState      DragState
@@ -95,10 +99,21 @@ type Trail struct {
 
 // Star звезда на фоне
 type Star struct {
-	X, Y   float64
-	Size   float64
+	X, Y    float64
+	Size    float64
 	Twinkle float64
-	Speed  float64
+	Speed   float64
+}
+
+// FallingGem анимация падения гема
+type FallingGem struct {
+	Row, Col int
+	GemType  int
+	X, Y     float64
+	TargetY  float64
+	Speed    float64
+	Scale    float64
+	Rotation float64
 }
 
 // NewGame создаёт новую игру
@@ -111,12 +126,16 @@ func NewGame() *Game {
 		score:       0,
 		combo:       0,
 		maxCombo:    0,
+		level:       1,
+		targetScore: 500,
 		timeLeft:    120,
 		gameOver:    false,
+		levelComplete: false,
 		hintTime:    time.Now(),
 		showHint:    false,
 		particles:   make([]Particle, 0),
 		trails:      make([]Trail, 0),
+		fallingGems: make([]FallingGem, 0),
 		gemImages:   make(map[int]*ebiten.Image),
 		rng:         rng,
 		dragState:   DragNone,
@@ -200,6 +219,19 @@ func (g *Game) Update() error {
 	g.updateParticles()
 	g.updateTrails()
 	g.updateStars()
+	g.updateFallingGems()
+
+	// Проверка уровня
+	if g.score >= g.targetScore && !g.levelComplete {
+		g.levelComplete = true
+		g.audioMgr.Play(audio.SoundCombo)
+		g.spawnLevelUpEffect()
+	}
+
+	// Переход на следующий уровень
+	if g.levelComplete && inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
+		g.nextLevel()
+	}
 
 	// Рестарт
 	if inpututil.IsKeyJustPressed(ebiten.KeyR) {
@@ -247,6 +279,80 @@ func (g *Game) drawStars(screen *ebiten.Image) {
 		alpha := uint8(100 + 155*(math.Sin(s.Twinkle)*0.5+0.5))
 		vector.DrawFilledCircle(screen, float32(s.X), float32(s.Y), float32(s.Size),
 			color.RGBA{200, 220, 255, alpha}, false)
+	}
+}
+
+func (g *Game) nextLevel() {
+	g.level++
+	g.targetScore = 500 * g.level
+	g.timeLeft = 120
+	g.levelComplete = false
+	g.board = logic.NewBoard(gridSize, g.rng)
+	g.combo = 0
+	g.audioMgr.Play(audio.SoundHint)
+}
+
+func (g *Game) updateFallingGems() {
+	for i := len(g.fallingGems) - 1; i >= 0; i-- {
+		gem := &g.fallingGems[i]
+		gem.Y += gem.Speed
+		gem.Speed += 0.5
+		gem.Rotation += 0.05
+
+		if gem.Y >= gem.TargetY {
+			gem.Y = gem.TargetY
+			gem.Speed = -gem.Speed * 0.3 // Отскок
+			gem.Scale = 1.1
+			if math.Abs(gem.Speed) < 1 {
+				g.fallingGems = append(g.fallingGems[:i], g.fallingGems[i+1:]...)
+			}
+		}
+
+		gem.Scale += (1.0 - gem.Scale) * 0.2
+	}
+}
+
+func (g *Game) spawnFallingGem(row, col, gemType int) {
+	g.fallingGems = append(g.fallingGems, FallingGem{
+		Row:     row,
+		Col:     col,
+		GemType: gemType,
+		X:       float64(gridOffset + col*tileSize + tileSize/2),
+		Y:       float64(gridOffset - tileSize),
+		TargetY: float64(gridOffset + row*tileSize + tileSize/2),
+		Speed:   2,
+		Scale:   1.0,
+		Rotation: 0,
+	})
+}
+
+func (g *Game) drawFallingGems(screen *ebiten.Image) {
+	for _, gem := range g.fallingGems {
+		g.drawGem(screen,
+			int(gem.X-tileSize/2+5),
+			int(gem.Y-tileSize/2+5),
+			gem.GemType,
+			gem.Scale,
+			gem.Rotation,
+			1.0)
+	}
+}
+
+func (g *Game) spawnLevelUpEffect() {
+	// Эффект фейерверка
+	for i := 0; i < 50; i++ {
+		angle := float64(i) * math.Pi * 2 / 50
+		speed := 5 + g.rng.Float64()*8
+		g.particles = append(g.particles, Particle{
+			X:       screenWidth / 2,
+			Y:       screenHeight / 2,
+			VX:      math.Cos(angle) * speed,
+			VY:      math.Sin(angle) * speed,
+			Life:    1.5,
+			MaxLife: 1.5,
+			Size:    5 + g.rng.Float64()*10,
+			Color:   color.RGBA{255, 215, 0, 255},
+		})
 	}
 }
 
@@ -570,6 +676,9 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	// Следы перетаскивания
 	g.drawTrails(screen)
 
+	// Падающие гемы
+	g.drawFallingGems(screen)
+
 	// Частицы
 	g.drawParticles(screen)
 
@@ -589,7 +698,20 @@ func (g *Game) Draw(screen *ebiten.Image) {
 func (g *Game) drawHeader(screen *ebiten.Image) {
 	drawRoundedRect(screen, 20, 10, 760, 100, 15, color.RGBA{40, 30, 70, 200})
 
-	g.drawCenteredText(screen, "SCORE", screenWidth/2, scoreY-15, 16, color.RGBA{150, 150, 200, 255})
+	// Уровень
+	g.drawCenteredText(screen, fmt.Sprintf("LEVEL %d", g.level), screenWidth/2, 15, 14, color.RGBA{100, 200, 255, 255})
+
+	// Прогресс-бар к следующему уровню
+	progress := float64(g.score) / float64(g.targetScore)
+	if progress > 1 {
+		progress = 1
+	}
+	barX := 250.0
+	barW := 300.0
+	drawRoundedRect(screen, barX, 32, barW, 8, 4, color.RGBA{30, 20, 50, 255})
+	drawRoundedRect(screen, barX, 32, barW*progress, 8, 4, color.RGBA{100, 200, 255, 255})
+
+	// Счёт
 	g.drawCenteredText(screen, fmt.Sprintf("%d", g.score), screenWidth/2, scoreY+15, 32, color.RGBA{255, 215, 0, 255})
 
 	mins := g.timeLeft / 60
@@ -605,7 +727,7 @@ func (g *Game) drawHeader(screen *ebiten.Image) {
 		g.drawCenteredText(screen, fmt.Sprintf("COMBO x%d!", g.combo), 680, timerY+10, 20, color.RGBA{255, 165, 0, 255})
 	}
 
-	g.drawCenteredText(screen, "R - Restart | Drag gems to swap", 680, timerY+35, 12, color.RGBA{150, 150, 200, 255})
+	g.drawCenteredText(screen, "R - Restart | Drag gems", 680, timerY+35, 12, color.RGBA{150, 150, 200, 255})
 }
 
 func (g *Game) drawBoard(screen *ebiten.Image) {
@@ -766,7 +888,7 @@ func (g *Game) drawGameOver(screen *ebiten.Image) {
 
 	g.drawCenteredText(screen, "TIME'S UP!", screenWidth/2, 300, 48, color.RGBA{255, 100, 100, 255})
 	g.drawCenteredText(screen, fmt.Sprintf("Final Score: %d", g.score), screenWidth/2, 380, 32, color.RGBA{255, 215, 0, 255})
-	g.drawCenteredText(screen, fmt.Sprintf("Max Combo: x%d", g.maxCombo), screenWidth/2, 430, 24, color.RGBA{255, 165, 0, 255})
+	g.drawCenteredText(screen, fmt.Sprintf("Level Reached: %d", g.level), screenWidth/2, 430, 24, color.RGBA{100, 200, 255, 255})
 	g.drawCenteredText(screen, "Press R or ENTER to restart", screenWidth/2, 500, 20, color.RGBA{200, 200, 255, 255})
 }
 
