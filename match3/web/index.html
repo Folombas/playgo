@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-capable" content="yes">
-    <title>Match-3: Три в ряд | Go365 Day 100</title>
+    <title>🍓 Fruit Crush Saga | Match-3 Go365 Day 102</title>
     <style>
         * {
             margin: 0;
@@ -81,7 +81,8 @@
     </div>
     
     <div id="info">
-        Go365 Challenge - День 100 | Match-3 на Go + Ebitengine
+        Go365 Challenge - День 102 | Fruit Crush Saga 🍓<br>
+        <small>Match-3 на Go + Ebitengine | Специальные камни, подсказки, частицы</small>
     </div>
 
     <script>
@@ -91,16 +92,16 @@
         const loading = document.getElementById('loading');
         
         // Оптимальный размер для мобильных устройств
-        const maxWidth = Math.min(640, window.innerWidth - 20);
-        const maxHeight = Math.min(960, window.innerHeight - 20);
-        const scale = Math.min(maxWidth / 640, maxHeight / 960);
-        
-        canvas.width = 640;
-        canvas.height = 960;
-        canvas.style.width = (640 * scale) + 'px';
-        canvas.style.height = (960 * scale) + 'px';
-        container.style.width = (640 * scale) + 'px';
-        container.style.height = (960 * scale) + 'px';
+        const maxWidth = Math.min(450, window.innerWidth - 20);
+        const maxHeight = Math.min(800, window.innerHeight - 20);
+        const scale = Math.min(maxWidth / 450, maxHeight / 800);
+
+        canvas.width = 450;
+        canvas.height = 800;
+        canvas.style.width = (450 * scale) + 'px';
+        canvas.style.height = (800 * scale) + 'px';
+        container.style.width = (450 * scale) + 'px';
+        container.style.height = (800 * scale) + 'px';
         
         // Загрузка WASM модуля
         if (!WebAssembly) {
