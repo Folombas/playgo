@@ -66,6 +66,13 @@ func (b *Board) Get(row, col int) int {
 	return b.grid[row][col]
 }
 
+// Set устанавливает тип гема
+func (b *Board) Set(row, col int, gem int) {
+	if row >= 0 && row < b.rows && col >= 0 && col < b.cols {
+		b.grid[row][col] = gem
+	}
+}
+
 // Swap меняет местами два гема
 func (b *Board) Swap(r1, c1, r2, c2 int) {
 	b.grid[r1][c1], b.grid[r2][c2] = b.grid[r2][c2], b.grid[r1][c1]

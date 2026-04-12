@@ -39,7 +39,17 @@ const (
 	DragSnapping      // Прилипаем к новой позиции
 	DragReturning     // Возвращаем на место
 	DragShaking       // Трясём при ошибке
+	DragSwiping       // Свайп через одинаковые
 )
+
+// SwipeLine линия свайпа
+type SwipeLine struct {
+	Points     []image.Point // Ячейки на пути
+	GemType    int           // Тип гема
+	LinePoints []struct{ X, Y float64 } // Точки для рисования линии
+	Active     bool
+	Time       float64
+}
 
 // Game основной игровой объект
 type Game struct {
@@ -77,6 +87,11 @@ type Game struct {
 	dragGlowPulse  float64      // Пульсация свечения
 	hoverGem       image.Point  // Гем под курсором
 	hoverTime      float64      // Время наведения
+
+	// Swipe
+	swipeLine      SwipeLine
+	swipeTimer     float64
+	swipeMatched   bool
 }
 
 // Particle частица для эффектов
@@ -359,6 +374,11 @@ func (g *Game) spawnLevelUpEffect() {
 func (g *Game) handleDragDrop() {
 	mx, my := ebiten.CursorPosition()
 
+	// Обновление свайп-таймера
+	if g.dragState == DragSwiping {
+		g.swipeTimer += 1.0 / 60.0
+	}
+
 	// Определяем ячейку под курсором
 	col := (mx - gridOffset) / tileSize
 	row := (my - gridOffset) / tileSize
@@ -367,7 +387,7 @@ func (g *Game) handleDragDrop() {
 
 	switch g.dragState {
 	case DragNone:
-		// Начало перетаскивания
+		// Начало перетаскивания ИЛИ свайпа
 		if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) && hoverValid {
 			g.dragState = DragPicking
 			g.dragGem = hoverPos
@@ -380,13 +400,21 @@ func (g *Game) handleDragDrop() {
 			g.showHint = false
 			g.hintTime = time.Now()
 
-			// Эффект поднятия - всплеск частиц
+			// Эффект поднятия
 			g.spawnLiftEffect(hoverPos)
-			
-			// Звук поднятия
 			g.audioMgr.Play(audio.SoundPickUp)
+
+			// Инициализация свайпа
+			g.swipeLine = SwipeLine{
+				Points:     []image.Point{hoverPos},
+				GemType:    g.board.Get(hoverPos.X, hoverPos.Y),
+				Active:     true,
+				Time:       0,
+				LinePoints: []struct{ X, Y float64 }{{float64(mx), float64(my)}},
+			}
+			g.swipeTimer = 0
+			g.swipeMatched = false
 		} else if hoverValid {
-			// Наведение
 			g.hoverGem = hoverPos
 			g.hoverTime += 1.0 / 60.0
 		} else {
@@ -395,7 +423,7 @@ func (g *Game) handleDragDrop() {
 		}
 
 	case DragPicking:
-		// Поднимаем гем (короткая анимация)
+		// Поднимаем гем
 		g.dragAnimTime += 1.0 / 60.0
 		g.dragScale = 1.0 + math.Sin(g.dragAnimTime*math.Pi)*0.3
 		g.dragRotation = math.Sin(g.dragAnimTime*math.Pi*2) * 0.1
@@ -425,21 +453,64 @@ func (g *Game) handleDragDrop() {
 			})
 		}
 
-		// Отпускание кнопки
+		// Проверяем свайп - если мышь на другой ячейке того же типа
+		if hoverValid {
+			gemType := g.board.Get(row, col)
+			if gemType == g.swipeLine.GemType && gemType >= 0 {
+				// Проверяем, не добавляли ли уже эту ячейку
+				alreadyAdded := false
+				for _, p := range g.swipeLine.Points {
+					if p.X == row && p.Y == col {
+						alreadyAdded = true
+						break
+					}
+				}
+				if !alreadyAdded {
+					// Проверяем соседство с последней точкой
+					lastPt := g.swipeLine.Points[len(g.swipeLine.Points)-1]
+					if abs(lastPt.X-row)+abs(lastPt.Y-col) == 1 {
+						g.swipeLine.Points = append(g.swipeLine.Points, image.Point{row, col})
+						g.swipeLine.LinePoints = append(g.swipeLine.LinePoints, struct{ X, Y float64 }{float64(mx), float64(my)})
+
+						// Звук свайпа
+						g.audioMgr.Play(audio.SoundSwap)
+
+						// Частицы на пути
+						x := float64(gridOffset + col*tileSize + tileSize/2)
+						y := float64(gridOffset + row*tileSize + tileSize/2)
+						for i := 0; i < 5; i++ {
+							angle := float64(i) * math.Pi * 2 / 5
+							g.particles = append(g.particles, Particle{
+								X:       x,
+								Y:       y,
+								VX:      math.Cos(angle) * 2,
+								VY:      math.Sin(angle) * 2,
+								Life:    0.5,
+								MaxLife: 0.5,
+								Size:    3 + g.rng.Float64()*3,
+								Color:   g.getColorForGem(gemType),
+							})
+						}
+					}
+				}
+			}
+		}
+
+		// Если перетащили на соседнюю ячейку другого типа - обычный обмен
 		if inpututil.IsMouseButtonJustReleased(ebiten.MouseButtonLeft) {
-			if hoverValid && g.isValidSwap(g.dragGem, hoverPos) {
-				// Валидный обмен
+			if len(g.swipeLine.Points) >= 3 {
+				// УДАЛИТЬ СВАЙП!
+				g.swipeMatched = true
+				g.processSwipeMatch()
+			} else if hoverValid && g.isValidSwap(g.dragGem, hoverPos) {
+				// Обычный обмен
 				g.dragTargetPos = hoverPos
 				g.dragState = DragSnapping
 				g.dragAnimTime = 0
 
-				// Выполнить обмен
 				g.board.Swap(g.dragGem.X, g.dragGem.Y, hoverPos.X, hoverPos.Y)
-
-				// Звук обмена
 				g.audioMgr.Play(audio.SoundDrop)
 
-				// Проверить матчи
 				matches := g.board.FindMatches()
 				if len(matches) > 0 {
 					g.processMatches(matches)
@@ -448,39 +519,43 @@ func (g *Game) handleDragDrop() {
 						g.maxCombo = g.combo
 					}
 					g.spawnSuccessEffect(hoverPos)
-					
-					// Звук матча
+
 					if g.combo >= 3 {
 						g.audioMgr.Play(audio.SoundCombo)
 					} else {
 						g.audioMgr.Play(audio.SoundMatch)
 					}
 				} else {
-					// Вернуть обратно
 					g.board.Swap(g.dragGem.X, g.dragGem.Y, hoverPos.X, hoverPos.Y)
 					g.dragState = DragShaking
 					g.dragAnimTime = 0
 					g.spawnFailEffect()
-					
-					// Звук ошибки
 					g.audioMgr.Play(audio.SoundFail)
 				}
 			} else {
-				// Вернуть на место
 				g.dragTargetPos = g.dragStartPos
 				g.dragState = DragReturning
 				g.dragAnimTime = 0
-				
-				// Звук возврата
 				g.audioMgr.Play(audio.SoundSnap)
+			}
+
+			if !g.swipeMatched {
+				g.swipeLine.Active = false
 			}
 		}
 
+	case DragSwiping:
+		// Анимация после свайпа
+		if g.swipeTimer > 0.5 {
+			g.dragState = DragNone
+			g.dragGem = image.Point{-1, -1}
+			g.swipeLine = SwipeLine{}
+		}
+
 	case DragSnapping:
-		// Прилипаем к новой позиции
 		g.dragAnimTime += 1.0 / 60.0
 		t := math.Min(g.dragAnimTime/0.2, 1.0)
-		g.dragScale = 1.2 - 0.2*t // Уменьшаем до нормального
+		g.dragScale = 1.2 - 0.2*t
 
 		if t >= 1.0 {
 			g.dragState = DragNone
@@ -488,7 +563,6 @@ func (g *Game) handleDragDrop() {
 		}
 
 	case DragReturning:
-		// Возвращаем на место
 		g.dragAnimTime += 1.0 / 60.0
 		t := math.Min(g.dragAnimTime/0.3, 1.0)
 		g.dragScale = 1.2 - 0.2*t
@@ -499,7 +573,6 @@ func (g *Game) handleDragDrop() {
 		}
 
 	case DragShaking:
-		// Трясём при ошибке
 		g.dragAnimTime += 1.0 / 60.0
 		t := math.Min(g.dragAnimTime/0.4, 1.0)
 		g.dragRotation = math.Sin(t*math.Pi*8) * 0.2 * (1 - t)
@@ -518,6 +591,76 @@ func (g *Game) isValidSwap(from, to image.Point) bool {
 	dr := abs(from.X - to.X)
 	dc := abs(from.Y - to.Y)
 	return dr+dc == 1
+}
+
+func (g *Game) processSwipeMatch() {
+	// УДАЛЕНИЕ ГЕМОВ НА ПУТИ СВАЙПА!
+	points := g.swipeLine.Points
+	gemType := g.swipeLine.GemType
+
+	// Очки
+	score := len(points) * 20
+	if len(points) >= 5 {
+		score = 150
+	} else if len(points) == 4 {
+		score = 80
+	}
+	g.score += score
+	g.combo++
+
+	// КРУТОЙ ЭФФЕКТ МОЛНИИ!
+	for _, p := range points {
+		x := float64(gridOffset + p.Y*tileSize + tileSize/2)
+		y := float64(gridOffset + p.X*tileSize + tileSize/2)
+
+		// Взрыв частиц
+		for i := 0; i < 15; i++ {
+			angle := float64(i) * math.Pi * 2 / 15
+			speed := 4 + g.rng.Float64()*6
+			g.particles = append(g.particles, Particle{
+				X:       x,
+				Y:       y,
+				VX:      math.Cos(angle) * speed,
+				VY:      math.Sin(angle) * speed - 3,
+				Life:    1.5,
+				MaxLife: 1.5,
+				Size:    5 + g.rng.Float64()*8,
+				Color:   g.getColorForGem(gemType),
+			})
+		}
+
+		// Электрические искры
+		for i := 0; i < 8; i++ {
+			angle := g.rng.Float64() * math.Pi * 2
+			speed := 6 + g.rng.Float64()*8
+			g.particles = append(g.particles, Particle{
+				X:       x,
+				Y:       y,
+				VX:      math.Cos(angle) * speed,
+				VY:      math.Sin(angle) * speed,
+				Life:    0.8,
+				MaxLife: 0.8,
+				Size:    2 + g.rng.Float64()*3,
+				Color:   color.RGBA{255, 255, 255, 255},
+			})
+		}
+
+		// Удалить гем
+		g.board.Set(p.X, p.Y, -1)
+	}
+
+	// Заполнить пустоты
+	g.board.FillEmpty()
+
+	// Звук молнии!
+	g.audioMgr.Play(audio.SoundMatch)
+	if len(points) >= 4 {
+		g.audioMgr.Play(audio.SoundCombo)
+	}
+
+	// Перейти в состояние свайпа
+	g.dragState = DragSwiping
+	g.swipeTimer = 0
 }
 
 func (g *Game) processMatches(matches []image.Point) {
@@ -687,6 +830,11 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		g.dragState == DragSnapping || g.dragState == DragReturning ||
 		g.dragState == DragShaking {
 		g.drawDraggedGem(screen)
+	}
+
+	// Линия свайпа
+	if g.dragState == Dragging || (g.dragState == DragSwiping && g.swipeTimer < 0.5) {
+		g.drawSwipeLine(screen)
 	}
 
 	// Game Over
@@ -910,4 +1058,55 @@ func drawRoundedRect(screen *ebiten.Image, x, y, w, h float64, cr float64, c col
 	vector.DrawFilledCircle(screen, float32(x+w-cr), float32(y+cr), float32(cr), c, false)
 	vector.DrawFilledCircle(screen, float32(x+cr), float32(y+h-cr), float32(cr), c, false)
 	vector.DrawFilledCircle(screen, float32(x+w-cr), float32(y+h-cr), float32(cr), c, false)
+}
+
+func (g *Game) drawSwipeLine(screen *ebiten.Image) {
+	if len(g.swipeLine.LinePoints) < 2 {
+		return
+	}
+
+	alpha := uint8(255)
+	if g.dragState == DragSwiping {
+		alpha = uint8(255 * (1 - g.swipeTimer/0.5))
+	}
+
+	// Свечение линии
+	for i := 1; i < len(g.swipeLine.LinePoints); i++ {
+		p1 := g.swipeLine.LinePoints[i-1]
+		p2 := g.swipeLine.LinePoints[i]
+
+		// Толстая светящаяся линия
+		vector.StrokeLine(screen,
+			float32(p1.X), float32(p1.Y),
+			float32(p2.X), float32(p2.Y),
+			12, color.RGBA{255, 255, 255, alpha/3}, false)
+
+		// Средняя линия
+		vector.StrokeLine(screen,
+			float32(p1.X), float32(p1.Y),
+			float32(p2.X), float32(p2.Y),
+			6, color.RGBA{100, 200, 255, alpha/2}, false)
+
+		// Тонкая яркая линия
+		vector.StrokeLine(screen,
+			float32(p1.X), float32(p1.Y),
+			float32(p2.X), float32(p2.Y),
+			2, color.RGBA{255, 255, 255, alpha}, false)
+	}
+
+	// Электрические разряды (молнии)
+	if g.dragState == Dragging && len(g.swipeLine.Points) >= 3 {
+		for _, p := range g.swipeLine.LinePoints {
+			for i := 0; i < 3; i++ {
+				angle := float64(i) * math.Pi * 2 / 3 + float64(time.Now().UnixMilli())*0.01
+				ex := p.X + math.Cos(angle)*15
+				ey := p.Y + math.Sin(angle)*15
+
+				vector.StrokeLine(screen,
+					float32(p.X), float32(p.Y),
+					float32(ex), float32(ey),
+					1, color.RGBA{200, 230, 255, alpha}, false)
+			}
+		}
+	}
 }
