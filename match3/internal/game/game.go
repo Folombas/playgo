@@ -44,6 +44,7 @@ type Game struct {
 	screenShake  float64
 	rng          *rand.Rand
 	lastAction   time.Time
+	soundManager *SoundManager
 
 	// Mouse input
 	selectedTile *logic.Tile
@@ -57,14 +58,15 @@ func NewGame() *Game {
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 
 	g := &Game{
-		state:       StateMap,
-		level:       1,
-		energy:      5,
-		coins:       1000,
-		stars:       make(map[int]int),
-		rng:         rng,
-		lastAction:  time.Now(),
-		particles:   logic.NewParticleSystem(rng),
+		state:        StateMap,
+		level:        1,
+		energy:       5,
+		coins:        1000,
+		stars:        make(map[int]int),
+		rng:          rng,
+		lastAction:   time.Now(),
+		particles:    logic.NewParticleSystem(rng),
+		soundManager: NewSoundManager(),
 	}
 
 	g.loadProgress()
@@ -132,6 +134,15 @@ func (g *Game) updatePlaying() {
 			g.score += score
 
 			g.spawnParticles(matches)
+
+			// Звук матча
+			if g.soundManager != nil {
+				if g.combo >= 3 {
+					g.soundManager.Play(SoundCombo)
+				} else {
+					g.soundManager.Play(SoundMatch)
+				}
+			}
 
 			if g.combo > g.maxCombo {
 				g.maxCombo = g.combo
@@ -545,6 +556,11 @@ func (g *Game) trySwap(tile1, tile2 *logic.Tile) {
 		tile1.Shake = 1.0
 		tile2.Shake = 1.0
 
+		// Звук ошибки
+		if g.soundManager != nil {
+			g.soundManager.Play(SoundInvalid)
+		}
+
 		// Сброс выделения
 		tile1.Selected = false
 		g.selectedTile = nil
@@ -558,6 +574,11 @@ func (g *Game) trySwap(tile1, tile2 *logic.Tile) {
 		g.moves--
 		g.lastAction = time.Now()
 		g.hintActive = false
+
+		// Звук обмена
+		if g.soundManager != nil {
+			g.soundManager.Play(SoundSwap)
+		}
 	}
 }
 
