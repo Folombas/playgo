@@ -40,7 +40,7 @@ type Game struct {
 	energy       int
 	coins        int
 	stars        map[int]int
-	particles    []Particle
+	particles    *logic.ParticleSystem
 	screenShake  float64
 	rng          *rand.Rand
 	lastAction   time.Time
@@ -53,18 +53,9 @@ type Game struct {
 	hintTile2    *logic.Tile
 }
 
-type Particle struct {
-	X, Y    float64
-	VX, VY  float64
-	Life    float64
-	MaxLife float64
-	Size    float64
-	Color   color.RGBA
-}
-
 func NewGame() *Game {
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
-	
+
 	g := &Game{
 		state:       StateMap,
 		level:       1,
@@ -73,8 +64,9 @@ func NewGame() *Game {
 		stars:       make(map[int]int),
 		rng:         rng,
 		lastAction:  time.Now(),
+		particles:   logic.NewParticleSystem(rng),
 	}
-	
+
 	g.loadProgress()
 	return g
 }
@@ -176,18 +168,8 @@ func (g *Game) updatePlaying() {
 }
 
 func (g *Game) updateParticles() {
-	for i := len(g.particles) - 1; i >= 0; i-- {
-		p := &g.particles[i]
-		p.X += p.VX
-		p.Y += p.VY
-		p.VY += 0.3
-		p.Life -= 1.0 / 60.0
-		
-		if p.Life <= 0 {
-			g.particles = append(g.particles[:i], g.particles[i+1:]...)
-		}
-	}
-	
+	g.particles.Update()
+
 	if g.screenShake > 0 {
 		g.screenShake -= 1.0 / 60.0
 	}
@@ -197,19 +179,29 @@ func (g *Game) spawnParticles(tiles []*logic.Tile) {
 	for _, tile := range tiles {
 		x := float64(45 + tile.Col*50 + 25)
 		y := float64(150 + tile.Row*50 + 25)
-		
-		for i := 0; i < 5; i++ {
-			angle := float64(i) * math.Pi * 2 / 5
-			g.particles = append(g.particles, Particle{
-				X:       x,
-				Y:       y,
-				VX:      math.Cos(angle) * 3,
-				VY:      math.Sin(angle) * 3 - 2,
-				Life:    1.0,
-				MaxLife: 1.0,
-				Size:    4 + g.rng.Float64()*4,
-				Color:   logic.GemColors[tile.Gem],
-			})
+
+		// Разные эффекты для разных типов камней
+		if tile.IsBomb {
+			// Взрыв бомбы
+			g.particles.Emit(x, y, logic.ParticleBomb, 20,
+				logic.WithColor(color.RGBA{255, 100, 0, 255}),
+			)
+		} else if tile.IsRainbow {
+			// Радужный эффект
+			g.particles.Emit(x, y, logic.ParticleRainbow, 30)
+		} else if tile.IsRocketH || tile.IsRocketV {
+			// Огненный эффект для ракет
+			g.particles.Emit(x, y, logic.ParticleFire, 15,
+				logic.WithColor(color.RGBA{255, 200, 50, 255}),
+			)
+		} else {
+			// Обычный взрыв
+			g.particles.Emit(x, y, logic.ParticleExplosion, 10,
+				logic.WithColor(logic.GemColors[tile.Gem]),
+			)
+			g.particles.Emit(x, y, logic.ParticleSparkle, 5,
+				logic.WithColor(color.RGBA{255, 255, 255, 200}),
+			)
 		}
 	}
 }
@@ -431,15 +423,7 @@ func (g *Game) drawLoseScreen(screen *ebiten.Image) {
 }
 
 func (g *Game) drawParticles(screen *ebiten.Image) {
-	for _, p := range g.particles {
-		alpha := uint8(255 * (p.Life / p.MaxLife))
-		c := color.RGBA{p.Color.R, p.Color.G, p.Color.B, alpha}
-		
-		circle := g.createCircle(int(p.Size*2), c)
-		op := &ebiten.DrawImageOptions{}
-		op.GeoM.Translate(p.X-p.Size, p.Y-p.Size)
-		screen.DrawImage(circle, op)
-	}
+	g.particles.Draw(screen)
 }
 
 func (g *Game) createCircle(size int, c color.Color) *ebiten.Image {
