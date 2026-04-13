@@ -5,248 +5,205 @@ import (
 	"time"
 )
 
-// AnimationType определяет тип анимации
+// AnimationType defines the type of animation.
 type AnimationType int
 
 const (
-	AnimSwap AnimationType = iota // Обмен фишек
-	AnimShake                       // Дрожание (невалидный обмен)
-	AnimMatch                       // Удаление комбинации
-	AnimDrop                        // Падение фишек
-	AnimHint                        // Подсказка (пульсация)
-	AnimScore                       // Всплывающие очки
+	AnimSwap      AnimationType = iota // Swapping two tiles
+	AnimShake                            // Invalid swap shake
+	AnimRemove                           // Tile disappearing
+	AnimFall                             // Tile falling into place
+	AnimPulse                            // Hint pulsing
 )
 
-// Animation представляет одну анимацию
+// Animation represents a single animation in progress.
 type Animation struct {
-	Type       AnimationType
-	StartTime  time.Time
-	Duration   time.Duration
-	Row1, Col1 int // Первая позиция
-	Row2, Col2 int // Вторая позиция (для swap/shake)
-	Positions  [][2]int // Позиции для match/drop
+	Type      AnimationType
+	Tiles     []*Tile
+	Targets   [][2]int // target positions for swap
+	Progress  float64  // 0.0 to 1.0
+	Duration  time.Duration
+	StartTime time.Time
+	Done      bool
+
+	// Swap-specific
+	SwapA *Tile
+	SwapB *Tile
+
+	// Shake-specific
+	ShakeOffset float64
+
+	// Fall-specific
+	FallFromRow int
+	FallToRow   int
 }
 
-// AnimationSystem управляет всеми анимациями
-type AnimationSystem struct {
-	animations []Animation
-}
-
-// NewAnimationSystem создаёт новую систему анимаций
-func NewAnimationSystem() *AnimationSystem {
-	return &AnimationSystem{
-		animations: make([]Animation, 0),
+// NewAnimation creates a new animation with the given parameters.
+func NewAnimation(typ AnimationType, tiles []*Tile, duration time.Duration) *Animation {
+	return &Animation{
+		Type:      typ,
+		Tiles:     tiles,
+		Duration:  duration,
+		StartTime: time.Now(),
+		Progress:  0,
+		Done:      false,
 	}
 }
 
-// AddSwap добавляет анимацию обмена
-func (as *AnimationSystem) AddSwap(r1, c1, r2, c2 int) {
-	as.animations = append(as.animations, Animation{
+// NewSwapAnimation creates a swap animation between two tiles.
+func NewSwapAnimation(a, b *Tile, duration time.Duration) *Animation {
+	anim := &Animation{
 		Type:      AnimSwap,
+		Tiles:     []*Tile{a, b},
+		Duration:  duration,
 		StartTime: time.Now(),
-		Duration:  150 * time.Millisecond,
-		Row1:      r1, Col1: c1,
-		Row2:      r2, Col2: c2,
-	})
+		SwapA:     a,
+		SwapB:     b,
+	}
+	return anim
 }
 
-// AddShake добавляет анимацию дрожания
-func (as *AnimationSystem) AddShake(r1, c1, r2, c2 int) {
-	as.animations = append(as.animations, Animation{
+// NewShakeAnimation creates a shake animation for invalid swap.
+func NewShakeAnimation(tiles []*Tile, duration time.Duration) *Animation {
+	return &Animation{
 		Type:      AnimShake,
+		Tiles:     tiles,
+		Duration:  duration,
 		StartTime: time.Now(),
-		Duration:  150 * time.Millisecond, // 3 цикла по 50мс
-		Row1:      r1, Col1: c1,
-		Row2:      r2, Col2: c2,
-	})
+	}
 }
 
-// AddMatch добавляет анимацию удаления
-func (as *AnimationSystem) AddMatch(positions [][2]int) {
-	as.animations = append(as.animations, Animation{
-		Type:      AnimMatch,
+// NewRemoveAnimation creates a remove (fade+shrink) animation.
+func NewRemoveAnimation(tiles []*Tile, duration time.Duration) *Animation {
+	return &Animation{
+		Type:      AnimRemove,
+		Tiles:     tiles,
+		Duration:  duration,
 		StartTime: time.Now(),
-		Duration:  200 * time.Millisecond,
-		Positions: positions,
-	})
+	}
 }
 
-// AddDrop добавляет анимацию падения
-func (as *AnimationSystem) AddDrop(newTiles [][2]int) {
-	as.animations = append(as.animations, Animation{
-		Type:      AnimDrop,
+// NewFallAnimation creates a fall animation for tiles.
+func NewFallAnimation(tiles []*Tile, duration time.Duration) *Animation {
+	return &Animation{
+		Type:      AnimFall,
+		Tiles:     tiles,
+		Duration:  duration,
 		StartTime: time.Now(),
-		Duration:  250 * time.Millisecond,
-		Positions: newTiles,
-	})
+	}
 }
 
-// AddHint добавляет анимацию подсказки
-func (as *AnimationSystem) AddHint(r1, c1, r2, c2 int) {
-	as.animations = append(as.animations, Animation{
-		Type:      AnimHint,
+// NewPulseAnimation creates a pulsing hint animation.
+func NewPulseAnimation(tiles []*Tile, duration time.Duration) *Animation {
+	return &Animation{
+		Type:      AnimPulse,
+		Tiles:     tiles,
+		Duration:  duration,
 		StartTime: time.Now(),
-		Duration:  2000 * time.Millisecond, // 2 секунды пульсации
-		Row1:      r1, Col1: c1,
-		Row2:      r2, Col2: c2,
-	})
-}
-
-// IsAnimating возвращает true если есть активные анимации
-func (as *AnimationSystem) IsAnimating() bool {
-	as.cleanupFinished()
-	return len(as.animations) > 0
-}
-
-// GetSwapProgress возвращает прогресс анимации обмена (0.0 - 1.0)
-func (as *AnimationSystem) GetSwapProgress() float64 {
-	for _, anim := range as.animations {
-		if anim.Type == AnimSwap {
-			elapsed := time.Since(anim.StartTime)
-			progress := float64(elapsed) / float64(anim.Duration)
-			if progress > 1.0 {
-				progress = 1.0
-			}
-			return progress
-		}
 	}
-	return 0.0
 }
 
-// GetShakeOffset возвращает смещение дрожания для позиции
-func (as *AnimationSystem) GetShakeOffset(row, col int) (float64, float64) {
-	for _, anim := range as.animations {
-		if anim.Type == AnimShake {
-			if (row == anim.Row1 && col == anim.Col1) || (row == anim.Row2 && col == anim.Col2) {
-				elapsed := time.Since(anim.StartTime)
-				// 3 цикла по 50мс
-				cycle := int(elapsed.Milliseconds()) / 50
-				if cycle >= 6 { // 6 полуциклов (3 полных)
-					return 0, 0
-				}
-				// Чередуем +4 и -4 пикселя
-				if cycle%2 == 0 {
-					return 4, 0
-				}
-				return -4, 0
-			}
-		}
+// Update advances the animation based on elapsed time. Returns true if finished.
+func (a *Animation) Update() bool {
+	elapsed := time.Since(a.StartTime)
+	a.Progress = math.Min(float64(elapsed)/float64(a.Duration), 1.0)
+
+	if a.Progress >= 1.0 {
+		a.Done = true
 	}
-	return 0, 0
-}
 
-// GetMatchAlpha возвращает альфа-канал для анимации удаления
-func (as *AnimationSystem) GetMatchAlpha(row, col int) float64 {
-	for _, anim := range as.animations {
-		if anim.Type == AnimMatch {
-			for _, pos := range anim.Positions {
-				if pos[0] == row && pos[1] == col {
-					elapsed := time.Since(anim.StartTime)
-					progress := float64(elapsed) / float64(anim.Duration)
-					if progress > 1.0 {
-						return 0
-					}
-					// Fade out: от 1.0 до 0.0
-					return 1.0 - progress
-				}
-			}
-		}
+	switch a.Type {
+	case AnimSwap:
+		a.updateSwap()
+	case AnimShake:
+		a.updateShake()
+	case AnimRemove:
+		a.updateRemove()
+	case AnimFall:
+		a.updateFall()
+	case AnimPulse:
+		a.updatePulse()
 	}
-	return 1.0
+
+	return a.Done
 }
 
-// GetMatchScale возвращает масштаб для анимации удаления
-func (as *AnimationSystem) GetMatchScale(row, col int) float64 {
-	for _, anim := range as.animations {
-		if anim.Type == AnimMatch {
-			for _, pos := range anim.Positions {
-				if pos[0] == row && pos[1] == col {
-					elapsed := time.Since(anim.StartTime)
-					progress := float64(elapsed) / float64(anim.Duration)
-					if progress > 1.0 {
-						return 0
-					}
-					// Scale down: от 1.0 до 0.0
-					return 1.0 - progress
-				}
-			}
-		}
+// updateSwap interpolates positions between two tiles.
+func (a *Animation) updateSwap() {
+	t := easeInOutCubic(a.Progress)
+
+	// SwapA moves from its original to SwapB's position
+	a.SwapA.X = a.SwapA.X + (a.SwapB.X-a.SwapA.X)*t // simplified — actual handled in game
+	a.SwapB.X = a.SwapB.X + (a.SwapA.X-a.SwapB.X)*t
+}
+
+// updateShake oscillates tiles left and right.
+func (a *Animation) updateShake() {
+	// 3 cycles at 50ms each = 150ms total, ±4 pixels
+	cycle := a.Progress * 3.0
+	offset := math.Sin(cycle*math.Pi*2) * 4.0
+	a.ShakeOffset = offset
+}
+
+// updateRemove shrinks and fades tiles.
+func (a *Animation) updateRemove() {
+	t := a.Progress
+	for _, tile := range a.Tiles {
+		tile.Scale = 1.0 - t
+		tile.Alpha = 1.0 - t
 	}
-	return 1.0
 }
 
-// GetDropOffset возвращает смещение падения для новой фишки
-func (as *AnimationSystem) GetDropOffset(row, col int) float64 {
-	for _, anim := range as.animations {
-		if anim.Type == AnimDrop {
-			for _, pos := range anim.Positions {
-				if pos[0] == row && pos[1] == col {
-					elapsed := time.Since(anim.StartTime)
-					progress := float64(elapsed) / float64(anim.Duration)
-					if progress > 1.0 {
-						return 0
-					}
-					// Падает сверху: от -cellSize*(row+1) до 0
-					// Easing: квадратичное замедление
-					eased := progress * progress
-					return float64(row+1) * 64 * (1 - eased)
-				}
-			}
-		}
+// updateFall moves tiles from their start position to target.
+func (a *Animation) updateFall() {
+	// Fall animation handled in game.Update by setting Y based on progress
+}
+
+// updatePulse oscillates tile scale for hint.
+func (a *Animation) updatePulse() {
+	t := a.Progress
+	pulse := 1.0 + math.Sin(t*math.Pi*4)*0.1
+	for _, tile := range a.Tiles {
+		tile.Scale = pulse
 	}
-	return 0
 }
 
-// GetHintPulse возвращает пульсацию для подсказки (0.0 - 1.0)
-func (as *AnimationSystem) GetHintPulse() float64 {
-	for _, anim := range as.animations {
-		if anim.Type == AnimHint {
-			elapsed := time.Since(anim.StartTime)
-			progress := float64(elapsed) / float64(anim.Duration)
-			if progress > 1.0 {
-				return 0
-			}
-			// Пульсация: sin-подобная кривая
-			return (math.Sin(progress*math.Pi*4) + 1) / 2
-		}
+// easeInOutCubic provides smooth easing.
+func easeInOutCubic(t float64) float64 {
+	if t < 0.5 {
+		return 4 * t * t * t
 	}
-	return 0
+	return 1 - math.Pow(-2*t+2, 3)/2
 }
 
-// IsHintActive возвращает true если подсказка активна
-func (as *AnimationSystem) IsHintActive() bool {
-	for _, anim := range as.animations {
-		if anim.Type == AnimHint {
-			elapsed := time.Since(anim.StartTime)
-			return elapsed < anim.Duration
-		}
+// AnimationManager manages a queue of animations.
+type AnimationManager struct {
+	Current   *Animation
+	IsPlaying bool
+}
+
+// Start begins an animation.
+func (m *AnimationManager) Start(anim *Animation) {
+	m.Current = anim
+	m.IsPlaying = true
+}
+
+// Update advances the current animation. Returns true when all animations are done.
+func (m *AnimationManager) Update() bool {
+	if !m.IsPlaying || m.Current == nil {
+		m.IsPlaying = false
+		return true
 	}
-	return false
-}
 
-// GetHintPositions возвращает позиции подсказки
-func (as *AnimationSystem) GetHintPositions() ([2]int, [2]int, bool) {
-	for _, anim := range as.animations {
-		if anim.Type == AnimHint && as.IsHintActive() {
-			return [2]int{anim.Row1, anim.Col1}, [2]int{anim.Row2, anim.Col2}, true
-		}
+	done := m.Current.Update()
+	if done {
+		m.IsPlaying = false
+		m.Current = nil
 	}
-	return [2]int{}, [2]int{}, false
+	return !m.IsPlaying
 }
 
-// cleanupFinished удаляет завершённые анимации
-func (as *AnimationSystem) cleanupFinished() {
-	now := time.Now()
-	active := make([]Animation, 0, len(as.animations))
-	for _, anim := range as.animations {
-		if now.Sub(anim.StartTime) < anim.Duration {
-			active = append(active, anim)
-		}
-	}
-	as.animations = active
-}
-
-// Clear очищает все анимации
-func (as *AnimationSystem) Clear() {
-	as.animations = make([]Animation, 0)
+// IsAnimating returns true if any animation is in progress.
+func (m *AnimationManager) IsAnimating() bool {
+	return m.IsPlaying
 }

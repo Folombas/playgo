@@ -1,332 +1,281 @@
 package main
 
 import (
-	"log"
 	"time"
-
-	"github.com/hajimehoshi/ebiten/v2"
 )
 
-// Game - основная структура игры, реализует ebiten.Game
+const (
+	ScreenWidth  = 800
+	ScreenHeight = 800
+	GameDuration = 60 // seconds
+
+	// Animation durations
+	swapDuration  = 150 * time.Millisecond
+	shakeDuration = 150 * time.Millisecond
+	removeDuration = 150 * time.Millisecond
+	fallDuration  = 200 * time.Millisecond
+
+	// Hint idle time (5 seconds)
+	HintIdleTime = 5 * time.Second
+)
+
+// Game holds all game state.
 type Game struct {
-	board         *Board
-	ui            *UIRenderer
-	animSystem    *AnimationSystem
-	inputProc     *InputProcessor
-	boardOffsetX  float64
-	boardOffsetY  float64
-	cellSize      float64
+	Board          *Board
+	Score          int
+	HighScore      int
+	TimeRemaining  float64 // seconds
+	Elapsed        time.Duration
+	Running        bool
+	GameOver       bool
+	Selected       *Tile
+	SelectionTime  time.Duration
+	IdleTime       time.Duration
+	HintActive     bool
+	HintPositions  [][2]int
+	Anim           AnimationManager
+	Input          InputState
+	Sound          *SoundManager
 
-	// Состояние игры
-	selectedTile *[2]int // Выбранная фишка (row, col)
-	score        int
-	timer        int
-	gameOver     bool
-	paused       bool
+	// Layout
+	CellSize    float64
+	BoardOffsetX float64
+	BoardOffsetY float64
 
-	// Таймеры
-	lastInputTime   time.Time // Время последнего ввода игрока
-	timerLastUpdate time.Time // Для отсчёта секунд
-	frameCount      int       // Счётчик кадров (для Update)
+	// UI button bounds
+	BtnX, BtnY, BtnW, BtnH int
+
+	// Cascade resolution
+	PendingResolve   bool
+	CascadeDepth     int
+	MaxCascadeDepth  int
+
+	// Keyboard
+	RPressed bool
+	PPressed bool
+	Paused   bool
 }
 
-// NewGame создаёт новую игру
+// NewGame creates a new game instance.
 func NewGame() *Game {
 	g := &Game{
-		board:      NewBoard(),
-		ui:         NewUIRenderer(),
-		animSystem: NewAnimationSystem(),
-		score:      0,
-		timer:      60,
-		gameOver:   false,
-		paused:     false,
+		TimeRemaining:  GameDuration,
+		Running:        true,
+		MaxCascadeDepth: 10,
+		Sound:          NewSoundManager(),
 	}
-
-	// Вычисляем размеры
-	g.calculateDimensions()
-
-	// Создаём обработчик ввода
-	g.inputProc = NewInputProcessor(g.boardOffsetX, g.boardOffsetY, g.cellSize)
-
-	// Устанавливаем глобальную ссылку на анимации
-	SetGlobalAnimationSystem(g.animSystem)
-
-	// Инициализируем таймер
-	g.timerLastUpdate = time.Now()
-	g.lastInputTime = time.Now()
-
-	log.Println("Игра инициализирована")
+	g.reset()
 	return g
 }
 
-// calculateDimensions вычисляет размеры и позиции для адаптивности
-func (g *Game) calculateDimensions() {
-	w, h := ebiten.WindowSize()
+// reset initializes or re-initializes the game.
+func (g *Game) reset() {
+	g.Board = NewBoard()
+	g.Score = 0
+	g.TimeRemaining = GameDuration
+	g.Elapsed = 0
+	g.Running = true
+	g.GameOver = false
+	g.Selected = nil
+	g.IdleTime = 0
+	g.HintActive = false
+	g.Anim = AnimationManager{}
+	g.PendingResolve = false
+	g.CascadeDepth = 0
+	g.Paused = false
 
-	// Поле 8x8 должно помещаться с отступами для UI
-	availableWidth := float64(w) - 40  // 20px отступы с боков
-	availableHeight := float64(h) - 100 // 100px сверху для UI
+	// Calculate board layout
+	g.CellSize = 60.0
+	boardPixelSize := g.CellSize * BoardCols
+	g.BoardOffsetX = (ScreenWidth - boardPixelSize) / 2
+	g.BoardOffsetY = 80.0 // Leave room for UI at top
 
-	// Размер ячейки - минимум из доступных
-	if availableWidth/BoardSize < availableHeight/BoardSize {
-		g.cellSize = availableWidth / BoardSize
-	} else {
-		g.cellSize = availableHeight / BoardSize
-	}
-
-	// Центрируем поле
-	boardWidth := g.cellSize * BoardSize
-	boardHeight := g.cellSize * BoardSize
-	g.boardOffsetX = (float64(w) - boardWidth) / 2
-	g.boardOffsetY = (float64(h) - boardHeight) / 2 + 30 // Смещение вниз для UI
+	// Load high score (simplified — from file)
+	g.loadHighScore()
 }
 
-// Update обновляет логику игры (вызывается 60 раз в секунду)
+// Update is called every frame (1/60s by default).
 func (g *Game) Update() error {
-	// Обработка ввода
-	if !g.paused && !g.gameOver && !g.animSystem.IsAnimating() {
-		g.handleInput()
-	}
-
-	// Обработка клавиатуры (всегда)
-	keyInput := ProcessKeyboardInput()
-	if keyInput.NewGame && (g.gameOver || !g.animSystem.IsAnimating()) {
-		g.startNewGame()
-	}
-	if keyInput.Pause {
-		g.ui.TogglePause()
-		g.paused = g.ui.IsPaused()
-	}
-
-	// Обновление таймера (раз в секунду)
-	if !g.paused && !g.gameOver {
-		elapsed := time.Since(g.timerLastUpdate)
-		if elapsed >= time.Second {
-			g.timer--
-			g.ui.UpdateTimer(g.timer)
-			g.timerLastUpdate = time.Now()
-
-			if g.timer <= 0 {
-				g.endGame()
-			}
+	if g.GameOver {
+		// Allow restart
+		if g.RPressed {
+			g.reset()
+			g.RPressed = false
 		}
+		return nil
+	}
 
-		// Авто-подсказка через 5 секунд бездействия
-		if time.Since(g.lastInputTime) > 5*time.Second && !g.animSystem.IsAnimating() {
+	if g.Paused {
+		return nil
+	}
+
+	dt := 1.0 / 60.0 // Assume 60 FPS
+	g.Elapsed += time.Duration(dt * float64(time.Second))
+
+	// Timer countdown
+	g.TimeRemaining -= dt
+	if g.TimeRemaining <= 0 {
+		g.TimeRemaining = 0
+		g.gameOver()
+		return nil
+	}
+
+	// Update input
+	UpdateInput(g)
+
+	// Handle keyboard shortcuts
+	if g.RPressed {
+		g.reset()
+		g.RPressed = false
+		return nil
+	}
+	if g.PPressed {
+		g.Paused = !g.Paused
+		g.PPressed = false
+	}
+
+	// Handle clicks
+	if g.Input.JustClicked && !g.Anim.IsAnimating() {
+		HandleClick(g)
+	}
+
+	// Idle time for hints
+	if g.Selected == nil && !g.Anim.IsAnimating() {
+		g.IdleTime += time.Duration(dt * float64(time.Second))
+		if g.IdleTime >= HintIdleTime && !g.HintActive {
 			g.showHint()
 		}
+	} else {
+		g.IdleTime = 0
+		g.HintActive = false
 	}
 
-	// Обновляем ввод
-	g.inputProc.Update(g.boardOffsetX, g.boardOffsetY, g.cellSize)
+	// Update hint pulse animation
+	if g.HintActive {
+		for _, pos := range g.HintPositions {
+			tile := g.Board.Grid[pos[0]][pos[1]]
+			if tile != nil {
+				pulse := 1.0 + 0.1*float64(time.Now().UnixNano()%1000000)/1000000
+				tile.Scale = pulse
+			}
+		}
+	}
 
-	g.frameCount++
+	// Update animations
+	animDone := g.Anim.Update()
+
+	// Resolve cascade after swap animation
+	if g.PendingResolve && animDone {
+		g.resolveCascade()
+		g.PendingResolve = false
+	}
+
 	return nil
 }
 
-// handleInput обрабатывает ввод мыши/тача
-func (g *Game) handleInput() {
-	// Мышь
-	mouseAction := g.inputProc.ProcessMouseInput()
-	if mouseAction.Type != ActionNone {
-		g.processAction(mouseAction)
-		return
-	}
+// resolveCascade handles the match-remove-drop cycle.
+func (g *Game) resolveCascade() {
+	g.CascadeDepth = 0
 
-	// Тач
-	touchAction := g.inputProc.ProcessTouchInput()
-	if touchAction.Type != ActionNone {
-		g.processAction(touchAction)
-		return
-	}
-}
+	for g.CascadeDepth < g.MaxCascadeDepth {
+		matches := g.Board.findMatches()
+		if len(matches) == 0 {
+			break
+		}
 
-// processAction обрабатывает действие ввода
-func (g *Game) processAction(action InputAction) {
-	g.lastInputTime = time.Now()
+		// Calculate score
+		chainBonus := g.CascadeDepth * 5
+		for range matches {
+			g.Score += 10
+		}
 
-	// Проверяем клик по кнопке "Новая игра"
-	btnX, btnY, btnW, btnH := GetNewGameButtonBounds()
-	if action.Type == ActionSelect && IsInsideButton(
-		float64(action.Col1)*g.cellSize+g.boardOffsetX,
-		float64(action.Row1)*g.cellSize+g.boardOffsetY,
-		btnX, btnY, btnW, btnH) {
-		g.startNewGame()
-		return
-	}
+		// Bonus for 4+ tiles in a single match group
+		if len(matches) >= 4 {
+			g.Score += 50 + chainBonus
+		}
+		if len(matches) >= 5 {
+			g.Score += 100 + chainBonus
+		}
 
-	// Проверяем клик по полю
-	if action.Type == ActionSelect {
-		row, col := action.Row1, action.Col1
+		g.PlaySound(SoundMatch)
 
-		if g.selectedTile == nil {
-			// Первый выбор
-			g.selectedTile = &[2]int{row, col}
-		} else {
-			// Вторая фишка - пробуем обмен
-			r1, c1 := (*g.selectedTile)[0], (*g.selectedTile)[1]
-			r2, c2 := row, col
+		// Animate removal
+		matchTiles := make([]*Tile, 0, len(matches))
+		for tile := range matches {
+			matchTiles = append(matchTiles, tile)
+		}
 
-			// Проверяем что это соседние фишки
-			if g.board.isAdjacent(r1, c1, r2, c2) {
-				// Пробуем обмен
-				success := g.board.Swap(r1, c1, r2, c2)
-				if success {
-					// Успешный обмен!
-					g.board.PerformSwap(r1, c1, r2, c2)
-					g.animSystem.AddSwap(r1, c1, r2, c2)
-					PlaySwap()
+		g.Anim.Start(NewRemoveAnimation(matchTiles, removeDuration))
+		// Wait for removal animation (simplified: just continue)
+		for _, t := range matchTiles {
+			t.Removing = true
+		}
 
-					// После анимации обмена - разрешаем матчи
-					g.resolveMatchesAndDrop()
-				} else {
-					// Невалидный обмен
-					g.animSystem.AddShake(r1, c1, r2, c2)
-					PlayError()
+		// Remove tiles from grid
+		for _, t := range matchTiles {
+			g.Board.Grid[t.Row][t.Col] = nil
+		}
+
+		// Gravity: drop tiles
+		g.Board.gravity()
+
+		// Animate fall
+		fallingTiles := make([]*Tile, 0)
+		for r := 0; r < BoardRows; r++ {
+			for c := 0; c < BoardCols; c++ {
+				t := g.Board.Grid[r][c]
+				if t != nil && t.Falling {
+					fallingTiles = append(fallingTiles, t)
 				}
 			}
-
-			// Сбрасываем выбор
-			g.selectedTile = nil
 		}
+
+		if len(fallingTiles) > 0 {
+			g.Anim.Start(NewFallAnimation(fallingTiles, fallDuration))
+		}
+
+		g.CascadeDepth++
+	}
+
+	// Check if there are possible moves; if not, reshuffle
+	if !g.Board.hasPossibleMoves() {
+		g.Board = NewBoard()
 	}
 }
 
-// resolveMatchesAndDrop находит комбинации, удаляет их и опускает фишки
-func (g *Game) resolveMatchesAndDrop() {
-	// Ограничиваем глубину каскада
-	maxCascade := 10
-
-	for cascade := 0; cascade < maxCascade; cascade++ {
-		// Находим все комбинации
-		matches := g.board.findAllMatches()
-		if len(matches) == 0 {
-			break // Нет комбинаций - выходим
-		}
-
-		// Начисляем очки
-		scoreDelta := g.calculateMatchScore(matches)
-		g.score += scoreDelta
-		g.ui.UpdateScore(g.score)
-
-		// Преобразуем карту в срез позиций
-		positions := make([][2]int, 0, len(matches))
-		for pos := range matches {
-			positions = append(positions, pos)
-		}
-
-		// Анимация удаления
-		g.animSystem.AddMatch(positions)
-		PlayMatch()
-
-		// Ждём завершения анимации (простая симуляция)
-		// В реальном UPDATE это будет асинхронно
-		time.Sleep(200 * time.Millisecond)
-
-		// Удаляем фишки
-		for _, pos := range positions {
-			g.board.SetTile(pos[0], pos[1], -1)
-		}
-
-		// Падение новых фишек
-		newTiles := g.board.dropDown()
-		if len(newTiles) > 0 {
-			// Преобразуем карту в срез
-			newTilePositions := make([][2]int, 0, len(newTiles))
-			for pos := range newTiles {
-				newTilePositions = append(newTilePositions, pos)
-			}
-			g.animSystem.AddDrop(newTilePositions)
-			time.Sleep(250 * time.Millisecond)
-		}
-	}
-
-	// Проверяем есть ли возможные ходы
-	if !g.hasPossibleMoves() {
-		// Перемешиваем поле
-		log.Println("Нет возможных ходов - перемешиваем")
-		g.board.fillNoMatches()
-	}
-}
-
-// calculateMatchScore вычисляет очки за комбинации
-func (g *Game) calculateMatchScore(matches map[[2]int]bool) int {
-	// Группируем по связанным позициям (простой подсчёт)
-	totalTiles := len(matches)
-
-	if totalTiles == 0 {
-		return 0
-	}
-
-	score := totalTiles * 10 // Базовые очки
-
-	// Бонусы
-	if totalTiles >= 5 {
-		score += 100 // Бонус за 5+
-	} else if totalTiles >= 4 {
-		score += 50 // Бонус за 4
-	}
-
-	return score
-}
-
-// hasPossibleMoves проверяет есть ли возможные ходы
-func (g *Game) hasPossibleMoves() bool {
-	_, _, ok := g.board.FindHint()
-	return ok
-}
-
-// showHint показывает подсказку
+// showHint finds and highlights a valid move.
 func (g *Game) showHint() {
-	pos1, pos2, ok := g.board.FindHint()
-	if ok {
-		g.animSystem.AddHint(pos1[0], pos1[1], pos2[0], pos2[1])
+	move := g.Board.findHintMove()
+	if len(move) >= 2 {
+		g.HintPositions = [][2]int{move[0], move[1]}
+		g.HintActive = true
 	}
 }
 
-// startNewGame начинает новую игру
-func (g *Game) startNewGame() {
-	g.board = NewBoard()
-	g.score = 0
-	g.timer = 60
-	g.gameOver = false
-	g.paused = false
-	g.selectedTile = nil
-	g.animSystem.Clear()
-	g.ui.Reset()
-	g.ui.UpdateScore(0)
-	g.ui.UpdateTimer(60)
-	g.lastInputTime = time.Now()
-	g.timerLastUpdate = time.Now()
-	log.Println("Новая игра начата")
+// gameOver handles game end.
+func (g *Game) gameOver() {
+	g.GameOver = true
+	g.PlaySound(SoundGameOver)
+	if g.Score > g.HighScore {
+		g.HighScore = g.Score
+		g.saveHighScore()
+	}
 }
 
-// endGame завершает игру
-func (g *Game) endGame() {
-	g.gameOver = true
-	g.ui.SetGameOver()
-	PlayGameOver()
-	log.Printf("Игра окончена! Счёт: %d", g.score)
+// PlaySound plays a sound effect.
+func (g *Game) PlaySound(st SoundType) {
+	if g.Sound != nil {
+		g.Sound.Play(st)
+	}
 }
 
-// Draw отрисовывает игру
-func (g *Game) Draw(screen *ebiten.Image) {
-	// UI отрисовка
-	g.ui.DrawTilesWithBoard(screen, g.boardOffsetX, g.boardOffsetY, g.cellSize,
-		g.board, g.selectedTile, g.animSystem)
-
-	// Рисуем остальной UI поверх
-	hintPos1, hintPos2, hintActive := g.animSystem.GetHintPositions()
-	g.ui.Draw(screen, g.boardOffsetX, g.boardOffsetY, g.cellSize,
-		hintPos1, hintPos2, hintActive, g.animSystem)
-
-	// Отладочная информация (FPS)
-	// fps := ebiten.ActualFPS()
-	// debugText := fmt.Sprintf("FPS: %.1f", fps)
-	// (можно добавить через text.Draw если нужно)
+// loadHighScore loads the high score from a file.
+func (g *Game) loadHighScore() {
+	// Simplified — in production use JSON file or local storage
+	g.HighScore = 0
 }
 
-// Layout возвращает логический размер экрана
-func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
-	return outsideWidth, outsideHeight
+// saveHighScore saves the high score to a file.
+func (g *Game) saveHighScore() {
+	// Simplified — in production use JSON file or local storage
 }

@@ -5,109 +5,114 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 )
 
-// InputProcessor обрабатывает ввод (мышь/тач/клавиатура)
-type InputProcessor struct {
-	boardOffsetX float64 // Смещение игрового поля по X
-	boardOffsetY float64 // Смещение игрового поля по Y
-	cellSize     float64 // Размер ячейки в пикселях
+// InputState tracks current input events.
+type InputState struct {
+	CurX, CurY       float64
+	JustClicked      bool
+	HoverRow, HoverCol int
+	Hovering         bool
 }
 
-// NewInputProcessor создаёт новый обработчик ввода
-func NewInputProcessor(offsetX, offsetY, cellSize float64) *InputProcessor {
-	return &InputProcessor{
-		boardOffsetX: offsetX,
-		boardOffsetY: offsetY,
-		cellSize:     cellSize,
-	}
-}
-
-// Update обновляет смещения (на случай изменения размера окна)
-func (ip *InputProcessor) Update(offsetX, offsetY, cellSize float64) {
-	ip.boardOffsetX = offsetX
-	ip.boardOffsetY = offsetY
-	ip.cellSize = cellSize
-}
-
-// GetClickPosition преобразует экранные координаты в позицию на поле
-func (ip *InputProcessor) GetClickPosition(screenX, screenY float64) (int, int, bool) {
-	col := int((screenX - ip.boardOffsetX) / ip.cellSize)
-	row := int((screenY - ip.boardOffsetY) / ip.cellSize)
-
-	if row >= 0 && row < BoardSize && col >= 0 && col < BoardSize {
-		return row, col, true
-	}
-	return -1, -1, false
-}
-
-// IsInsideButton проверяет находится ли точка внутри кнопки
-func IsInsideButton(x, y, btnX, btnY, btnW, btnH float64) bool {
-	return x >= btnX && x <= btnX+btnW && y >= btnY && y <= btnY+btnH
-}
-
-// HandleInput обрабатывает весь ввод за один кадр
-// Возвращает информацию о действии игрока
-type InputAction struct {
-	Type          ActionType
-	Row1, Col1    int // Первая позиция
-	Row2, Col2    int // Вторая позиция (для swap)
-	NewGame       bool // Запрос новой игры
-	Pause         bool // Запрос паузы
-}
-
-type ActionType int
-
-const (
-	ActionNone ActionType = iota
-	ActionSelect          // Выбор фишки
-	ActionSwap            // Попытка обмена
-)
-
-// ProcessMouseInput обрабатывает ввод мыши
-func (ip *InputProcessor) ProcessMouseInput() InputAction {
-	// Проверяем клик мыши
-	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
-		x, y := ebiten.CursorPosition()
-		return ip.processClick(float64(x), float64(y))
-	}
-	return InputAction{Type: ActionNone}
-}
-
-// ProcessTouchInput обрабатывает тач-ввод (мобильные устройства)
-func (ip *InputProcessor) ProcessTouchInput() InputAction {
-	// Проверяем все активные тачи
+// UpdateInput reads mouse/touch state and updates input state.
+func UpdateInput(g *Game) {
+	// Check if any touch is active
 	touchIDs := ebiten.TouchIDs()
-	for _, id := range touchIDs {
-		x, y := ebiten.TouchPosition(id)
-		// Проверяем что это новое касание (просто для примера, в реальности лучше отслеживать состояние)
-		if len(touchIDs) == 1 { // Первый тач
-			return ip.processClick(float64(x), float64(y))
-		}
+	if len(touchIDs) > 0 {
+		x, y := ebiten.TouchPosition(touchIDs[0])
+		g.Input.CurX = float64(x)
+		g.Input.CurY = float64(y)
+		// Simplified touch handling
+		g.Input.JustClicked = true
+	} else {
+		// Fallback to mouse
+		mx, my := ebiten.CursorPosition()
+		g.Input.CurX = float64(mx)
+		g.Input.CurY = float64(my)
+		g.Input.JustClicked = inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft)
 	}
-	return InputAction{Type: ActionNone}
+
+	// Convert pixel to grid position
+	if g.Input.CurX >= g.BoardOffsetX && g.Input.CurX < g.BoardOffsetX+g.CellSize*BoardCols &&
+		g.Input.CurY >= g.BoardOffsetY && g.Input.CurY < g.BoardOffsetY+g.CellSize*BoardRows {
+		g.Input.HoverRow = int((g.Input.CurY - g.BoardOffsetY) / g.CellSize)
+		g.Input.HoverCol = int((g.Input.CurX - g.BoardOffsetX) / g.CellSize)
+		g.Input.Hovering = true
+	} else {
+		g.Input.Hovering = false
+	}
 }
 
-// ProcessKeyboardInput обрабатывает клавиатуру
-func ProcessKeyboardInput() InputAction {
-	// R - новая игра
-	if inpututil.IsKeyJustPressed(ebiten.KeyR) {
-		return InputAction{Type: ActionNone, NewGame: true}
+// HandleClick processes a click on the board.
+func HandleClick(g *Game) {
+	if !g.Input.JustClicked || !g.Input.Hovering {
+		return
 	}
-	// P - пауза
-	if inpututil.IsKeyJustPressed(ebiten.KeyP) {
-		return InputAction{Type: ActionNone, Pause: true}
+
+	r, c := g.Input.HoverRow, g.Input.HoverCol
+
+	// Check if click is on the New Game button
+	if g.isNewGameButtonClicked(g.Input.CurX, g.Input.CurY) {
+		g.reset()
+		return
 	}
-	return InputAction{Type: ActionNone}
+
+	// During animations or game over — ignore board clicks
+	if g.Anim.IsAnimating() || g.GameOver {
+		return
+	}
+
+	tile := g.Board.Grid[r][c]
+	if tile == nil {
+		return
+	}
+
+	// First selection
+	if g.Selected == nil {
+		g.Selected = tile
+		g.SelectionTime = g.Elapsed
+		return
+	}
+
+	// Clicked same tile — deselect
+	if g.Selected == tile {
+		g.Selected = nil
+		return
+	}
+
+	// Check adjacency
+	sr, sc := g.Selected.Row, g.Selected.Col
+	if areAdjacent(sr, sc, r, c) {
+		g.trySwap(sr, sc, r, c)
+		g.Selected = nil
+	} else {
+		// Select new tile instead
+		g.Selected = tile
+		g.SelectionTime = g.Elapsed
+	}
 }
 
-// processClick обрабатывает клик по полю
-func (ip *InputProcessor) processClick(x, y float64) InputAction {
-	row, col, ok := ip.GetClickPosition(x, y)
-	if ok {
-		return InputAction{
-			Type: ActionSelect,
-			Row1: row,
-			Col1: col,
-		}
+// trySwap attempts to swap two tiles and validates the move.
+func (g *Game) trySwap(r1, c1, r2, c2 int) {
+	g.Board.swapTiles(r1, c1, r2, c2)
+
+	t1 := g.Board.Grid[r1][c1]
+	t2 := g.Board.Grid[r2][c2]
+
+	// Check if swap creates a match
+	matches := g.Board.findMatches()
+	if len(matches) > 0 {
+		// Valid move!
+		g.Anim.Start(NewSwapAnimation(t1, t2, swapDuration))
+		g.PlaySound(SoundSwap)
+		g.HintActive = false
+		g.IdleTime = 0
+
+		// After swap animation, resolve matches
+		g.PendingResolve = true
+	} else {
+		// Invalid move — swap back with shake
+		g.Board.swapTiles(r1, c1, r2, c2)
+		g.Anim.Start(NewShakeAnimation([]*Tile{g.Board.Grid[r1][c1], g.Board.Grid[r2][c2]}, shakeDuration))
+		g.PlaySound(SoundError)
 	}
-	return InputAction{Type: ActionNone}
 }

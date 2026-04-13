@@ -1,41 +1,73 @@
-// Match-3 Game - Казуальная карманная игра "Три в ряд"
-// Построена на движке Ebitengine (v2.6+)
-// Кроссплатформенная: Windows, Android, Web (WASM)
-//
-// Сборка:
-//   Windows: GOOS=windows GOARCH=amd64 go build -o match3.exe
-//   Web:     GOOS=js GOARCH=wasm go build -o game.wasm
-//   Android: gomobile build -target=android -o match3.apk
 package main
 
 import (
+	"image/color"
 	"log"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
+	"github.com/hajimehoshi/ebiten/v2/inpututil"
+	"github.com/hajimehoshi/ebiten/v2/vector"
 )
 
-const (
-	screenWidth  = 800
-	screenHeight = 800
-)
+// appGame is our main game struct implementing ebiten.Game interface.
+type appGame struct {
+	game *Game
+}
+
+// Update implements ebiten.Game.
+func (g *appGame) Update() error {
+	// Handle keyboard
+	if inpututil.IsKeyJustPressed(ebiten.KeyR) {
+		g.game.RPressed = true
+	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyP) {
+		g.game.PPressed = true
+	}
+
+	return g.game.Update()
+}
+
+// Draw implements ebiten.Game.
+func (g *appGame) Draw(screen *ebiten.Image) {
+	// Draw background
+	if backgroundImage != nil {
+		screen.DrawImage(backgroundImage, nil)
+	} else {
+		screen.Fill(color.RGBA{0x1A, 0x1A, 0x2E, 0xFF})
+	}
+
+	// Draw board
+	drawBoard(screen, g.game)
+
+	// Draw UI
+	drawUI(screen, g.game)
+
+	// Paused overlay
+	if g.game.Paused && !g.game.GameOver {
+		vector.DrawFilledRect(screen, 0, 0, ScreenWidth, ScreenHeight, color.RGBA{0x00, 0x00, 0x00, 0x80}, false)
+		ebitenutil.DebugPrintAt(screen, "PAUSED", ScreenWidth/2-40, ScreenHeight/2)
+	}
+}
+
+// Layout implements ebiten.Game.
+func (g *appGame) Layout(outsideWidth, outsideHeight int) (int, int) {
+	return ScreenWidth, ScreenHeight
+}
 
 func main() {
-	// Загружаем спрайты (с fallback на программную графику)
-	loadSprites()
+	// Initialize assets
+	generateTileSprites(56) // 60px cell - 4px padding
+	generateBackground(ScreenWidth, ScreenHeight)
 
-	// Инициализируем звуки
-	initSounds()
-
-	// Создаём игру
 	game := NewGame()
+	ebitenGame := &appGame{game: game}
 
-	// Настраиваем окно
-	ebiten.SetWindowSize(screenWidth, screenHeight)
-	ebiten.SetWindowTitle("Match-3 - Три в ряд")
-	ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
+	ebiten.SetWindowSize(ScreenWidth, ScreenHeight)
+	ebiten.SetWindowTitle("Match-3 — Go365 Day 103")
+	ebiten.SetWindowResizingMode(ebiten.WindowResizingModeDisabled)
 
-	// Запускаем игровой цикл
-	if err := ebiten.RunGame(game); err != nil {
-		log.Fatal("Ошибка запуска игры:", err)
+	if err := ebiten.RunGame(ebitenGame); err != nil {
+		log.Fatal(err)
 	}
 }
