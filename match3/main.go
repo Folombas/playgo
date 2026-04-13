@@ -12,7 +12,8 @@ import (
 
 // appGame is our main game struct implementing ebiten.Game interface.
 type appGame struct {
-	game *Game
+	game       *Game
+	background *ParallaxBackground
 }
 
 // Update implements ebiten.Game.
@@ -25,17 +26,16 @@ func (g *appGame) Update() error {
 		g.game.PPressed = true
 	}
 
+	// Update background
+	g.background.Update(1.0 / 60.0)
+
 	return g.game.Update()
 }
 
 // Draw implements ebiten.Game.
 func (g *appGame) Draw(screen *ebiten.Image) {
-	// Draw background
-	if backgroundImage != nil {
-		screen.DrawImage(backgroundImage, nil)
-	} else {
-		screen.Fill(color.RGBA{0x1A, 0x1A, 0x2E, 0xFF})
-	}
+	// Draw parallax background
+	g.background.Draw(screen)
 
 	// Draw board
 	drawBoard(screen, g.game)
@@ -58,10 +58,12 @@ func (g *appGame) Layout(outsideWidth, outsideHeight int) (int, int) {
 func main() {
 	// Initialize assets
 	generateTileSprites(56) // 60px cell - 4px padding
-	generateBackground(ScreenWidth, ScreenHeight)
 
 	game := NewGame()
-	ebitenGame := &appGame{game: game}
+	ebitenGame := &appGame{
+		game:       game,
+		background: NewParallaxBackground(ScreenWidth, ScreenHeight),
+	}
 
 	ebiten.SetWindowSize(ScreenWidth, ScreenHeight)
 	ebiten.SetWindowTitle("Match-3 — Go365 Day 103")
