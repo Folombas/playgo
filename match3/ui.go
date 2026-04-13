@@ -73,6 +73,9 @@ func drawGameOver(screen *ebiten.Image, g *Game) {
 
 // drawBoard renders the game board with all tiles.
 func drawBoard(screen *ebiten.Image, g *Game) {
+	// Apply screen shake offset
+	shakeX, shakeY := g.GetShakeOffset()
+
 	for r := 0; r < BoardRows; r++ {
 		for c := 0; c < BoardCols; c++ {
 			tile := g.Board.Grid[r][c]
@@ -123,7 +126,7 @@ func drawBoard(screen *ebiten.Image, g *Game) {
 			if img != nil {
 				scale := float64(tile.Scale)
 				cellPad := float64(g.CellSize - 8)
-				op.GeoM.Translate(drawX+4, drawY+4)
+				op.GeoM.Translate(drawX+4+shakeX, drawY+4+shakeY)
 				op.GeoM.Translate(cellPad/2, cellPad/2)
 				op.GeoM.Scale(scale, scale)
 				op.GeoM.Translate(-cellPad/2, -cellPad/2)
@@ -131,7 +134,7 @@ func drawBoard(screen *ebiten.Image, g *Game) {
 				screen.DrawImage(img, op)
 			} else {
 				fallbackColor := tileColors[tile.Color%len(tileColors)]
-				vector.DrawFilledCircle(screen, float32(drawX)+float32(g.CellSize)/2, float32(drawY)+float32(g.CellSize)/2, float32(g.CellSize)/2-4, fallbackColor, true)
+				vector.DrawFilledCircle(screen, float32(drawX)+float32(g.CellSize)/2+float32(shakeX), float32(drawY)+float32(g.CellSize)/2+float32(shakeY), float32(g.CellSize)/2-4, fallbackColor, true)
 			}
 		}
 	}
@@ -139,10 +142,10 @@ func drawBoard(screen *ebiten.Image, g *Game) {
 	// Draw particles on top
 	g.Particles.Draw(screen)
 
-	// Board border
+	// Board border (with shake)
 	boardW := float32(g.CellSize * BoardCols)
 	boardH := float32(g.CellSize * BoardRows)
-	vector.StrokeRect(screen, float32(g.BoardOffsetX)-2, float32(g.BoardOffsetY)-2, boardW+4, boardH+4, 3, color.RGBA{0xFF, 0xFF, 0xFF, 0x30}, false)
+	vector.StrokeRect(screen, float32(g.BoardOffsetX)-2+float32(shakeX), float32(g.BoardOffsetY)-2+float32(shakeY), boardW+4, boardH+4, 3, color.RGBA{0xFF, 0xFF, 0xFF, 0x30}, false)
 }
 
 // isNewGameButtonClicked checks if click coordinates are within the button bounds.

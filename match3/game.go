@@ -1,6 +1,7 @@
 package main
 
 import (
+	"math/rand"
 	"time"
 )
 
@@ -55,6 +56,11 @@ type Game struct {
 	RPressed bool
 	PPressed bool
 	Paused   bool
+
+	// Screen shake
+	ShakeIntensity float64
+	ShakeDuration  float64
+	ShakeTimer     float64
 }
 
 // NewGame creates a new game instance.
@@ -170,6 +176,15 @@ func (g *Game) Update() error {
 	// Update particles
 	g.Particles.Update(dt)
 
+	// Update screen shake
+	if g.ShakeTimer > 0 {
+		g.ShakeTimer -= dt
+		if g.ShakeTimer <= 0 {
+			g.ShakeTimer = 0
+			g.ShakeIntensity = 0
+		}
+	}
+
 	// Resolve cascade after swap animation
 	if g.PendingResolve && animDone {
 		g.resolveCascade()
@@ -249,6 +264,11 @@ func (g *Game) resolveCascade() {
 		}
 
 		g.CascadeDepth++
+
+		// Trigger screen shake for cascades (combo depth > 0)
+		if g.CascadeDepth > 0 {
+			g.TriggerShake(float64(g.CascadeDepth) * 2.0)
+		}
 	}
 
 	// Check if there are possible moves; if not, reshuffle
@@ -281,6 +301,25 @@ func (g *Game) PlaySound(st SoundType) {
 	if g.Sound != nil {
 		g.Sound.Play(st)
 	}
+}
+
+// TriggerShake initiates a screen shake effect.
+func (g *Game) TriggerShake(intensity float64) {
+	g.ShakeIntensity = intensity
+	g.ShakeDuration = 0.2 // 200ms
+	g.ShakeTimer = g.ShakeDuration
+}
+
+// GetShakeOffset returns current shake offset for rendering.
+func (g *Game) GetShakeOffset() (float64, float64) {
+	if g.ShakeTimer <= 0 {
+		return 0, 0
+	}
+	// Random offset based on intensity
+	t := 1.0 - (g.ShakeTimer / g.ShakeDuration)
+	decay := 1.0 - t*t // quadratic decay
+	intensity := g.ShakeIntensity * decay
+	return (rand.Float64()*2 - 1) * intensity, (rand.Float64()*2 - 1) * intensity
 }
 
 // loadHighScore loads the high score from a file.
