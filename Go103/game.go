@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"time"
 
@@ -232,7 +231,12 @@ func (g *Game) resolveMatchesAndDrop() {
 		// Падение новых фишек
 		newTiles := g.board.dropDown()
 		if len(newTiles) > 0 {
-			g.animSystem.AddDrop(newTiles)
+			// Преобразуем карту в срез
+			newTilePositions := make([][2]int, 0, len(newTiles))
+			for pos := range newTiles {
+				newTilePositions = append(newTilePositions, pos)
+			}
+			g.animSystem.AddDrop(newTilePositions)
 			time.Sleep(250 * time.Millisecond)
 		}
 	}
@@ -274,9 +278,9 @@ func (g *Game) hasPossibleMoves() bool {
 
 // showHint показывает подсказку
 func (g *Game) showHint() {
-	r1, c1, r2, c2, ok := g.board.FindHint()
+	pos1, pos2, ok := g.board.FindHint()
 	if ok {
-		g.animSystem.AddHint(r1, c1, r2, c2)
+		g.animSystem.AddHint(pos1[0], pos1[1], pos2[0], pos2[1])
 	}
 }
 
@@ -317,10 +321,9 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		hintPos1, hintPos2, hintActive, g.animSystem)
 
 	// Отладочная информация (FPS)
-	fps := ebiten.ActualFPS()
-	debugText := fmt.Sprintf("FPS: %.1f", fps)
+	// fps := ebiten.ActualFPS()
+	// debugText := fmt.Sprintf("FPS: %.1f", fps)
 	// (можно добавить через text.Draw если нужно)
-	_ = fps
 }
 
 // Layout возвращает логический размер экрана

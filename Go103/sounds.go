@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"log"
 	"math"
 
@@ -52,11 +51,7 @@ func (sm *SoundManager) generateTone(frequency float64, duration float64) *audio
 		buf[i*2+1] = byte(val >> 8)
 	}
 
-	player, err := sm.audioContext.NewPlayerFromBytes(buf)
-	if err != nil {
-		log.Printf("Не удалось создать звук: %v", err)
-		return nil
-	}
+	player := sm.audioContext.NewPlayerFromBytes(buf)
 
 	return player
 }

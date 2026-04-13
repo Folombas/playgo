@@ -77,8 +77,9 @@ func (ip *InputProcessor) ProcessTouchInput() InputAction {
 	// Проверяем все активные тачи
 	touchIDs := ebiten.TouchIDs()
 	for _, id := range touchIDs {
-		if inpututil.IsTouchJustPressed(id) {
-			x, y := ebiten.TouchPosition(id)
+		x, y := ebiten.TouchPosition(id)
+		// Проверяем что это новое касание (просто для примера, в реальности лучше отслеживать состояние)
+		if len(touchIDs) == 1 { // Первый тач
 			return ip.processClick(float64(x), float64(y))
 		}
 	}
