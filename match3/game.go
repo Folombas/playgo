@@ -1,6 +1,7 @@
 package main
 
 import (
+	"image/color"
 	"math/rand"
 	"time"
 )
@@ -61,6 +62,19 @@ type Game struct {
 	ShakeIntensity float64
 	ShakeDuration  float64
 	ShakeTimer     float64
+
+	// Flash effects
+	Flashes []FlashEffect
+}
+
+// FlashEffect represents a screen flash effect.
+type FlashEffect struct {
+	X, Y     float64
+	Radius   float64
+	MaxRadius float64
+	Life     float64
+	Decay    float64
+	Color    color.RGBA
 }
 
 // NewGame creates a new game instance.
@@ -92,6 +106,7 @@ func (g *Game) reset() {
 	g.CascadeDepth = 0
 	g.Paused = false
 	g.Particles = NewParticleSystem()
+	g.Flashes = make([]FlashEffect, 0, 20)
 
 	// Calculate board layout
 	g.CellSize = 60.0
@@ -176,6 +191,15 @@ func (g *Game) Update() error {
 	// Update particles
 	g.Particles.Update(dt)
 
+	// Update flash effects
+	for i := len(g.Flashes) - 1; i >= 0; i-- {
+		g.Flashes[i].Life -= g.Flashes[i].Decay * dt
+		g.Flashes[i].Radius += 200 * dt
+		if g.Flashes[i].Life <= 0 {
+			g.Flashes = append(g.Flashes[:i], g.Flashes[i+1:]...)
+		}
+	}
+
 	// Update screen shake
 	if g.ShakeTimer > 0 {
 		g.ShakeTimer -= dt
@@ -233,6 +257,38 @@ func (g *Game) resolveCascade() {
 		matchTiles := make([]*Tile, 0, len(matches))
 		for tile := range matches {
 			matchTiles = append(matchTiles, tile)
+		}
+
+		// Create flash effects for large matches (4+)
+		if len(matches) >= 4 {
+			for _, t := range matchTiles {
+				px := g.BoardOffsetX + float64(t.Col)*g.CellSize + g.CellSize/2
+				py := g.BoardOffsetY + float64(t.Row)*g.CellSize + g.CellSize/2
+				g.Flashes = append(g.Flashes, FlashEffect{
+					X:         px,
+					Y:         py,
+					Radius:    5,
+					MaxRadius: 80,
+					Life:      1.0,
+					Decay:     2.0,
+					Color:     tileColors[t.Color],
+				})
+			}
+		}
+		
+		// Big flash for 5+ matches
+		if len(matches) >= 5 {
+			px := g.BoardOffsetX + float64(BoardCols/2)*g.CellSize
+			py := g.BoardOffsetY + float64(BoardRows/2)*g.CellSize
+			g.Flashes = append(g.Flashes, FlashEffect{
+				X:         px,
+				Y:         py,
+				Radius:    10,
+				MaxRadius: 150,
+				Life:      1.0,
+				Decay:     1.5,
+				Color:     color.RGBA{0xFF, 0xFF, 0xFF, 0xFF},
+			})
 		}
 
 		g.Anim.Start(NewRemoveAnimation(matchTiles, removeDuration))

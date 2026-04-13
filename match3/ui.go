@@ -142,6 +142,22 @@ func drawBoard(screen *ebiten.Image, g *Game) {
 	// Draw particles on top
 	g.Particles.Draw(screen)
 
+	// Draw flash effects
+	for _, flash := range g.Flashes {
+		alpha := uint8(float64(flash.Color.A) * flash.Life)
+		c := color.RGBA{flash.Color.R, flash.Color.G, flash.Color.B, alpha}
+		
+		// Draw expanding circle flash
+		vector.StrokeCircle(screen, float32(flash.X), float32(flash.Y), float32(flash.Radius), 3, c, true)
+		
+		// Inner glow
+		if flash.Life > 0.5 {
+			innerAlpha := uint8((flash.Life - 0.5) * 2 * 100)
+			innerColor := color.RGBA{0xFF, 0xFF, 0xFF, innerAlpha}
+			vector.DrawFilledCircle(screen, float32(flash.X), float32(flash.Y), float32(flash.Radius*0.5), innerColor, true)
+		}
+	}
+
 	// Board border (with shake)
 	boardW := float32(g.CellSize * BoardCols)
 	boardH := float32(g.CellSize * BoardRows)
