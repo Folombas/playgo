@@ -1,0 +1,36 @@
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.wasm
+
+# Test binary
+*.test
+
+# Output of the go coverage tool
+coverage.txt
+
+# Dependency directories
+vendor/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Go build cache
+go.sum
+
+# Match3 specific
+match3.exe
+match3.apk
+game.wasm
+sprites/*.png
