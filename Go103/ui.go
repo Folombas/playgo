@@ -52,14 +52,11 @@ func (ui *UIRenderer) Draw(screen *ebiten.Image, boardOffsetX, boardOffsetY, cel
 	ui.drawBoardFrame(screen, boardOffsetX, boardOffsetY, cellSize)
 
 	// Рисуем фишки
-	ui.drawTiles(screen, boardOffsetX, boardOffsetY, cellSize, animSystem)
-
-	// Рисуем подсветку выбранной фишки
-	// (это будет делать Game, т.к. там есть состояние selectedTile)
+	// (это будет делать Game через DrawTilesWithBoard)
 
 	// Рисуем подсказку
 	if hintActive {
-		ui.drawHint(screen, boardOffsetX, boardOffsetY, cellSize, hintPos1, hintPos2)
+		ui.drawHint(screen, boardOffsetX, boardOffsetY, cellSize, hintPos1, hintPos2, animSystem)
 	}
 
 	// Рисуем счёт и таймер
@@ -107,14 +104,6 @@ func (ui *UIRenderer) drawBoardFrame(screen *ebiten.Image, offsetX, offsetY, cel
 		float32(offsetX), float32(offsetY),
 		float32(width), float32(height),
 		4, color.RGBA{100, 100, 150, 255}, false)
-}
-
-// drawTiles рисует все фишки на поле
-func (ui *UIRenderer) drawTiles(screen *ebiten.Image, offsetX, offsetY, cellSize float64,
-	animSystem *AnimationSystem) {
-
-	// Получаем доступ к полю через глобальную переменную (Game передаст данные)
-	// Эта функция будет вызываться из Game.Draw с актуальным состоянием
 }
 
 // DrawTilesWithBoard рисует фишки с данными доски
@@ -228,9 +217,13 @@ func (ui *UIRenderer) drawSelection(screen *ebiten.Image, x, y, cellSize float64
 
 // drawHint рисует подсказку (пульсирующая зелёная обводка)
 func (ui *UIRenderer) drawHint(screen *ebiten.Image, offsetX, offsetY, cellSize float64,
-	pos1, pos2 [2]int) {
+	pos1, pos2 [2]int, animSystem *AnimationSystem) {
 
-	pulse := (animSystemGlobal.GetHintPulse() + 1) / 2 // 0-1
+	if animSystem == nil {
+		return
+	}
+
+	pulse := (animSystem.GetHintPulse() + 1) / 2 // 0-1
 
 	c := color.RGBA{
 		R: uint8(52),
