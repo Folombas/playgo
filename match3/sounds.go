@@ -14,6 +14,9 @@ const (
 	SoundMatch
 	SoundError
 	SoundGameOver
+	SoundCascade
+	SoundCombo
+	SoundBonus
 )
 
 // SoundManager handles sound playback using programmatically generated waveforms.
@@ -48,6 +51,15 @@ func (sm *SoundManager) generateSounds() {
 
 	// Game Over sound: descending tone
 	sm.data[SoundGameOver] = sm.generateTone(0.4, 660, 330, "sine")
+
+	// Cascade sound: rising arpeggio for chain reactions
+	sm.data[SoundCascade] = sm.generateChime(0.3, []float64{523.25, 659.25, 783.99, 1046.50})
+
+	// Combo sound: exciting double chime
+	sm.data[SoundCombo] = sm.generateChime(0.4, []float64{659.25, 783.99, 987.77, 1174.66, 1318.51})
+
+	// Bonus sound: sparkle burst
+	sm.data[SoundBonus] = sm.generateSparkle(0.25, 1200)
 
 	// Create players
 	for st, d := range sm.data {
@@ -133,6 +145,35 @@ func (sm *SoundManager) generateChime(durationSec float64, freqs []float64) []by
 			data[offset*2+1] = byte(val >> 8)
 			offset++
 		}
+	}
+
+	return data
+}
+
+// generateSparkle creates a sparkling burst sound with high frequencies.
+func (sm *SoundManager) generateSparkle(durationSec float64, baseFreq float64) []byte {
+	sampleRate := 44100
+	totalSamples := int(float64(sampleRate) * durationSec)
+	data := make([]byte, totalSamples*2)
+
+	for i := 0; i < totalSamples; i++ {
+		t := float64(i) / float64(sampleRate)
+		progress := float64(i) / float64(totalSamples)
+
+		// Multiple harmonics for sparkle effect
+		sample := 0.0
+		sample += math.Sin(2*math.Pi*baseFreq*t) * 0.3
+		sample += math.Sin(2*math.Pi*baseFreq*1.5*t) * 0.2
+		sample += math.Sin(2*math.Pi*baseFreq*2*t) * 0.15
+		sample += math.Sin(2*math.Pi*baseFreq*2.5*t) * 0.1
+
+		// Quick attack, exponential decay
+		envelope := 1.0 - math.Pow(progress, 0.5)
+		sample *= envelope * 0.25
+
+		val := int16(sample * 32767)
+		data[i*2] = byte(val)
+		data[i*2+1] = byte(val >> 8)
 	}
 
 	return data

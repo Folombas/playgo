@@ -213,12 +213,21 @@ func (g *Game) resolveCascade() {
 		// Bonus for 4+ tiles in a single match group
 		if len(matches) >= 4 {
 			g.Score += 50 + chainBonus
+			g.PlaySound(SoundBonus)
 		}
 		if len(matches) >= 5 {
 			g.Score += 100 + chainBonus
+			g.PlaySound(SoundCombo)
 		}
 
-		g.PlaySound(SoundMatch)
+		// Play cascade sound based on depth
+		if g.CascadeDepth == 0 {
+			g.PlaySound(SoundMatch)
+		} else if g.CascadeDepth <= 2 {
+			g.PlaySound(SoundCascade)
+		} else {
+			g.PlaySound(SoundCombo)
+		}
 
 		// Animate removal
 		matchTiles := make([]*Tile, 0, len(matches))
