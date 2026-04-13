@@ -1,51 +1,75 @@
 package main
 
 import (
+	"image"
 	"image/color"
+	"log"
+	"os"
+	"path/filepath"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/vector"
+	_ "image/png"
 )
 
-// tileColors defines the 6 gem colors used for procedural sprite generation.
+// tileColors defines the 6 food tile colors (for particles/effects).
 var tileColors = []color.RGBA{
-	{0xE7, 0x4C, 0x3C, 0xFF}, // Red
-	{0x34, 0x98, 0xDB, 0xFF}, // Blue
-	{0x2E, 0xCC, 0x71, 0xFF}, // Green
-	{0xF1, 0xC4, 0x0F, 0xFF}, // Yellow
-	{0x9B, 0x59, 0xB6, 0xFF}, // Purple
-	{0xE6, 0x7E, 0x22, 0xFF}, // Orange
+	{0xE7, 0x4C, 0x3C, 0xFF}, // Red (apple)
+	{0x8B, 0x45, 0x13, 0xFF}, // Brown (burger)
+	{0xFF, 0x8C, 0x00, 0xFF}, // Orange (carrot)
+	{0xFF, 0x69, 0xB4, 0xFF}, // Pink (cupcake)
+	{0x80, 0x00, 0x80, 0xFF}, // Purple (grapes)
+	{0xFF, 0xD7, 0x00, 0xFF}, // Yellow (pizza)
 }
 
-// tileImages holds the pre-rendered tile sprites.
+// tileImages holds the loaded food sprites.
 var tileImages []*ebiten.Image
 
 // backgroundImage holds the game background.
 var backgroundImage *ebiten.Image
 
-// generateTileSprites creates colored circle sprites with a subtle glow.
-func generateTileSprites(size int) {
-	tileImages = make([]*ebiten.Image, len(tileColors))
+// foodSpriteFiles lists the PNG files to load for each tile type (0..5).
+var foodSpriteFiles = []string{
+	"apple.png",    // 0 - Red
+	"burger.png",   // 1 - Brown
+	"carrot.png",   // 2 - Orange
+	"cupcake.png",  // 3 - Pink
+	"grapes.png",   // 4 - Purple
+	"pizza.png",    // 5 - Yellow
+}
 
-	for i, c := range tileColors {
-		img := ebiten.NewImage(size, size)
+// loadTileSprites loads food sprites from the sprites/ directory.
+func loadTileSprites(size int) {
+	tileImages = make([]*ebiten.Image, len(foodSpriteFiles))
 
-		// Draw a subtle shadow
-		shadowColor := color.RGBA{0x00, 0x00, 0x00, 0x30}
-		vector.DrawFilledCircle(img, float32(size/2)+2, float32(size/2)+2, float32(size/2-2), shadowColor, true)
+	for i, filename := range foodSpriteFiles {
+		path := filepath.Join("sprites", filename)
+		f, err := os.Open(path)
+		if err != nil {
+			log.Fatalf("Failed to load sprite %s: %v", path, err)
+		}
 
-		// Draw main gem
-		vector.DrawFilledCircle(img, float32(size/2), float32(size/2), float32(size/2-2), c, true)
+		imgData, _, err := image.Decode(f)
+		f.Close()
+		if err != nil {
+			log.Fatalf("Failed to decode sprite %s: %v", path, err)
+		}
 
-		// Draw highlight (glossy effect)
-		highlightColor := color.RGBA{0xFF, 0xFF, 0xFF, 0x50}
-		vector.DrawFilledCircle(img, float32(size/3), float32(size/3), float32(size/6), highlightColor, true)
+		img := ebiten.NewImageFromImage(imgData)
 
-		// Draw border ring
-		borderColor := color.RGBA{0xFF, 0xFF, 0xFF, 0x80}
-		vector.StrokeCircle(img, float32(size/2), float32(size/2), float32(size/2-1), 2, borderColor, true)
+		// Scale sprite to fit cell size
+		scaled := ebiten.NewImage(size, size)
+		op := &ebiten.DrawImageOptions{}
+		w, h := img.Size()
+		scale := float64(size) / float64(w)
+		if float64(size)/float64(h) < scale {
+			scale = float64(size) / float64(h)
+		}
+		op.GeoM.Scale(scale, scale)
+		op.GeoM.Translate((float64(size)-float64(w)*scale)/2, (float64(size)-float64(h)*scale)/2)
+		scaled.DrawImage(img, op)
 
-		tileImages[i] = img
+		tileImages[i] = scaled
 	}
 }
 

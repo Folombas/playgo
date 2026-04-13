@@ -57,7 +57,7 @@ func (g *appGame) Layout(outsideWidth, outsideHeight int) (int, int) {
 
 func main() {
 	// Initialize assets
-	generateTileSprites(56) // 60px cell - 4px padding
+	loadTileSprites(56) // 60px cell - 4px padding
 
 	game := NewGame()
 	ebitenGame := &appGame{
