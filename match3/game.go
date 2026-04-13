@@ -36,6 +36,7 @@ type Game struct {
 	Anim           AnimationManager
 	Input          InputState
 	Sound          *SoundManager
+	Particles      *ParticleSystem
 
 	// Layout
 	CellSize    float64
@@ -63,6 +64,7 @@ func NewGame() *Game {
 		Running:        true,
 		MaxCascadeDepth: 10,
 		Sound:          NewSoundManager(),
+		Particles:      NewParticleSystem(),
 	}
 	g.reset()
 	return g
@@ -83,6 +85,7 @@ func (g *Game) reset() {
 	g.PendingResolve = false
 	g.CascadeDepth = 0
 	g.Paused = false
+	g.Particles = NewParticleSystem()
 
 	// Calculate board layout
 	g.CellSize = 60.0
@@ -164,6 +167,9 @@ func (g *Game) Update() error {
 	// Update animations
 	animDone := g.Anim.Update()
 
+	// Update particles
+	g.Particles.Update(dt)
+
 	// Resolve cascade after swap animation
 	if g.PendingResolve && animDone {
 		g.resolveCascade()
@@ -209,6 +215,14 @@ func (g *Game) resolveCascade() {
 		// Wait for removal animation (simplified: just continue)
 		for _, t := range matchTiles {
 			t.Removing = true
+		}
+
+		// Spawn particles for each removed tile
+		for _, t := range matchTiles {
+			px := g.BoardOffsetX + float64(t.Col)*g.CellSize + g.CellSize/2
+			py := g.BoardOffsetY + float64(t.Row)*g.CellSize + g.CellSize/2
+			g.Particles.Emit(px, py, 12, &tileColors[t.Color])
+			g.Particles.EmitSparkle(px, py, 6)
 		}
 
 		// Remove tiles from grid

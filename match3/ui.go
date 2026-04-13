@@ -136,6 +136,9 @@ func drawBoard(screen *ebiten.Image, g *Game) {
 		}
 	}
 
+	// Draw particles on top
+	g.Particles.Draw(screen)
+
 	// Board border
 	boardW := float32(g.CellSize * BoardCols)
 	boardH := float32(g.CellSize * BoardRows)
