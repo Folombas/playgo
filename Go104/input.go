@@ -35,11 +35,9 @@ func (ih *InputHandler) GetClickPosition() *Position {
 	if touches := ebiten.TouchIDs(); len(touches) > 0 {
 		// Берём первый тач
 		touchID := touches[0]
-		if ebiten.TouchPosition(touchID) != (struct{ X, Y int }{0, 0}) {
-			// В Ebitengine v2 нет прямого доступа к позиции тача по ID
-			// Используем курсор как fallback
-			mx, my := ebiten.CursorPosition()
-			return ih.screenToGrid(float64(mx), float64(my))
+		tx, ty := ebiten.TouchPosition(touchID)
+		if tx != 0 || ty != 0 {
+			return ih.screenToGrid(float64(tx), float64(ty))
 		}
 	}
 

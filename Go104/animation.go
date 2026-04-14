@@ -123,7 +123,7 @@ func (am *AnimationManager) Update(board *Board) bool {
 func (am *AnimationManager) applyAnimation(anim *Animation, board *Board, progress float64) {
 	switch anim.Type {
 	case AnimSwap:
-		am.applySwap(anim, progress)
+		am.applySwap(anim, board, progress)
 	case AnimShake:
 		am.applyShake(anim, board, progress)
 	case AnimRemove:
@@ -131,7 +131,7 @@ func (am *AnimationManager) applyAnimation(anim *Animation, board *Board, progre
 	case AnimDrop:
 		am.applyDrop(anim, board, progress)
 	case AnimHintPulse:
-		am.applyHintPulse(anim, progress)
+		am.applyHintPulse(anim, board, progress)
 	}
 }
 
