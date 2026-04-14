@@ -1,0 +1,11 @@
+# Binary files
+*.exe
+*.aar
+*.wasm
+
+# Go
+*.test
+*.out
+
+# Dependencies
+vendor/
