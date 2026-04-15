@@ -1,0 +1,11 @@
+# Binary
+*.exe
+*.wasm
+*.apk
+
+# Save data
+save/
+
+# IDE
+.vscode/
+.idea/
