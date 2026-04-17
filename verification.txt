@@ -1,9 +1,0 @@
-Implementation verification:
-1. Food sprites (apple.png, carrot.png) copied to /workspace/
-2. Game struct updated with foodImages and score fields
-3. Food loading logic added in NewGame()
-4. Collision detection implemented in Update()
-5. Score display added in Draw()
-6. Code compiles without errors
-7. Score increments by 10 on food collection
-8. Score displayed at top-left of screen
