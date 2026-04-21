@@ -2,165 +2,174 @@ package main
 
 import (
 	"fmt"
-	"image/color"
-	"math"
-	"math/rand"
+	"log"
+	"os"
 	"time"
 
-	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
-	"github.com/hajimehoshi/ebiten/v2/inpututil"
+	"github.com/nsf/termbox-go"
 )
 
 const (
-	screenWidth  = 800
-	screenHeight = 600
-	paddleWidth  = 10
-	paddleHeight = 80
-	ballSize     = 8
+	width  = 60
+	height = 20
 )
 
-type Game struct {
-	leftPaddleY, rightPaddleY float64
-	ballX, ballY              float64
-	ballVX, ballVY            float64
-	leftScore, rightScore     int
-}
+var (
+	// позиции мяча
+	ballX, ballY   = width/2, height/2
+	ballVx, ballVy = 1, 1
 
-func NewGame() *Game {
-	rand.Seed(time.Now().UnixNano())
-	g := &Game{
-		leftPaddleY:  screenHeight/2 - paddleHeight/2,
-		rightPaddleY: screenHeight/2 - paddleHeight/2,
-		ballX:        screenWidth / 2,
-		ballY:        screenHeight / 2,
-	}
-	g.resetBall()
-	return g
-}
-
-func (g *Game) resetBall() {
-	// Случайное направление: влево или вправо
-	if rand.Float64() < 0.5 {
-		g.ballVX = 4
-	} else {
-		g.ballVX = -4
-	}
-	g.ballVY = 4 * (rand.Float64()*2 - 1) // от -4 до 4
-	g.ballX = screenWidth / 2
-	g.ballY = screenHeight / 2
-}
-
-func (g *Game) Update() error {
-	// Управление левой ракеткой (W/S)
-	if ebiten.IsKeyPressed(ebiten.KeyW) && g.leftPaddleY > 0 {
-		g.leftPaddleY -= 6
-	}
-	if ebiten.IsKeyPressed(ebiten.KeyS) && g.leftPaddleY < screenHeight-paddleHeight {
-		g.leftPaddleY += 6
-	}
-	// Управление правой ракеткой (стрелки вверх/вниз)
-	if ebiten.IsKeyPressed(ebiten.KeyArrowUp) && g.rightPaddleY > 0 {
-		g.rightPaddleY -= 6
-	}
-	if ebiten.IsKeyPressed(ebiten.KeyArrowDown) && g.rightPaddleY < screenHeight-paddleHeight {
-		g.rightPaddleY += 6
-	}
-
-	// Движение мяча
-	g.ballX += g.ballVX
-	g.ballY += g.ballVY
-
-	// Отскок от верхней и нижней границ
-	if g.ballY <= 0 || g.ballY >= screenHeight-ballSize {
-		g.ballVY = -g.ballVY
-	}
-
-	// Проверка столкновения с левой ракеткой
-	if g.ballX <= paddleWidth && g.ballY+ballSize >= g.leftPaddleY && g.ballY <= g.leftPaddleY+paddleHeight {
-		g.ballVX = -g.ballVX
-		// Корректировка позиции, чтобы не застревать
-		g.ballX = paddleWidth
-		// Небольшое изменение вертикальной скорости для динамики
-		g.ballVY += (float64(g.leftPaddleY+paddleHeight/2) - (g.ballY + ballSize/2)) * 0.1
-		g.limitVelocity()
-	}
-
-	// Проверка столкновения с правой ракеткой
-	if g.ballX+ballSize >= screenWidth-paddleWidth && g.ballY+ballSize >= g.rightPaddleY && g.ballY <= g.rightPaddleY+paddleHeight {
-		g.ballVX = -g.ballVX
-		g.ballX = screenWidth - paddleWidth - ballSize
-		g.ballVY += (float64(g.rightPaddleY+paddleHeight/2) - (g.ballY + ballSize/2)) * 0.1
-		g.limitVelocity()
-	}
-
-	// Гол: мяч вышел за левый край
-	if g.ballX+ballSize < 0 {
-		g.rightScore++
-		g.resetBall()
-	}
-	// Гол: мяч вышел за правый край
-	if g.ballX > screenWidth {
-		g.leftScore++
-		g.resetBall()
-	}
-
-	// Перезапуск игры по клавише R
-	if inpututil.IsKeyJustPressed(ebiten.KeyR) {
-		g.leftScore = 0
-		g.rightScore = 0
-		g.resetBall()
-		g.leftPaddleY = screenHeight/2 - paddleHeight/2
-		g.rightPaddleY = screenHeight/2 - paddleHeight/2
-	}
-
-	return nil
-}
-
-// Ограничиваем скорость, чтобы игра не становилась слишком бешеной
-func (g *Game) limitVelocity() {
-	maxSpeed := 8.0
-	if math.Abs(g.ballVX) > maxSpeed {
-		g.ballVX = math.Copysign(maxSpeed, g.ballVX)
-	}
-	if math.Abs(g.ballVY) > maxSpeed {
-		g.ballVY = math.Copysign(maxSpeed, g.ballVY)
-	}
-	if math.Abs(g.ballVY) < 2 {
-		g.ballVY = math.Copysign(2, g.ballVY)
-	}
-}
-
-func (g *Game) Draw(screen *ebiten.Image) {
-	// Рисуем фон
-	screen.Fill(color.RGBA{0, 0, 0, 255})
-
-	// Рисуем левую ракетку
-	ebitenutil.DrawRect(screen, 0, g.leftPaddleY, paddleWidth, paddleHeight, color.White)
-	// Правую ракетку
-	ebitenutil.DrawRect(screen, screenWidth-paddleWidth, g.rightPaddleY, paddleWidth, paddleHeight, color.White)
-	// Мяч
-	ebitenutil.DrawRect(screen, g.ballX, g.ballY, ballSize, ballSize, color.White)
-
-	// Счёт
-	scoreText := fmt.Sprintf("%d  |  %d", g.leftScore, g.rightScore)
-	ebitenutil.DebugPrintAt(screen, scoreText, screenWidth/2-40, 20)
-
-	// Подсказки
-	ebitenutil.DebugPrintAt(screen, "W/S - left paddle", 20, screenHeight-30)
-	ebitenutil.DebugPrintAt(screen, "↑/↓ - right paddle", screenWidth-200, screenHeight-30)
-	ebitenutil.DebugPrintAt(screen, "R - restart", screenWidth/2-40, screenHeight-30)
-}
-
-func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
-	return screenWidth, screenHeight
-}
+	// позиции ракеток (Y координата верхнего края)
+	leftPaddleY   = height/2 - 2
+	rightPaddleY  = height/2 - 2
+	paddleHeight  = 4
+	leftScore     = 0
+	rightScore    = 0
+	gameRunning   = true
+)
 
 func main() {
-	ebiten.SetWindowTitle("Ping Pong - Go + Ebitengine")
-	ebiten.SetWindowSize(screenWidth, screenHeight)
-	ebiten.SetWindowResizable(false)
-	if err := ebiten.RunGame(NewGame()); err != nil {
-		panic(err)
+	// инициализация termbox
+	err := termbox.Init()
+	if err != nil {
+		log.Fatal(err)
 	}
+	defer termbox.Close()
+
+	// отключаем курсор
+	termbox.SetCursor(0, 0)
+
+	// запускаем обработку клавиш в горутине
+	go handleInput()
+
+	// игровой цикл
+	ticker := time.NewTicker(50 * time.Millisecond)
+	defer ticker.Stop()
+
+	for gameRunning {
+		<-ticker.C
+		update()
+		draw()
+	}
+}
+
+// обработка клавиатуры
+func handleInput() {
+	for {
+		switch ev := termbox.PollEvent(); ev.Type {
+		case termbox.EventKey:
+			switch ev.Key {
+			case termbox.KeyArrowUp:
+				if rightPaddleY > 0 {
+					rightPaddleY--
+				}
+			case termbox.KeyArrowDown:
+				if rightPaddleY < height-paddleHeight {
+					rightPaddleY++
+				}
+			case termbox.KeyChar:
+				switch ev.Ch {
+				case 'w', 'W':
+					if leftPaddleY > 0 {
+						leftPaddleY--
+					}
+				case 's', 'S':
+					if leftPaddleY < height-paddleHeight {
+						leftPaddleY++
+					}
+				case 'q', 'Q':
+					gameRunning = false
+					return
+				}
+			}
+		}
+	}
+}
+
+// обновление физики
+func update() {
+	// движение мяча
+	ballX += ballVx
+	ballY += ballVy
+
+	// отскок от верхней и нижней стен
+	if ballY <= 0 {
+		ballY = 0
+		ballVy = -ballVy
+	}
+	if ballY >= height-1 {
+		ballY = height - 1
+		ballVy = -ballVy
+	}
+
+	// столкновение с левой ракеткой
+	if ballX <= 2 && ballY >= leftPaddleY && ballY < leftPaddleY+paddleHeight {
+		ballX = 3
+		ballVx = -ballVx
+	}
+
+	// столкновение с правой ракеткой
+	if ballX >= width-3 && ballY >= rightPaddleY && ballY < rightPaddleY+paddleHeight {
+		ballX = width - 4
+		ballVx = -ballVx
+	}
+
+	// гол (мяч ушёл за левый край)
+	if ballX <= 0 {
+		rightScore++
+		resetBall()
+	}
+	// гол (мяч ушёл за правый край)
+	if ballX >= width-1 {
+		leftScore++
+		resetBall()
+	}
+}
+
+// сброс мяча в центр после гола
+func resetBall() {
+	ballX, ballY = width/2, height/2
+	ballVx = -ballVx // меняем направление, чтобы не было патовой ситуации
+	ballVy = 1
+	if ballVy == 0 {
+		ballVy = 1
+	}
+	time.Sleep(500 * time.Millisecond)
+}
+
+// отрисовка поля, ракеток, мяча и счёта
+func draw() {
+	termbox.Clear(termbox.ColorDefault, termbox.ColorDefault)
+
+	// левая ракетка
+	for i := 0; i < paddleHeight; i++ {
+		termbox.SetCell(1, leftPaddleY+i, '█', termbox.ColorWhite, termbox.ColorDefault)
+	}
+
+	// правая ракетка
+	for i := 0; i < paddleHeight; i++ {
+		termbox.SetCell(width-2, rightPaddleY+i, '█', termbox.ColorWhite, termbox.ColorDefault)
+	}
+
+	// мяч
+	termbox.SetCell(ballX, ballY, '●', termbox.ColorYellow, termbox.ColorDefault)
+
+	// счёт
+	scoreText := fmt.Sprintf("%d : %d", leftScore, rightScore)
+	textX := width/2 - len(scoreText)/2
+	for i, ch := range scoreText {
+		termbox.SetCell(textX+i, 0, ch, termbox.ColorGreen, termbox.ColorDefault)
+	}
+
+	// рамка (простая)
+	for x := 0; x < width; x++ {
+		termbox.SetCell(x, 0, '─', termbox.ColorBlue, termbox.ColorDefault)
+		termbox.SetCell(x, height-1, '─', termbox.ColorBlue, termbox.ColorDefault)
+	}
+	for y := 0; y < height; y++ {
+		termbox.SetCell(0, y, '│', termbox.ColorBlue, termbox.ColorDefault)
+		termbox.SetCell(width-1, y, '│', termbox.ColorBlue, termbox.ColorDefault)
+	}
+
+	termbox.Flush()
 }
