@@ -70,7 +70,6 @@ type Game struct {
 	flash         float64
 	menuPulse     float64
 	pauseCooldown float64
-	lastInput     bool
 }
 
 func NewGame() *Game {
@@ -223,7 +222,7 @@ func (g *Game) step() {
 	head := g.snake[0]
 	newHead := Vec{head.X + g.dir.X, head.Y + g.dir.Y}
 
-	// Wall & self collision -> instant game over (classic)
+	// Wall & self collision -> instant game over
 	if newHead.X < 0 || newHead.X >= gridW || newHead.Y < 0 || newHead.Y >= gridH {
 		g.triggerExplosion(head, true)
 		return
@@ -612,8 +611,6 @@ func sndPause() []byte {
 	t := synthWave(sr, 0.08, 220, 0.4, "square", -50)
 	return mixToWAV(sr, [][]int16{t})
 }
-
-var _ = image.Point{} // keep image import
 
 func main() {
 	ebiten.SetWindowSize(screenW, screenH)
