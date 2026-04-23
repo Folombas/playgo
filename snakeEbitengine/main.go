@@ -4,12 +4,12 @@ package main
 import (
 	"bytes"
 	"encoding/binary"
-	"image"
 	"image/color"
 	"io"
 	"log"
 	"math"
 	mathrand "math/rand"
+	"strconv"
 	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -67,9 +67,9 @@ type Game struct {
 
 func NewGame() *Game {
 	g := &Game{
-		rng:      mathrand.New(mathrand.NewSource(time.Now().UnixNano())),
-		state:    STATE_MENU,
-		speed:    8,
+		rng:       mathrand.New(mathrand.NewSource(time.Now().UnixNano())),
+		state:     STATE_MENU,
+		speed:     8,
 		menuPulse: 0,
 	}
 	g.reset()
@@ -311,7 +311,20 @@ func (g *Game) Draw(screen *ebiten.Image) {
 			ebitenutil.DrawRect(screen, x+float64(tileSize)-eyex-6, y+eyey, 4, 4, color.White)
 			ebitenutil.DrawRect(screen, x+eyex+1, y+eyey+1, 2, 2, color.Black)
 			ebitenutil.DrawRect(screen, x+float64(tileSize)-eyex-5, y+eyey+1, 2, 2, color.Black)
-			ebitenutil.DrawRect(screen, x+float64(tileSize)/2-2, y+float64(tileSize)-6, 4, 6, color.RGBA{255, 80, 120, 255})
+			// Draw tongue based on direction
+			tongueLen := 6.0
+			var tx, ty float64
+			switch g.dir {
+			case Vec{1, 0}: // right
+				tx, ty = float64(tileSize)-6, float64(tileSize)/2-2
+			case Vec{-1, 0}: // left
+				tx, ty = 2, float64(tileSize)/2-2
+			case Vec{0, 1}: // down
+				tx, ty = float64(tileSize)/2-2, float64(tileSize)-6
+			case Vec{0, -1}: // up
+				tx, ty = float64(tileSize)/2-2, 2
+			}
+			ebitenutil.DrawRect(screen, x+tx+ox, y+ty+oy, 4, tongueLen, color.RGBA{255, 80, 120, 255})
 		} else {
 			shade := uint8(120 + (i*3)%120)
 			c := color.RGBA{20, shade, 80, 255}
@@ -325,7 +338,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		ebitenutil.DrawRect(screen, p.X-p.Size+ox, p.Y-p.Size+oy, p.Size*2, p.Size*2, p.Color)
 	}
 
-	ebitenutil.DebugPrintAt(screen, "Score: "+itoa(g.score), 8, 8)
+	ebitenutil.DebugPrintAt(screen, "Score: "+strconv.Itoa(g.score), 8, 8)
 
 	switch g.state {
 	case STATE_MENU:
@@ -337,7 +350,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	case STATE_GAMEOVER:
 		ebitenutil.DrawRect(screen, 80+ox, 60+oy, screenW-160, screenH-140, color.RGBA{30, 0, 0, 220})
 		ebitenutil.DebugPrintAt(screen, "GAME OVER", screenW/2-60, screenH/2-20)
-		ebitenutil.DebugPrintAt(screen, "Score: "+itoa(g.score), screenW/2-40, screenH/2+10)
+		ebitenutil.DebugPrintAt(screen, "Score: "+strconv.Itoa(g.score), screenW/2-40, screenH/2+10)
 		ebitenutil.DebugPrintAt(screen, "Press any key to return to menu", screenW/2-120, screenH/2+40)
 	}
 }
@@ -347,27 +360,6 @@ func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
 }
 
 /* --- Utilities & procedural audio --- */
-
-func itoa(i int) string { return fmtItoa(i) }
-
-func fmtItoa(i int) string {
-	if i == 0 {
-		return "0"
-	}
-	neg := i < 0
-	if neg {
-		i = -i
-	}
-	d := []byte{}
-	for i > 0 {
-		d = append([]byte{byte('0' + i%10)}, d...)
-		i /= 10
-	}
-	if neg {
-		d = append([]byte{'-'}, d...)
-	}
-	return string(d)
-}
 
 func inputPressed() bool {
 	return ebiten.IsKeyPressed(ebiten.KeyEnter) ||
@@ -379,8 +371,16 @@ func inputPressed() bool {
 }
 
 func newSound(ctx *audio.Context, data []byte) *audio.Player {
-	d, _ := wav.Decode(ctx, bytes.NewReader(data))
-	p, _ := audio.NewPlayer(ctx, d)
+	d, err := wav.Decode(ctx, bytes.NewReader(data))
+	if err != nil {
+		log.Printf("failed to decode wav: %v", err)
+		return nil
+	}
+	p, err := audio.NewPlayer(ctx, d)
+	if err != nil {
+		log.Printf("failed to create audio player: %v", err)
+		return nil
+	}
 	return p
 }
 
@@ -392,7 +392,7 @@ func playPlayer(p *audio.Player) {
 	_ = p.Play()
 }
 
-func (g *Game) playEat() { playPlayer(g.sndEat) }
+func (g *Game) playEat()  { playPlayer(g.sndEat) }
 func (g *Game) playBoom() { playPlayer(g.sndBoom) }
 func (g *Game) playTick() { playPlayer(g.sndTick) }
 
@@ -537,9 +537,6 @@ func beepTick() []byte {
 	hi := synthRawPCM(sr, 0.06, 4000, 0.25, "sine")
 	return mixToWAV(sr, [][]int16{sq, hi})
 }
-
-/* Avoid unused import warning */
-var _ = image.Point{}
 
 func main() {
 	ebiten.SetWindowSize(screenW, screenH)
