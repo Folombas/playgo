@@ -73,7 +73,6 @@ func NewGame() *Game {
 		menuPulse: 0,
 	}
 	g.reset()
-	// audio
 	g.audioCtx = audio.NewContext(44100)
 	g.sndEat = newSound(g.audioCtx, beepEat())
 	g.sndBoom = newSound(g.audioCtx, beepBoom())
@@ -176,7 +175,6 @@ func (g *Game) Update() error {
 func (g *Game) step() {
 	head := g.snake[0]
 	newHead := Vec{head.X + g.dir.X, head.Y + g.dir.Y}
-	// bounds -> game over (no wrap)
 	if newHead.X < 0 || newHead.X >= gridW || newHead.Y < 0 || newHead.Y >= gridH {
 		g.explodeAt(head)
 		g.playBoom()
@@ -266,7 +264,6 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		oy = (mathrand.Float64()*2 - 1) * g.shake
 	}
 
-	// grid background subtle
 	for x := 0; x < gridW; x++ {
 		for y := 0; y < gridH; y++ {
 			r := (x+y)%2 == 0
@@ -278,7 +275,6 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		}
 	}
 
-	// draw helpers
 	drawApple := func(x, y int) {
 		cx := float64(x*tileSize + tileSize/2)
 		cy := float64(y*tileSize + tileSize/2)
@@ -311,17 +307,16 @@ func (g *Game) Draw(screen *ebiten.Image) {
 			ebitenutil.DrawRect(screen, x+float64(tileSize)-eyex-6, y+eyey, 4, 4, color.White)
 			ebitenutil.DrawRect(screen, x+eyex+1, y+eyey+1, 2, 2, color.Black)
 			ebitenutil.DrawRect(screen, x+float64(tileSize)-eyex-5, y+eyey+1, 2, 2, color.Black)
-			// Draw tongue based on direction
 			tongueLen := 6.0
 			var tx, ty float64
 			switch g.dir {
-			case Vec{1, 0}: // right
+			case Vec{1, 0}:
 				tx, ty = float64(tileSize)-6, float64(tileSize)/2-2
-			case Vec{-1, 0}: // left
+			case Vec{-1, 0}:
 				tx, ty = 2, float64(tileSize)/2-2
-			case Vec{0, 1}: // down
+			case Vec{0, 1}:
 				tx, ty = float64(tileSize)/2-2, float64(tileSize)-6
-			case Vec{0, -1}: // up
+			case Vec{0, -1}:
 				tx, ty = float64(tileSize)/2-2, 2
 			}
 			ebitenutil.DrawRect(screen, x+tx+ox, y+ty+oy, 4, tongueLen, color.RGBA{255, 80, 120, 255})
@@ -359,8 +354,6 @@ func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
 	return screenW, screenH
 }
 
-/* --- Utilities & procedural audio --- */
-
 func inputPressed() bool {
 	return ebiten.IsKeyPressed(ebiten.KeyEnter) ||
 		ebiten.IsKeyPressed(ebiten.KeySpace) ||
@@ -388,15 +381,13 @@ func playPlayer(p *audio.Player) {
 	if p == nil {
 		return
 	}
-	_ = p.Rewind()
-	_ = p.Play()
+	p.Rewind()
+	p.Play()
 }
 
 func (g *Game) playEat()  { playPlayer(g.sndEat) }
 func (g *Game) playBoom() { playPlayer(g.sndBoom) }
 func (g *Game) playTick() { playPlayer(g.sndTick) }
-
-/* Procedural WAV generator and helpers */
 
 func writeLEUint16(w io.Writer, v uint16) {
 	_ = binary.Write(w, binary.LittleEndian, v)
@@ -405,7 +396,6 @@ func writeLEUint32(w io.Writer, v uint32) {
 	_ = binary.Write(w, binary.LittleEndian, v)
 }
 
-// synthRawPCM returns mono int16 samples.
 func synthRawPCM(sampleRate int, durSec float64, freq float64, amp float64, wave string) []int16 {
 	numSamples := int(float64(sampleRate) * durSec)
 	out := make([]int16, numSamples)
@@ -514,8 +504,6 @@ func abs32(v int32) int32 {
 	}
 	return v
 }
-
-// Specific sound constructors using synthRawPCM + mixToWAV
 
 func beepEat() []byte {
 	const sr = 44100
