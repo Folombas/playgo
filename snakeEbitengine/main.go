@@ -40,12 +40,12 @@ const (
 )
 
 type Particle struct {
-	X, Y     float64
-	VX, VY   float64
-	Life     float64
-	Color    color.RGBA
-	Size     float64
-	Glow     bool
+	X, Y   float64
+	VX, VY float64
+	Life   float64
+	Color  color.RGBA
+	Size   float64
+	Glow   bool
 }
 
 type Game struct {
@@ -337,22 +337,28 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		}
 	}
 
-	// Bombs (pulsating)
+	// --- BOMBS (round black with highlights) ---
 	pulse := math.Sin(g.menuPulse*3)*0.15 + 1.0
 	for _, b := range g.bombs {
-		cx := float64(b.X*tileSize + tileSize/2) + ox
-		cy := float64(b.Y*tileSize + tileSize/2) + oy
-		r := float64(tileSize)/2 * pulse
-		ebitenutil.DrawRect(screen, cx-r*0.8+ox, cy-r*0.8+oy, r*1.6, r*1.6, color.RGBA{20, 20, 20, 255})
+		cx := float64(b.X*tileSize+tileSize/2) + ox
+		cy := float64(b.Y*tileSize+tileSize/2) + oy
+		radius := float64(tileSize) / 2 * pulse * 0.85
+
+		// Main black circle
+		ebitenutil.DrawCircle(screen, cx, cy, radius, color.RGBA{20, 20, 25, 255})
+		// Shadow
+		ebitenutil.DrawCircle(screen, cx-2, cy-2, radius-2, color.RGBA{0, 0, 0, 100})
+		// Specular highlight
+		ebitenutil.DrawCircle(screen, cx-radius*0.3, cy-radius*0.35, radius*0.25, color.RGBA{255, 255, 255, 180})
+		// Red glow
+		ebitenutil.DrawCircle(screen, cx+radius*0.2, cy+radius*0.2, radius*0.2, color.RGBA{255, 80, 80, 120})
 		// Fuse
-		ebitenutil.DrawRect(screen, cx+r*0.6, cy-r*1.1, 4, 6, color.RGBA{80, 60, 40, 255})
-		// Flame flicker
+		ebitenutil.DrawRect(screen, cx+radius*0.7, cy-radius*1.1, 4, 6, color.RGBA{60, 50, 40, 255})
 		flicker := mathrand.Float64()*3 + 2
-		ebitenutil.DrawRect(screen, cx+r*0.6, cy-r*1.4, flicker, flicker, color.RGBA{255, 160, 20, 255})
-		ebitenutil.DrawRect(screen, cx+r*0.5, cy-r*1.3, flicker*0.6, flicker*0.6, color.RGBA{255, 255, 100, 200})
+		ebitenutil.DrawRect(screen, cx+radius*0.7, cy-radius*1.4, flicker, flicker, color.RGBA{255, 120, 20, 255})
 	}
 
-	// Snake
+	// --- SNAKE ---
 	for i, s := range g.snake {
 		x := float64(s.X*tileSize) + ox
 		y := float64(s.Y*tileSize) + oy
@@ -361,7 +367,6 @@ func (g *Game) Draw(screen *ebiten.Image) {
 			shade := uint8(100 + (i*4)%100)
 			base = color.RGBA{15, shade, 70, 255}
 		}
-		// Glow
 		if i == 0 {
 			ebitenutil.DrawRect(screen, x-3, y-3, tileSize+6, tileSize+6, color.RGBA{0, 200, 80, 40})
 		}
@@ -391,17 +396,26 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		}
 	}
 
-	// Apple
+	// --- APPLE (round) ---
 	{
-		cx := float64(g.apple.X*tileSize + tileSize/2) + ox
-		cy := float64(g.apple.Y*tileSize + tileSize/2) + oy
-		ebitenutil.DrawRect(screen, cx-9, cy-7, 18, 16, color.RGBA{220, 30, 40, 255})
-		ebitenutil.DrawRect(screen, cx-7, cy-12, 14, 8, color.RGBA{200, 20, 30, 255})
-		ebitenutil.DrawRect(screen, cx+7, cy-14, 6, 3, color.RGBA{40, 180, 60, 255})
-		ebitenutil.DrawRect(screen, cx-5, cy-9, 5, 3, color.RGBA{255, 150, 150, 150})
+		cx := float64(g.apple.X*tileSize+tileSize/2) + ox
+		cy := float64(g.apple.Y*tileSize+tileSize/2) + oy
+		radius := float64(tileSize)/2 - 2
+
+		// Shadow
+		ebitenutil.DrawCircle(screen, cx-2, cy-2, radius-1, color.RGBA{0, 0, 0, 80})
+		// Main red circle
+		ebitenutil.DrawCircle(screen, cx, cy, radius, color.RGBA{230, 40, 50, 255})
+		// Bright inner part
+		ebitenutil.DrawCircle(screen, cx-3, cy-3, radius-4, color.RGBA{255, 100, 100, 150})
+		// Highlight
+		ebitenutil.DrawCircle(screen, cx-radius*0.3, cy-radius*0.35, radius*0.2, color.RGBA{255, 255, 255, 220})
+		// Stem
+		ebitenutil.DrawRect(screen, cx+radius*0.5, cy-radius*0.8, 6, 3, color.RGBA{70, 180, 50, 255})
+		ebitenutil.DrawRect(screen, cx+radius*0.7, cy-radius*0.9, 8, 2, color.RGBA{50, 150, 30, 255})
 	}
 
-	// Particles
+	// --- PARTICLES ---
 	for _, p := range g.particles {
 		c := p.Color
 		if p.Glow {
@@ -410,9 +424,9 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		ebitenutil.DrawRect(screen, p.X-p.Size+ox, p.Y-p.Size+oy, p.Size*2, p.Size*2, c)
 	}
 
-	// UI
+	// --- UI ---
 	ebitenutil.DebugPrintAt(screen, "Score: "+strconv.Itoa(g.score), 10, 10)
-	// Health bar (top-right)
+	// Health bar
 	barX := float64(screenW - 20)
 	barW := 150.0
 	barH := 14.0
@@ -498,7 +512,7 @@ func synthWave(sr int, dur, freq, amp float64, wave string, freqSweep float64) [
 		var s float64
 		switch wave {
 		case "sine":
-			s = math.Sin(2*math.Pi*f*t)
+			s = math.Sin(2 * math.Pi * f * t)
 		case "square":
 			if math.Sin(2*math.Pi*f*t) >= 0 {
 				s = 1
@@ -508,7 +522,7 @@ func synthWave(sr int, dur, freq, amp float64, wave string, freqSweep float64) [
 		case "noise":
 			s = mathrand.NormFloat64()
 		default:
-			s = math.Sin(2*math.Pi*f*t)
+			s = math.Sin(2 * math.Pi * f * t)
 		}
 		// ADSR envelope
 		env := 1.0
@@ -518,7 +532,7 @@ func synthWave(sr int, dur, freq, amp float64, wave string, freqSweep float64) [
 		} else if t < att+dec {
 			env = 1 - (t-att)/dec*(1-sus)
 		} else if t > dur-rel {
-			env = sus * (dur-t)/rel
+			env = sus * (dur - t) / rel
 		} else {
 			env = sus
 		}
