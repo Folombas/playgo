@@ -33,20 +33,11 @@ type Vec struct{ X, Y int }
 type GameState int
 
 const (
-	STATE_MENU GameState = iota
+	STATE_MENU GameState = iota // главное меню (заставка с кнопками)
 	STATE_PLAYING
 	STATE_PAUSED
 	STATE_GAMEOVER
 )
-
-type Particle struct {
-	X, Y   float64
-	VX, VY float64
-	Life   float64
-	Color  color.RGBA
-	Size   float64
-	Glow   bool
-}
 
 type Game struct {
 	rng           *mathrand.Rand
@@ -70,16 +61,24 @@ type Game struct {
 	flash         float64
 	menuPulse     float64
 	pauseCooldown float64
+
+	// Меню с кнопками
+	menuSelected int // 0,1,2...
+	menuButtons  []string
 }
 
 func NewGame() *Game {
 	g := &Game{
-		rng:       mathrand.New(mathrand.NewSource(time.Now().UnixNano())),
-		state:     STATE_MENU,
-		speed:     9,
-		health:    maxHealth,
-		menuPulse: 0,
+		rng:          mathrand.New(mathrand.NewSource(time.Now().UnixNano())),
+		state:        STATE_MENU,
+		speed:        9,
+		health:       maxHealth,
+		menuPulse:    0,
+		menuSelected: 0,
+		menuButtons:  []string{"▶ Начать игру", "▶ Продолжить", "🔄 Новая игра", "🚪 Выйти из игры"},
 	}
+	// В меню «Продолжить» будет доступно только если есть сохранённая игра, но для упрощения покажем всегда.
+	// При выборе "Продолжить" в неигровом состоянии будет начинать новую.
 	g.reset()
 	g.audioCtx = audio.NewContext(44100)
 	g.sndEat = newSound(g.audioCtx, sndEat())
@@ -138,43 +137,74 @@ func (g *Game) Update() error {
 		g.pauseCooldown -= dt
 	}
 
-	// Pause toggle
+	// Глобальная обработка Esc для открытия меню (если не в меню)
 	if (ebiten.IsKeyPressed(ebiten.KeyEscape) || ebiten.IsKeyPressed(ebiten.KeyP)) && g.pauseCooldown <= 0 {
 		if g.state == STATE_PLAYING {
-			g.state = STATE_PAUSED
+			g.state = STATE_MENU
+			g.menuSelected = 1 // по умолчанию "Продолжить"
 			g.sndPause.Rewind()
 			g.sndPause.Play()
-		} else if g.state == STATE_PAUSED {
-			g.state = STATE_PLAYING
-		} else if g.state == STATE_MENU || g.state == STATE_GAMEOVER {
-			g.state = STATE_PLAYING
-			g.reset()
+		} else if g.state == STATE_MENU && g.menuButtons[g.menuSelected] != "▶ Начать игру" && g.menuButtons[g.menuSelected] != "▶ Продолжить" {
+			// Если в меню и не на пункте продолжения — ничего
+		} else {
+			// Если в паузе или геймовере — ведём в меню
+			g.state = STATE_MENU
+			g.menuSelected = 0
+			g.sndPause.Rewind()
+			g.sndPause.Play()
 		}
 		g.pauseCooldown = 0.3
 	}
 
-	if g.state == STATE_PAUSED {
+	// Обработка меню
+	if g.state == STATE_MENU {
+		// Навигация по кнопкам
+		if ebiten.IsKeyPressed(ebiten.KeyUp) && g.pauseCooldown <= 0 {
+			g.menuSelected--
+			if g.menuSelected < 0 {
+				g.menuSelected = len(g.menuButtons) - 1
+			}
+			g.pauseCooldown = 0.15
+		}
+		if ebiten.IsKeyPressed(ebiten.KeyDown) && g.pauseCooldown <= 0 {
+			g.menuSelected++
+			if g.menuSelected >= len(g.menuButtons) {
+				g.menuSelected = 0
+			}
+			g.pauseCooldown = 0.15
+		}
+		// Выбор действия
+		if (ebiten.IsKeyPressed(ebiten.KeyEnter) || ebiten.IsKeyPressed(ebiten.KeySpace)) && g.pauseCooldown <= 0 {
+			switch g.menuButtons[g.menuSelected] {
+			case "▶ Начать игру", "▶ Продолжить", "🔄 Новая игра":
+				g.reset()
+				g.state = STATE_PLAYING
+			case "🚪 Выйти из игры":
+				return ebiten.Termination
+			}
+			g.pauseCooldown = 0.3
+		}
 		return nil
 	}
 
-	if g.state == STATE_MENU {
-		if inputPressed() && g.pauseCooldown <= 0 {
-			g.state = STATE_PLAYING
-			g.reset()
-			g.pauseCooldown = 0.2
-		}
+	// Обработка паузы (старая, но теперь её можно открыть только через меню? Оставим, но лучше через меню)
+	if g.state == STATE_PAUSED {
+		// Старый способ паузы, но мы его почти не используем. Для совместимости оставим.
 		return nil
 	}
 
 	if g.state == STATE_GAMEOVER {
+		// При нажатии любой клавиши переходим в меню
 		if inputPressed() && g.pauseCooldown <= 0 {
 			g.state = STATE_MENU
+			g.menuSelected = 0
 			g.pauseCooldown = 0.2
 		}
 		return nil
 	}
 
-	// Direction
+	// Игровая логика (STATE_PLAYING)
+	// Управление змейкой
 	if ebiten.IsKeyPressed(ebiten.KeyUp) && g.dir.Y != 1 {
 		g.nextDir = Vec{0, -1}
 	}
@@ -195,7 +225,7 @@ func (g *Game) Update() error {
 		g.step()
 	}
 
-	// Particles
+	// Частицы, тряска, вспышка
 	for i := 0; i < len(g.particles); i++ {
 		p := &g.particles[i]
 		p.X += p.VX
@@ -222,7 +252,6 @@ func (g *Game) step() {
 	head := g.snake[0]
 	newHead := Vec{head.X + g.dir.X, head.Y + g.dir.Y}
 
-	// Wall & self collision -> instant game over
 	if newHead.X < 0 || newHead.X >= gridW || newHead.Y < 0 || newHead.Y >= gridH {
 		g.triggerExplosion(head, true)
 		return
@@ -236,7 +265,6 @@ func (g *Game) step() {
 
 	g.snake = append([]Vec{newHead}, g.snake...)
 
-	// Apple
 	if newHead == g.apple {
 		g.score++
 		g.health = minInt(maxHealth, g.health+25)
@@ -249,7 +277,6 @@ func (g *Game) step() {
 		g.snake = g.snake[:len(g.snake)-1]
 	}
 
-	// Bombs
 	for _, b := range g.bombs {
 		if b == newHead {
 			g.health -= 35
@@ -258,7 +285,6 @@ func (g *Game) step() {
 		}
 	}
 
-	// Trail particles
 	g.addParticles(float64(newHead.X*tileSize+tileSize/2), float64(newHead.Y*tileSize+tileSize/2), 2, color.RGBA{0, 180, 220, 140}, false)
 }
 
@@ -326,7 +352,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		oy = (mathrand.Float64()*2 - 1) * g.shake
 	}
 
-	// Grid
+	// Сетка
 	for x := 0; x < gridW; x++ {
 		for y := 0; y < gridH; y++ {
 			c := color.RGBA{15, 15, 25, 255}
@@ -337,28 +363,22 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		}
 	}
 
-	// --- BOMBS (round black with highlights) ---
+	// Бомбы
 	pulse := math.Sin(g.menuPulse*3)*0.15 + 1.0
 	for _, b := range g.bombs {
 		cx := float64(b.X*tileSize+tileSize/2) + ox
 		cy := float64(b.Y*tileSize+tileSize/2) + oy
 		radius := float64(tileSize) / 2 * pulse * 0.85
-
-		// Main black circle
 		ebitenutil.DrawCircle(screen, cx, cy, radius, color.RGBA{20, 20, 25, 255})
-		// Shadow
 		ebitenutil.DrawCircle(screen, cx-2, cy-2, radius-2, color.RGBA{0, 0, 0, 100})
-		// Specular highlight
 		ebitenutil.DrawCircle(screen, cx-radius*0.3, cy-radius*0.35, radius*0.25, color.RGBA{255, 255, 255, 180})
-		// Red glow
 		ebitenutil.DrawCircle(screen, cx+radius*0.2, cy+radius*0.2, radius*0.2, color.RGBA{255, 80, 80, 120})
-		// Fuse
 		ebitenutil.DrawRect(screen, cx+radius*0.7, cy-radius*1.1, 4, 6, color.RGBA{60, 50, 40, 255})
 		flicker := mathrand.Float64()*3 + 2
 		ebitenutil.DrawRect(screen, cx+radius*0.7, cy-radius*1.4, flicker, flicker, color.RGBA{255, 120, 20, 255})
 	}
 
-	// --- SNAKE ---
+	// Змейка
 	for i, s := range g.snake {
 		x := float64(s.X*tileSize) + ox
 		y := float64(s.Y*tileSize) + oy
@@ -371,16 +391,13 @@ func (g *Game) Draw(screen *ebiten.Image) {
 			ebitenutil.DrawRect(screen, x-3, y-3, tileSize+6, tileSize+6, color.RGBA{0, 200, 80, 40})
 		}
 		ebitenutil.DrawRect(screen, x, y, tileSize-1, tileSize-1, base)
-
 		if i == 0 {
-			// Eyes
 			eyex := float64(tileSize)/4 - 2
 			eyey := float64(tileSize)/4 - 2
 			ebitenutil.DrawRect(screen, x+eyex, y+eyey, 4, 4, color.White)
 			ebitenutil.DrawRect(screen, x+float64(tileSize)-eyex-6, y+eyey, 4, 4, color.White)
 			ebitenutil.DrawRect(screen, x+eyex+1, y+eyey+1, 2, 2, color.Black)
 			ebitenutil.DrawRect(screen, x+float64(tileSize)-eyex-5, y+eyey+1, 2, 2, color.Black)
-			// Tongue
 			var tx, ty, w, h float64
 			switch g.dir {
 			case Vec{1, 0}:
@@ -396,26 +413,20 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		}
 	}
 
-	// --- APPLE (round) ---
+	// Яблоко
 	{
 		cx := float64(g.apple.X*tileSize+tileSize/2) + ox
 		cy := float64(g.apple.Y*tileSize+tileSize/2) + oy
 		radius := float64(tileSize)/2 - 2
-
-		// Shadow
 		ebitenutil.DrawCircle(screen, cx-2, cy-2, radius-1, color.RGBA{0, 0, 0, 80})
-		// Main red circle
 		ebitenutil.DrawCircle(screen, cx, cy, radius, color.RGBA{230, 40, 50, 255})
-		// Bright inner part
 		ebitenutil.DrawCircle(screen, cx-3, cy-3, radius-4, color.RGBA{255, 100, 100, 150})
-		// Highlight
 		ebitenutil.DrawCircle(screen, cx-radius*0.3, cy-radius*0.35, radius*0.2, color.RGBA{255, 255, 255, 220})
-		// Stem
 		ebitenutil.DrawRect(screen, cx+radius*0.5, cy-radius*0.8, 6, 3, color.RGBA{70, 180, 50, 255})
 		ebitenutil.DrawRect(screen, cx+radius*0.7, cy-radius*0.9, 8, 2, color.RGBA{50, 150, 30, 255})
 	}
 
-	// --- PARTICLES ---
+	// Частицы
 	for _, p := range g.particles {
 		c := p.Color
 		if p.Glow {
@@ -424,35 +435,55 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		ebitenutil.DrawRect(screen, p.X-p.Size+ox, p.Y-p.Size+oy, p.Size*2, p.Size*2, c)
 	}
 
-	// --- UI ---
-	ebitenutil.DebugPrintAt(screen, "Score: "+strconv.Itoa(g.score), 10, 10)
-	// Health bar
+	// UI (русский язык)
+	ebitenutil.DebugPrintAt(screen, "Счёт: "+strconv.Itoa(g.score), 10, 10)
 	barX := float64(screenW - 20)
 	barW := 150.0
 	barH := 14.0
 	healthPct := float64(g.health) / float64(maxHealth)
 	ebitenutil.DrawRect(screen, barX-barW, 10, barW, barH, color.RGBA{30, 30, 40, 200})
 	ebitenutil.DrawRect(screen, barX-barW, 10, barW*healthPct, barH, color.RGBA{50, 255, 80, 255})
-	ebitenutil.DebugPrintAt(screen, "HEALTH", int(barX-barW+40), 12)
+	ebitenutil.DebugPrintAt(screen, "ЗДОРОВЬЕ", int(barX-barW+40), 12)
+	ebitenutil.DebugPrintAt(screen, "ESC - меню", screenW-100, screenH-20)
 
-	// Overlays
-	switch g.state {
-	case STATE_MENU:
-		ebitenutil.DrawRect(screen, 100, 80, screenW-200, screenH-180, color.RGBA{0, 0, 0, 160})
-		ebitenutil.DebugPrintAt(screen, "S N A K E  —  R E V I V E D", screenW/2-180, 120)
-		ebitenutil.DebugPrintAt(screen, "Press ESC/P to start", screenW/2-120, 180+int(10*math.Sin(g.menuPulse)))
-		ebitenutil.DebugPrintAt(screen, "Collect red apples, dodge black bombs!", screenW/2-160, 220)
-	case STATE_PAUSED:
+	// Отрисовка меню (если в состоянии меню)
+	if g.state == STATE_MENU {
+		// Полупрозрачный фон
+		ebitenutil.DrawRect(screen, 0, 0, screenW, screenH, color.RGBA{0, 0, 0, 200})
+
+		// Заголовок
+		title := "S N A K E   R E V I V E D"
+		ebitenutil.DebugPrintAt(screen, title, screenW/2-len(title)*4, 150)
+
+		// Кнопки
+		startY := 280
+		step := 50
+		for i, btn := range g.menuButtons {
+			y := startY + i*step
+			// Выделение текущей кнопки
+			if i == g.menuSelected {
+				ebitenutil.DrawRect(screen, screenW/2-150, float64(y)-15, 300, 35, color.RGBA{100, 100, 150, 100})
+				ebitenutil.DebugPrintAt(screen, "→ "+btn, screenW/2-len(btn)*3, y)
+			} else {
+				ebitenutil.DebugPrintAt(screen, "  "+btn, screenW/2-len(btn)*3, y)
+			}
+		}
+
+		// Подсказка
+		ebitenutil.DebugPrintAt(screen, "Управление: Стрелки вверх/вниз, Enter - выбор", screenW/2-280, screenH-80)
+		ebitenutil.DebugPrintAt(screen, "В игре: стрелки для движения змейки", screenW/2-200, screenH-50)
+	} else if g.state == STATE_PAUSED {
+		// Старый экран паузы (можно не использовать, но оставим)
 		ebitenutil.DrawRect(screen, 0, 0, screenW, screenH, color.RGBA{0, 0, 0, 120})
-		ebitenutil.DebugPrintAt(screen, "PAUSED", screenW/2-40, screenH/2-20)
-	case STATE_GAMEOVER:
+		ebitenutil.DebugPrintAt(screen, "ПАУЗА", screenW/2-40, screenH/2-20)
+	} else if g.state == STATE_GAMEOVER {
 		ebitenutil.DrawRect(screen, 100, 80, screenW-200, screenH-180, color.RGBA{40, 0, 0, 180})
-		ebitenutil.DebugPrintAt(screen, "GAME OVER", screenW/2-60, screenH/2-40)
-		ebitenutil.DebugPrintAt(screen, "Final Score: "+strconv.Itoa(g.score), screenW/2-80, screenH/2)
-		ebitenutil.DebugPrintAt(screen, "Press ESC/P to continue", screenW/2-130, screenH/2+40)
+		ebitenutil.DebugPrintAt(screen, "ИГРА ОКОНЧЕНА", screenW/2-80, screenH/2-40)
+		ebitenutil.DebugPrintAt(screen, "Счёт: "+strconv.Itoa(g.score), screenW/2-80, screenH/2)
+		ebitenutil.DebugPrintAt(screen, "Нажмите любую клавишу для меню", screenW/2-150, screenH/2+40)
 	}
 
-	// Screen flash
+	// Вспышка
 	if g.flash > 0.01 {
 		alpha := uint8(g.flash * 150)
 		ebitenutil.DrawRect(screen, 0, 0, screenW, screenH, color.RGBA{255, 255, 255, alpha})
@@ -463,7 +494,7 @@ func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
 	return screenW, screenH
 }
 
-/* --- Utils & Input --- */
+/* ---------- Вспомогательные функции ---------- */
 func inputPressed() bool {
 	return ebiten.IsKeyPressed(ebiten.KeyEnter) ||
 		ebiten.IsKeyPressed(ebiten.KeySpace) ||
@@ -480,7 +511,16 @@ func minInt(a, b int) int {
 	return b
 }
 
-/* --- Audio --- */
+/* ---------- Аудио (без изменений) ---------- */
+type Particle struct {
+	X, Y   float64
+	VX, VY float64
+	Life   float64
+	Color  color.RGBA
+	Size   float64
+	Glow   bool
+}
+
 func newSound(ctx *audio.Context, data []byte) *audio.Player {
 	d, err := wav.Decode(ctx, bytes.NewReader(data))
 	if err != nil {
@@ -495,14 +535,6 @@ func newSound(ctx *audio.Context, data []byte) *audio.Player {
 	return p
 }
 
-func play(p *audio.Player) {
-	if p != nil {
-		p.Rewind()
-		p.Play()
-	}
-}
-
-/* Procedural Audio Synthesis */
 func synthWave(sr int, dur, freq, amp float64, wave string, freqSweep float64) []int16 {
 	n := int(float64(sr) * dur)
 	out := make([]int16, n)
@@ -524,9 +556,8 @@ func synthWave(sr int, dur, freq, amp float64, wave string, freqSweep float64) [
 		default:
 			s = math.Sin(2 * math.Pi * f * t)
 		}
-		// ADSR envelope
-		env := 1.0
 		att, dec, sus, rel := 0.005, 0.02, 0.6, dur*0.3
+		env := 1.0
 		if t < att {
 			env = t / att
 		} else if t < att+dec {
@@ -573,7 +604,6 @@ func mixToWAV(sr int, tracks [][]int16) []byte {
 	if peak > 32767 {
 		scale = 32767.0 / float64(peak)
 	}
-
 	buf := &bytes.Buffer{}
 	dataSize := maxLen * 2
 	buf.WriteString("RIFF")
@@ -604,7 +634,6 @@ func sndEat() []byte {
 	t2 := synthWave(sr, 0.1, 1200, 0.3, "sine", 200)
 	return mixToWAV(sr, [][]int16{t1, t2})
 }
-
 func sndBoom() []byte {
 	sr := 44100
 	low := synthWave(sr, 0.3, 80, 0.9, "sine", -30)
@@ -612,14 +641,12 @@ func sndBoom() []byte {
 	mid := synthWave(sr, 0.15, 300, 0.4, "square", -200)
 	return mixToWAV(sr, [][]int16{low, n, mid})
 }
-
 func sndHeal() []byte {
 	sr := 44100
 	t1 := synthWave(sr, 0.15, 400, 0.4, "sine", 300)
 	t2 := synthWave(sr, 0.2, 800, 0.3, "sine", 100)
 	return mixToWAV(sr, [][]int16{t1, t2})
 }
-
 func sndPause() []byte {
 	sr := 44100
 	t := synthWave(sr, 0.08, 220, 0.4, "square", -50)
@@ -628,7 +655,7 @@ func sndPause() []byte {
 
 func main() {
 	ebiten.SetWindowSize(screenW, screenH)
-	ebiten.SetWindowTitle("Snake Revived")
+	ebiten.SetWindowTitle("Змейка: Возрождение")
 	ebiten.SetFullscreen(true)
 	g := NewGame()
 	if err := ebiten.RunGame(g); err != nil {
