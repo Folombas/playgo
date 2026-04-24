@@ -56,11 +56,15 @@ type Particle struct {
 	Glow   bool
 }
 
-// Типы фруктов
 const (
 	FRUIT_APPLE = iota
 	FRUIT_STRAWBERRY
+	FRUIT_PIZZA
 )
+
+type IceBlock struct {
+	X, Y int
+}
 
 type Game struct {
 	rng            *mathrand.Rand
@@ -73,6 +77,9 @@ type Game struct {
 	fruitX, fruitY int
 	fruitType      int
 	bombs          []Bomb
+	ice            IceBlock
+	iceActive      bool
+	frozenTimer    float64
 	score          int
 	health         int
 	particles      []Particle
@@ -81,25 +88,37 @@ type Game struct {
 	sndBoom        *audio.Player
 	sndHeal        *audio.Player
 	sndPause       *audio.Player
+	sndMenuMove    *audio.Player
+	sndMenuSelect  *audio.Player
+	sndGhost       *audio.Player
 	shake          float64
 	menuPulse      float64
 	pauseCooldown  float64
+	menuSelected   int
+	menuButtons    []string
+	buttonFlash    int
+	fontFace       font.Face
 
-	menuSelected int
-	menuButtons  []string
-
-	fontFace font.Face
+	// Ghost (полтергейст)
+	ghostActive    bool
+	ghostX, ghostY int // клеточная позиция
+	ghostMoveTimer float64
+	ghostModeTimer float64 // таймер призрачного режима
 }
 
 func NewGame() *Game {
 	g := &Game{
-		rng:          mathrand.New(mathrand.NewSource(time.Now().UnixNano())),
-		state:        STATE_MENU,
-		speed:        9,
-		health:       maxHealth,
-		menuPulse:    0,
-		menuSelected: 0,
-		menuButtons:  []string{"Начать игру", "Продолжить", "Новая игра", "Выйти из игры"},
+		rng:            mathrand.New(mathrand.NewSource(time.Now().UnixNano())),
+		state:          STATE_MENU,
+		speed:          9,
+		health:         maxHealth,
+		menuPulse:      0,
+		menuSelected:   0,
+		menuButtons:    []string{"Начать игру", "Продолжить", "Новая игра", "Выйти из игры"},
+		iceActive:      false,
+		frozenTimer:    0,
+		ghostActive:    false,
+		ghostModeTimer: 0,
 	}
 	g.reset()
 	g.audioCtx = audio.NewContext(44100)
@@ -107,9 +126,12 @@ func NewGame() *Game {
 	g.sndBoom = newSound(g.audioCtx, sndBoom())
 	g.sndHeal = newSound(g.audioCtx, sndHeal())
 	g.sndPause = newSound(g.audioCtx, sndPause())
+	g.sndMenuMove = newSound(g.audioCtx, sndMenuMove())
+	g.sndMenuSelect = newSound(g.audioCtx, sndMenuSelect())
+	g.sndGhost = newSound(g.audioCtx, sndGhost())
 
 	if err := g.loadFont(); err != nil {
-		log.Printf("Шрифт не загружен: %v. Русский текст не отобразится.", err)
+		log.Printf("Шрифт не загружен: %v", err)
 	}
 	return g
 }
@@ -143,10 +165,14 @@ func (g *Game) reset() {
 	g.health = maxHealth
 	g.placeFruit()
 	g.bombs = nil
+	g.iceActive = false
+	g.frozenTimer = 0
 	g.score = 0
 	g.ticker = 0
 	g.shake = 0
 	g.particles = nil
+	g.ghostActive = false
+	g.ghostModeTimer = 0
 }
 
 func (g *Game) placeFruit() {
@@ -166,11 +192,85 @@ func (g *Game) placeFruit() {
 				break
 			}
 		}
+		if g.iceActive && g.ice.X == x && g.ice.Y == y {
+			ok = false
+		}
 		if ok {
 			g.fruitX, g.fruitY = x, y
-			// Случайный выбор фрукта: 0 - яблоко, 1 - клубника
-			g.fruitType = g.rng.Intn(2)
+			// Вероятности: 40% яблоко, 40% клубника, 20% пицца
+			r := g.rng.Float64()
+			if r < 0.4 {
+				g.fruitType = FRUIT_APPLE
+			} else if r < 0.8 {
+				g.fruitType = FRUIT_STRAWBERRY
+			} else {
+				g.fruitType = FRUIT_PIZZA
+			}
 			return
+		}
+	}
+}
+
+func (g *Game) spawnIce() {
+	if !g.iceActive && g.rng.Float64() < 0.3 {
+		for i := 0; i < 500; i++ {
+			x := g.rng.Intn(gridW)
+			y := g.rng.Intn(gridH)
+			ok := true
+			if x == g.fruitX && y == g.fruitY {
+				ok = false
+			}
+			for _, s := range g.snake {
+				if s.X == x && s.Y == y {
+					ok = false
+					break
+				}
+			}
+			for _, b := range g.bombs {
+				if b.X == x && b.Y == y {
+					ok = false
+					break
+				}
+			}
+			if ok {
+				g.ice = IceBlock{X: x, Y: y}
+				g.iceActive = true
+				return
+			}
+		}
+	}
+}
+
+func (g *Game) spawnGhost() {
+	if !g.ghostActive && g.rng.Float64() < 0.2 { // 20% шанс появления призрака после съедения
+		for i := 0; i < 200; i++ {
+			x := g.rng.Intn(gridW)
+			y := g.rng.Intn(gridH)
+			ok := true
+			if x == g.fruitX && y == g.fruitY {
+				ok = false
+			}
+			for _, s := range g.snake {
+				if s.X == x && s.Y == y {
+					ok = false
+					break
+				}
+			}
+			for _, b := range g.bombs {
+				if b.X == x && b.Y == y {
+					ok = false
+					break
+				}
+			}
+			if g.iceActive && g.ice.X == x && g.ice.Y == y {
+				ok = false
+			}
+			if ok {
+				g.ghostActive = true
+				g.ghostX, g.ghostY = x, y
+				g.ghostMoveTimer = 0.5 // будет двигаться каждые полсекунды
+				return
+			}
 		}
 	}
 }
@@ -181,8 +281,47 @@ func (g *Game) Update() error {
 	if g.pauseCooldown > 0 {
 		g.pauseCooldown -= dt
 	}
+	if g.buttonFlash > 0 {
+		g.buttonFlash--
+	}
+	if g.frozenTimer > 0 {
+		g.frozenTimer -= dt
+		if g.frozenTimer < 0 {
+			g.frozenTimer = 0
+		}
+	}
+	if g.ghostModeTimer > 0 {
+		g.ghostModeTimer -= dt
+		if g.ghostModeTimer < 0 {
+			g.ghostModeTimer = 0
+		}
+	}
 
-	// ESC открывает меню
+	// Движение призрака
+	if g.ghostActive && g.state == STATE_PLAYING {
+		g.ghostMoveTimer -= dt
+		if g.ghostMoveTimer <= 0 {
+			// случайное перемещение на соседнюю клетку
+			dx, dy := 0, 0
+			switch g.rng.Intn(4) {
+			case 0:
+				dx = 1
+			case 1:
+				dx = -1
+			case 2:
+				dy = 1
+			case 3:
+				dy = -1
+			}
+			nx, ny := g.ghostX+dx, g.ghostY+dy
+			if nx >= 0 && nx < gridW && ny >= 0 && ny < gridH {
+				g.ghostX, g.ghostY = nx, ny
+			}
+			g.ghostMoveTimer = 0.5
+		}
+	}
+
+	// ESC меню
 	if ebiten.IsKeyPressed(ebiten.KeyEscape) && g.pauseCooldown <= 0 {
 		if g.state == STATE_PLAYING || g.state == STATE_PAUSED || g.state == STATE_GAMEOVER {
 			g.state = STATE_MENU
@@ -197,7 +336,7 @@ func (g *Game) Update() error {
 		g.pauseCooldown = 0.3
 	}
 
-	// Клавиша P – простая пауза
+	// Пауза по P
 	if ebiten.IsKeyPressed(ebiten.KeyP) && g.pauseCooldown <= 0 && (g.state == STATE_PLAYING || g.state == STATE_PAUSED) {
 		if g.state == STATE_PLAYING {
 			g.state = STATE_PAUSED
@@ -211,6 +350,7 @@ func (g *Game) Update() error {
 
 	// Меню
 	if g.state == STATE_MENU {
+		prev := g.menuSelected
 		if ebiten.IsKeyPressed(ebiten.KeyUp) && g.pauseCooldown <= 0 {
 			g.menuSelected--
 			if g.menuSelected < 0 {
@@ -225,18 +365,19 @@ func (g *Game) Update() error {
 			}
 			g.pauseCooldown = 0.15
 		}
+		if prev != g.menuSelected {
+			g.sndMenuMove.Rewind()
+			g.sndMenuMove.Play()
+		}
 		if (ebiten.IsKeyPressed(ebiten.KeyEnter) || ebiten.IsKeyPressed(ebiten.KeySpace)) && g.pauseCooldown <= 0 {
+			g.sndMenuSelect.Rewind()
+			g.sndMenuSelect.Play()
+			g.buttonFlash = 5
 			switch g.menuSelected {
-			case 0: // Начать игру
+			case 0, 1, 2:
 				g.reset()
 				g.state = STATE_PLAYING
-			case 1: // Продолжить
-				g.reset()
-				g.state = STATE_PLAYING
-			case 2: // Новая игра
-				g.reset()
-				g.state = STATE_PLAYING
-			case 3: // Выйти из игры
+			case 3:
 				return ebiten.Termination
 			}
 			g.pauseCooldown = 0.3
@@ -244,12 +385,9 @@ func (g *Game) Update() error {
 		return nil
 	}
 
-	// Пауза
 	if g.state == STATE_PAUSED {
 		return nil
 	}
-
-	// GAME OVER – любая клавиша в меню
 	if g.state == STATE_GAMEOVER {
 		if inputPressed() && g.pauseCooldown <= 0 {
 			g.state = STATE_MENU
@@ -280,7 +418,7 @@ func (g *Game) Update() error {
 		g.step()
 	}
 
-	// Обновление таймеров бомб
+	// Обновление бомб
 	for i := 0; i < len(g.bombs); i++ {
 		g.bombs[i].Timer -= dt
 		if g.bombs[i].Timer <= 0 {
@@ -311,43 +449,58 @@ func (g *Game) Update() error {
 	return nil
 }
 
-// ---------- Игровая логика ----------
 func (g *Game) step() {
 	head := g.snake[0]
 	newHead := Vec{head.X + g.dir.X, head.Y + g.dir.Y}
 
+	// Стены или самостолкновение (если не призрачный режим)
 	if newHead.X < 0 || newHead.X >= gridW || newHead.Y < 0 || newHead.Y >= gridH {
 		g.triggerExplosion(head, true)
 		return
 	}
-	for _, s := range g.snake {
-		if s == newHead {
-			g.triggerExplosion(newHead, true)
-			return
+	if !g.ghostModeActive() {
+		for _, s := range g.snake {
+			if s == newHead {
+				g.triggerExplosion(newHead, true)
+				return
+			}
 		}
 	}
 
 	g.snake = append([]Vec{newHead}, g.snake...)
 
 	// Съедание фрукта
+	ateFruit := false
 	if newHead.X == g.fruitX && newHead.Y == g.fruitY {
-		if g.fruitType == FRUIT_APPLE {
-			g.score++
+		ateFruit = true
+		switch g.fruitType {
+		case FRUIT_APPLE:
+			g.score += 1
 			g.health = minInt(maxHealth, g.health+25)
-		} else { // клубника
+		case FRUIT_STRAWBERRY:
 			g.score += 2
 			g.health = minInt(maxHealth, g.health+40)
+		case FRUIT_PIZZA:
+			g.score += 3
+			g.health = minInt(maxHealth, g.health+35)
 		}
 		g.placeFruit()
 		g.spawnBombRandom()
+		g.spawnIce()
+		g.spawnGhost()
 		g.sndHeal.Rewind()
 		g.sndHeal.Play()
 		g.addParticles(float64(newHead.X*tileSize+tileSize/2), float64(newHead.Y*tileSize+tileSize/2), 25, color.RGBA{50, 255, 80, 255}, true)
-	} else {
+	}
+
+	// Рост/не рост из-за заморозки
+	if g.frozenTimer > 0 && ateFruit {
+		g.snake = g.snake[:len(g.snake)-1]
+	} else if !ateFruit {
 		g.snake = g.snake[:len(g.snake)-1]
 	}
 
-	// Проверка столкновения с бомбами
+	// Проверка бомб
 	for i := 0; i < len(g.bombs); i++ {
 		if g.bombs[i].X == newHead.X && g.bombs[i].Y == newHead.Y {
 			g.health -= 35
@@ -356,7 +509,34 @@ func (g *Game) step() {
 			return
 		}
 	}
+
+	// Лёд
+	if g.iceActive && newHead.X == g.ice.X && newHead.Y == g.ice.Y {
+		g.frozenTimer = 5.0
+		g.iceActive = false
+		g.addParticles(float64(newHead.X*tileSize+tileSize/2), float64(newHead.Y*tileSize+tileSize/2), 50, color.RGBA{100, 200, 255, 255}, true)
+		g.sndHeal.Rewind()
+		g.sndHeal.Play()
+	}
+
+	// Призрак: если активен и голова совпадает с клеткой призрака
+	if g.ghostActive && newHead.X == g.ghostX && newHead.Y == g.ghostY {
+		g.ghostModeTimer = 5.0
+		g.ghostActive = false
+		g.sndGhost.Rewind()
+		g.sndGhost.Play()
+		g.addParticles(float64(newHead.X*tileSize+tileSize/2), float64(newHead.Y*tileSize+tileSize/2), 60, color.RGBA{200, 200, 255, 200}, true)
+	}
+
+	// trail particles
 	g.addParticles(float64(newHead.X*tileSize+tileSize/2), float64(newHead.Y*tileSize+tileSize/2), 2, color.RGBA{0, 180, 220, 140}, false)
+	if g.frozenTimer > 0 {
+		g.addParticles(float64(newHead.X*tileSize+tileSize/2), float64(newHead.Y*tileSize+tileSize/2), 1, color.RGBA{150, 220, 255, 180}, true)
+	}
+}
+
+func (g *Game) ghostModeActive() bool {
+	return g.ghostModeTimer > 0
 }
 
 func (g *Game) triggerExplosion(v Vec, fatal bool) {
@@ -376,21 +556,16 @@ func (g *Game) triggerExplosion(v Vec, fatal bool) {
 func (g *Game) bombExplode(idx int) {
 	b := g.bombs[idx]
 	g.bombs = append(g.bombs[:idx], g.bombs[idx+1:]...)
-
-	// Проверяем урон змейке (если голова близко)
 	head := g.snake[0]
 	dx := math.Abs(float64(head.X - b.X))
 	dy := math.Abs(float64(head.Y - b.Y))
-	distance := dx + dy
-
+	dist := dx + dy
 	g.shake = 12
 	g.sndBoom.Rewind()
 	g.sndBoom.Play()
-
 	cx := float64(b.X*tileSize + tileSize/2)
 	cy := float64(b.Y*tileSize + tileSize/2)
-
-	if distance <= 1.5 {
+	if dist <= 1.5 {
 		g.health -= 25
 		g.addParticles(cx, cy, 120, color.RGBA{255, 60, 30, 255}, true)
 		g.addParticles(cx, cy, 60, color.RGBA{255, 200, 50, 200}, true)
@@ -400,7 +575,6 @@ func (g *Game) bombExplode(idx int) {
 	} else {
 		g.addParticles(cx, cy, 80, color.RGBA{255, 100, 30, 255}, true)
 	}
-	// Дополнительные искры и дым
 	g.addParticles(cx, cy, 30, color.RGBA{255, 200, 100, 200}, false)
 }
 
@@ -425,6 +599,9 @@ func (g *Game) spawnBombRandom() {
 					break
 				}
 			}
+			if g.iceActive && g.ice.X == x && g.ice.Y == y {
+				ok = false
+			}
 			if ok {
 				g.bombs = append(g.bombs, Bomb{X: x, Y: y, Timer: 5.0})
 				return
@@ -438,10 +615,8 @@ func (g *Game) addParticles(x, y float64, n int, c color.RGBA, glow bool) {
 		a := g.rng.Float64() * 2 * math.Pi
 		s := g.rng.Float64()*4 + 1.5
 		g.particles = append(g.particles, Particle{
-			X:     x,
-			Y:     y,
-			VX:    math.Cos(a) * s,
-			VY:    math.Sin(a) * s,
+			X: x, Y: y,
+			VX: math.Cos(a) * s, VY: math.Sin(a) * s,
 			Life:  g.rng.Float64()*1.5 + 0.4,
 			Color: c,
 			Size:  g.rng.Float64()*4 + 2,
@@ -450,7 +625,6 @@ func (g *Game) addParticles(x, y float64, n int, c color.RGBA, glow bool) {
 	}
 }
 
-// ---------- Отрисовка ----------
 func (g *Game) Draw(screen *ebiten.Image) {
 	screen.Fill(color.RGBA{12, 12, 20, 255})
 
@@ -471,7 +645,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		}
 	}
 
-	// Бомбы – увеличенные, пульсирующие
+	// Бомбы
 	for _, b := range g.bombs {
 		cx := float64(b.X*tileSize+tileSize/2) + ox
 		cy := float64(b.Y*tileSize+tileSize/2) + oy
@@ -488,19 +662,49 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		ebitenutil.DrawCircle(screen, cx-2, cy-2, radius-2, color.RGBA{0, 0, 0, 100})
 		ebitenutil.DrawCircle(screen, cx-radius*0.3, cy-radius*0.35, radius*0.25, color.RGBA{255, 255, 255, 180})
 		ebitenutil.DrawCircle(screen, cx+radius*0.2, cy+radius*0.2, radius*0.2, color.RGBA{255, 80, 80, 120})
+		// Фитиль
+		fuseLen := 20.0 * (t / 5.0)
+		fuseStartX := cx + radius*0.7
+		fuseStartY := cy - radius*1.1
+		fuseEndX := fuseStartX + fuseLen*0.7
+		fuseEndY := fuseStartY - fuseLen*0.5
+		ebitenutil.DrawLine(screen, fuseStartX, fuseStartY, fuseEndX, fuseEndY, color.RGBA{80, 70, 50, 255})
+		fireSize := 3.0 + 2*math.Sin(g.menuPulse*50)
+		ebitenutil.DrawCircle(screen, fuseEndX, fuseEndY, fireSize, color.RGBA{255, 100, 20, 255})
+		ebitenutil.DrawCircle(screen, fuseEndX, fuseEndY, fireSize*0.6, color.RGBA{255, 255, 100, 255})
 	}
 
-	// Змейка (без изменений)
+	// Змейка
 	for i, s := range g.snake {
 		x := float64(s.X*tileSize) + ox
 		y := float64(s.Y*tileSize) + oy
-		base := color.RGBA{20, 220, 90, 255}
+		var base color.RGBA
+		if g.frozenTimer > 0 {
+			base = color.RGBA{80, 180, 255, 255}
+		} else if g.ghostModeActive() {
+			alpha := uint8(180) // полупрозрачная
+			base = color.RGBA{20, 220, 90, alpha}
+		} else {
+			base = color.RGBA{20, 220, 90, 255}
+		}
 		if i > 0 {
 			shade := uint8(100 + (i*4)%100)
-			base = color.RGBA{15, shade, 70, 255}
+			if g.frozenTimer > 0 {
+				base = color.RGBA{80, 180, 255, shade}
+			} else if g.ghostModeActive() {
+				base = color.RGBA{20, 220, 90, uint8(180)}
+			} else {
+				base = color.RGBA{15, shade, 70, 255}
+			}
 		}
 		if i == 0 {
 			ebitenutil.DrawRect(screen, x-3, y-3, tileSize+6, tileSize+6, color.RGBA{0, 200, 80, 40})
+			if g.frozenTimer > 0 {
+				ebitenutil.DrawRect(screen, x-3, y-3, tileSize+6, tileSize+6, color.RGBA{100, 200, 255, 80})
+			}
+			if g.ghostModeActive() {
+				ebitenutil.DrawRect(screen, x-3, y-3, tileSize+6, tileSize+6, color.RGBA{255, 255, 255, 80})
+			}
 		}
 		ebitenutil.DrawRect(screen, x, y, tileSize-1, tileSize-1, base)
 		if i == 0 {
@@ -510,7 +714,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 			ebitenutil.DrawRect(screen, x+float64(tileSize)-eyex-6, y+eyey, 4, 4, color.White)
 			ebitenutil.DrawRect(screen, x+eyex+1, y+eyey+1, 2, 2, color.Black)
 			ebitenutil.DrawRect(screen, x+float64(tileSize)-eyex-5, y+eyey+1, 2, 2, color.Black)
-
+			// язык
 			var tx, ty, w, h float64
 			switch g.dir {
 			case Vec{1, 0}:
@@ -526,38 +730,101 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		}
 	}
 
-	// Фрукт (яблоко или клубника) – увеличен в 1.5 раза
+	// Фрукты
 	{
 		cx := float64(g.fruitX*tileSize+tileSize/2) + ox
 		cy := float64(g.fruitY*tileSize+tileSize/2) + oy
 		baseRadius := (float64(tileSize)/2 - 2) * 1.5
 		radius := baseRadius
-
-		// Тень
 		ebitenutil.DrawCircle(screen, cx-2, cy-2, radius-2, color.RGBA{0, 0, 0, 80})
 
-		if g.fruitType == FRUIT_APPLE {
-			// Яблоко
-			ebitenutil.DrawCircle(screen, cx, cy, radius, color.RGBA{230, 40, 50, 255})
+		switch g.fruitType {
+		case FRUIT_APPLE:
+			// Яблоко с листочком
+			ebitenutil.DrawCircle(screen, cx, cy, radius, color.RGBA{220, 40, 50, 255})
 			ebitenutil.DrawCircle(screen, cx-3, cy-3, radius-4, color.RGBA{255, 100, 100, 150})
 			ebitenutil.DrawCircle(screen, cx-radius*0.3, cy-radius*0.35, radius*0.2, color.RGBA{255, 255, 255, 220})
-			// Хвостик
-			ebitenutil.DrawRect(screen, cx+radius*0.5, cy-radius*0.8, 6, 3, color.RGBA{70, 180, 50, 255})
-			ebitenutil.DrawRect(screen, cx+radius*0.7, cy-radius*0.9, 8, 2, color.RGBA{50, 150, 30, 255})
-		} else {
-			// Клубника
-			ebitenutil.DrawCircle(screen, cx, cy, radius, color.RGBA{220, 30, 40, 255})
-			ebitenutil.DrawCircle(screen, cx-2, cy-2, radius-3, color.RGBA{245, 80, 90, 200})
-			// Семечки (жёлтые точки)
-			for _, angle := range []float64{0, 1.2, 2.5, 3.8, 5.0} {
-				sx := cx + math.Cos(angle)*radius*0.6
-				sy := cy + math.Sin(angle)*radius*0.6
-				ebitenutil.DrawRect(screen, sx-1, sy-1, 2, 2, color.RGBA{255, 220, 80, 255})
+			// Веточка и листочек
+			ebitenutil.DrawRect(screen, cx+radius*0.5, cy-radius*0.8, 8, 4, color.RGBA{90, 70, 40, 255})   // веточка
+			ebitenutil.DrawRect(screen, cx+radius*0.6, cy-radius*0.9, 12, 6, color.RGBA{50, 180, 40, 255}) // лист
+			ebitenutil.DrawRect(screen, cx+radius*0.9, cy-radius*0.95, 6, 3, color.RGBA{40, 140, 30, 255}) // жилка
+		case FRUIT_STRAWBERRY:
+			// Конусообразная клубника: рисуем серию кругов уменьшающихся к низу
+			steps := 5
+			for i := 0; i < steps; i++ {
+				t := float64(i) / float64(steps-1) // 0 верх, 1 низ
+				yOff := (t - 0.5) * radius * 1.2
+				r := radius * (1.0 - t*0.4) // сужение книзу
+				ebitenutil.DrawCircle(screen, cx, cy+yOff, r, color.RGBA{210, 30, 40, 255})
 			}
-			// Зелёные листочки
-			ebitenutil.DrawRect(screen, cx-radius*0.2, cy-radius*0.7, 8, 4, color.RGBA{40, 160, 30, 255})
-			ebitenutil.DrawRect(screen, cx+radius*0.2, cy-radius*0.75, 8, 4, color.RGBA{50, 170, 40, 255})
-			ebitenutil.DrawCircle(screen, cx, cy-radius*0.65, radius*0.15, color.RGBA{30, 140, 20, 255})
+			// Семечки
+			for _, angle := range []float64{0, 1.0, 2.0, 3.0, 4.0, 5.0} {
+				sx := cx + math.Cos(angle)*radius*0.7
+				sy := cy + math.Sin(angle)*radius*0.6
+				ebitenutil.DrawRect(screen, sx-1.5, sy-1.5, 3, 3, color.RGBA{255, 210, 60, 255})
+			}
+			// Чашелистики (зелёные лепестки сверху)
+			for a := 0; a < 5; a++ {
+				ang := float64(a) * 2 * math.Pi / 5
+				lx := cx + math.Cos(ang)*radius*0.6
+				ly := cy - radius*0.7 + math.Sin(ang)*radius*0.2
+				ebitenutil.DrawRect(screen, lx-3, ly-2, 6, 4, color.RGBA{40, 160, 30, 255})
+			}
+			ebitenutil.DrawCircle(screen, cx, cy-radius*0.65, radius*0.2, color.RGBA{30, 140, 20, 255})
+			ebitenutil.DrawCircle(screen, cx-radius*0.2, cy-radius*0.2, radius*0.15, color.RGBA{255, 255, 255, 200})
+		case FRUIT_PIZZA:
+			// Кусочек пиццы (треугольник)
+			// Рисуем треугольник с закруглениями
+			points := []ebitenutil.Point{
+				{X: cx, Y: cy - radius*0.8}, // вершина
+				{X: cx - radius*0.8, Y: cy + radius*0.6},
+				{X: cx + radius*0.8, Y: cy + radius*0.6},
+			}
+			// Фон пиццы (тесто)
+			ebitenutil.DrawLine(screen, points[0].X, points[0].Y, points[1].X, points[1].Y, color.RGBA{210, 150, 80, 255})
+			ebitenutil.DrawLine(screen, points[0].X, points[0].Y, points[2].X, points[2].Y, color.RGBA{210, 150, 80, 255})
+			ebitenutil.DrawLine(screen, points[1].X, points[1].Y, points[2].X, points[2].Y, color.RGBA{210, 150, 80, 255})
+			// Заполним треугольник (просто нарисуем много точек)
+			for i := 0; i < 60; i++ {
+				// грубое заполнение
+				px := points[0].X + (points[1].X-points[0].X)*g.rng.Float64() + (points[2].X-points[0].X)*g.rng.Float64()
+				py := points[0].Y + (points[1].Y-points[0].Y)*g.rng.Float64() + (points[2].Y-points[0].Y)*g.rng.Float64()
+				ebitenutil.DrawRect(screen, px-1, py-1, 2, 2, color.RGBA{230, 180, 100, 255})
+			}
+			// Соус и сыр
+			ebitenutil.DrawCircle(screen, cx, cy+radius*0.1, radius*0.5, color.RGBA{200, 50, 30, 200})
+			// Пепперони
+			ebitenutil.DrawCircle(screen, cx-radius*0.3, cy+radius*0.2, radius*0.2, color.RGBA{150, 40, 20, 255})
+			ebitenutil.DrawCircle(screen, cx+radius*0.3, cy+radius*0.3, radius*0.15, color.RGBA{180, 50, 30, 255})
+			ebitenutil.DrawCircle(screen, cx, cy+radius*0.6, radius*0.18, color.RGBA{160, 45, 25, 255})
+		}
+	}
+
+	// Лёд
+	if g.iceActive {
+		cx := float64(g.ice.X*tileSize+tileSize/2) + ox
+		cy := float64(g.ice.Y*tileSize+tileSize/2) + oy
+		radius := float64(tileSize) / 2 * 1.2
+		ebitenutil.DrawCircle(screen, cx, cy, radius, color.RGBA{150, 220, 255, 255})
+		ebitenutil.DrawCircle(screen, cx-2, cy-2, radius-3, color.RGBA{100, 200, 240, 200})
+		ebitenutil.DrawCircle(screen, cx+radius*0.3, cy-radius*0.3, radius*0.25, color.RGBA{255, 255, 255, 200})
+	}
+
+	// Призрак (полтергейст)
+	if g.ghostActive {
+		cx := float64(g.ghostX*tileSize+tileSize/2) + ox
+		cy := float64(g.ghostY*tileSize+tileSize/2) + oy
+		radius := float64(tileSize) / 2 * 0.8
+		// Привидение: полупрозрачный белый круг с "хвостом"
+		ebitenutil.DrawCircle(screen, cx, cy, radius, color.RGBA{220, 220, 255, 180})
+		// Глаза
+		ebitenutil.DrawCircle(screen, cx-radius*0.3, cy-radius*0.2, radius*0.2, color.RGBA{0, 0, 0, 200})
+		ebitenutil.DrawCircle(screen, cx+radius*0.3, cy-radius*0.2, radius*0.2, color.RGBA{0, 0, 0, 200})
+		// Рот
+		ebitenutil.DrawArc(screen, cx, cy+radius*0.1, radius*0.3, 0, math.Pi, color.RGBA{0, 0, 0, 200})
+		// "Хвост" привидения - три маленьких кружка снизу
+		for i := -1; i <= 1; i++ {
+			ebitenutil.DrawCircle(screen, cx+float64(i)*radius*0.4, cy+radius*0.7, radius*0.3, color.RGBA{220, 220, 255, 180})
 		}
 	}
 
@@ -578,7 +845,6 @@ func (g *Game) Draw(screen *ebiten.Image) {
 			ebitenutil.DebugPrintAt(screen, str, x, y)
 		}
 	}
-
 	drawText("Счёт: "+strconv.Itoa(g.score), 10, 25, color.White)
 	barX := float64(screenW - 20)
 	barW := 150.0
@@ -590,10 +856,15 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	drawText("ESC - меню", screenW-100, screenH-20, color.White)
 	drawText("P - пауза", screenW-100, screenH-40, color.White)
 
-	// Меню, пауза, game over
+	if g.frozenTimer > 0 {
+		drawText("ЗАМОРОЗКА", screenW/2-60, screenH-30, color.RGBA{100, 200, 255, 255})
+	}
+	if g.ghostModeActive() {
+		drawText("ПРИЗРАЧНЫЙ РЕЖИМ", screenW/2-100, screenH-60, color.RGBA{200, 200, 255, 255})
+	}
+
 	switch g.state {
 	case STATE_MENU:
-		// Полностью непрозрачный фон
 		ebitenutil.DrawRect(screen, 0, 0, screenW, screenH, color.RGBA{0, 0, 0, 255})
 		drawText("S N A K E   R E V I V E D", screenW/2-180, 150, color.RGBA{255, 200, 100, 255})
 		startY := 280
@@ -601,10 +872,14 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		for i, btn := range g.menuButtons {
 			y := startY + i*step
 			if i == g.menuSelected {
-				ebitenutil.DrawRect(screen, screenW/2-150, float64(y)-15, 300, 35, color.RGBA{100, 100, 150, 255})
-				drawText("→ "+btn, screenW/2-len(btn)*3, y, color.RGBA{255, 255, 0, 255})
+				bg := color.RGBA{100, 100, 150, 255}
+				if g.buttonFlash > 0 {
+					bg = color.RGBA{200, 200, 255, 255}
+				}
+				ebitenutil.DrawRect(screen, screenW/2-150, float64(y)-15, 300, 35, bg)
+				drawText(btn, screenW/2-len(btn)*3, y, color.RGBA{255, 255, 0, 255})
 			} else {
-				drawText("  "+btn, screenW/2-len(btn)*3, y, color.White)
+				drawText(btn, screenW/2-len(btn)*3, y, color.White)
 			}
 		}
 		drawText("Стрелки вверх/вниз, Enter - выбор", screenW/2-220, screenH-70, color.RGBA{200, 200, 200, 255})
@@ -624,7 +899,6 @@ func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
 	return screenW, screenH
 }
 
-// ---------- Вспомогательные функции ----------
 func inputPressed() bool {
 	return ebiten.IsKeyPressed(ebiten.KeyEnter) ||
 		ebiten.IsKeyPressed(ebiten.KeySpace) ||
@@ -641,7 +915,7 @@ func minInt(a, b int) int {
 	return b
 }
 
-// ---------- Аудио (без изменений) ----------
+// Audio functions (unchanged but added sndGhost)
 func newSound(ctx *audio.Context, data []byte) *audio.Player {
 	d, err := wav.Decode(ctx, bytes.NewReader(data))
 	if err != nil {
@@ -772,6 +1046,23 @@ func sndPause() []byte {
 	sr := 44100
 	t := synthWave(sr, 0.08, 220, 0.4, "square", -50)
 	return mixToWAV(sr, [][]int16{t})
+}
+func sndMenuMove() []byte {
+	sr := 44100
+	t := synthWave(sr, 0.05, 800, 0.3, "sine", 100)
+	return mixToWAV(sr, [][]int16{t})
+}
+func sndMenuSelect() []byte {
+	sr := 44100
+	t1 := synthWave(sr, 0.1, 400, 0.5, "sine", 200)
+	t2 := synthWave(sr, 0.1, 700, 0.5, "sine", -100)
+	return mixToWAV(sr, [][]int16{t1, t2})
+}
+func sndGhost() []byte {
+	sr := 44100
+	t1 := synthWave(sr, 0.2, 500, 0.4, "sine", -200)
+	t2 := synthWave(sr, 0.2, 800, 0.3, "sine", 100)
+	return mixToWAV(sr, [][]int16{t1, t2})
 }
 
 func main() {
