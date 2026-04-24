@@ -88,7 +88,7 @@ func NewGame() *Game {
 		health:       maxHealth,
 		menuPulse:    0,
 		menuSelected: 0,
-		menuButtons:  []string{"▶ Начать игру", "▶ Продолжить", "🔄 Новая игра", "🚪 Выйти из игры"},
+		menuButtons:  []string{"🎮 Начать игру", "⏯️ Продолжить", "🆕 Новая игра", "❌ Выйти из игры"},
 	}
 	g.reset()
 	g.audioCtx = audio.NewContext(44100)
@@ -97,7 +97,6 @@ func NewGame() *Game {
 	g.sndHeal = newSound(g.audioCtx, sndHeal())
 	g.sndPause = newSound(g.audioCtx, sndPause())
 
-	// Загружаем шрифт (ищем font.ttf в текущей папке)
 	if err := g.loadFont(); err != nil {
 		log.Printf("Шрифт не загружен: %v. Русский текст не отобразится.", err)
 	}
@@ -186,7 +185,7 @@ func (g *Game) Update() error {
 		g.pauseCooldown = 0.3
 	}
 
-	// Клавиша P – простая пауза (без меню)
+	// Клавиша P – простая пауза
 	if ebiten.IsKeyPressed(ebiten.KeyP) && g.pauseCooldown <= 0 && (g.state == STATE_PLAYING || g.state == STATE_PAUSED) {
 		if g.state == STATE_PLAYING {
 			g.state = STATE_PAUSED
@@ -216,10 +215,10 @@ func (g *Game) Update() error {
 		}
 		if (ebiten.IsKeyPressed(ebiten.KeyEnter) || ebiten.IsKeyPressed(ebiten.KeySpace)) && g.pauseCooldown <= 0 {
 			switch g.menuButtons[g.menuSelected] {
-			case "▶ Начать игру", "▶ Продолжить", "🔄 Новая игра":
+			case "🎮 Начать игру", "⏯️ Продолжить", "🆕 Новая игра":
 				g.reset()
 				g.state = STATE_PLAYING
-			case "🚪 Выйти из игры":
+			case "❌ Выйти из игры":
 				return ebiten.Termination
 			}
 			g.pauseCooldown = 0.3
@@ -227,7 +226,7 @@ func (g *Game) Update() error {
 		return nil
 	}
 
-	// Пауза – ничего не обновляем
+	// Пауза
 	if g.state == STATE_PAUSED {
 		return nil
 	}
@@ -286,6 +285,7 @@ func (g *Game) Update() error {
 	return nil
 }
 
+// ---------- Игровая логика ----------
 func (g *Game) step() {
 	head := g.snake[0]
 	newHead := Vec{head.X + g.dir.X, head.Y + g.dir.Y}
@@ -302,7 +302,6 @@ func (g *Game) step() {
 	}
 
 	g.snake = append([]Vec{newHead}, g.snake...)
-
 	if newHead == g.apple {
 		g.score++
 		g.health = minInt(maxHealth, g.health+25)
@@ -314,7 +313,6 @@ func (g *Game) step() {
 	} else {
 		g.snake = g.snake[:len(g.snake)-1]
 	}
-
 	for _, b := range g.bombs {
 		if b == newHead {
 			g.health -= 35
@@ -380,6 +378,7 @@ func (g *Game) addParticles(x, y float64, n int, c color.RGBA, glow bool) {
 	}
 }
 
+// ---------- Отрисовка ----------
 func (g *Game) Draw(screen *ebiten.Image) {
 	screen.Fill(color.RGBA{12, 12, 20, 255})
 
@@ -531,7 +530,7 @@ func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
 	return screenW, screenH
 }
 
-// Utility
+// ---------- Вспомогательные функции ----------
 func inputPressed() bool {
 	return ebiten.IsKeyPressed(ebiten.KeyEnter) ||
 		ebiten.IsKeyPressed(ebiten.KeySpace) ||
@@ -548,7 +547,7 @@ func minInt(a, b int) int {
 	return b
 }
 
-// Audio (без изменений)
+// ---------- Аудио ----------
 func newSound(ctx *audio.Context, data []byte) *audio.Player {
 	d, err := wav.Decode(ctx, bytes.NewReader(data))
 	if err != nil {
@@ -684,6 +683,7 @@ func sndPause() []byte {
 	return mixToWAV(sr, [][]int16{t})
 }
 
+// ---------- Точка входа ----------
 func main() {
 	ebiten.SetWindowSize(screenW, screenH)
 	ebiten.SetWindowTitle("Змейка: Возрождение")
