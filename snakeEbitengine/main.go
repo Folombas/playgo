@@ -101,9 +101,9 @@ type Game struct {
 
 	// Ghost (полтергейст)
 	ghostActive    bool
-	ghostX, ghostY int // клеточная позиция
+	ghostX, ghostY int
 	ghostMoveTimer float64
-	ghostModeTimer float64 // таймер призрачного режима
+	ghostModeTimer float64
 }
 
 func NewGame() *Game {
@@ -197,7 +197,6 @@ func (g *Game) placeFruit() {
 		}
 		if ok {
 			g.fruitX, g.fruitY = x, y
-			// Вероятности: 40% яблоко, 40% клубника, 20% пицца
 			r := g.rng.Float64()
 			if r < 0.4 {
 				g.fruitType = FRUIT_APPLE
@@ -242,7 +241,7 @@ func (g *Game) spawnIce() {
 }
 
 func (g *Game) spawnGhost() {
-	if !g.ghostActive && g.rng.Float64() < 0.2 { // 20% шанс появления призрака после съедения
+	if !g.ghostActive && g.rng.Float64() < 0.2 {
 		for i := 0; i < 200; i++ {
 			x := g.rng.Intn(gridW)
 			y := g.rng.Intn(gridH)
@@ -268,7 +267,7 @@ func (g *Game) spawnGhost() {
 			if ok {
 				g.ghostActive = true
 				g.ghostX, g.ghostY = x, y
-				g.ghostMoveTimer = 0.5 // будет двигаться каждые полсекунды
+				g.ghostMoveTimer = 0.5
 				return
 			}
 		}
@@ -301,7 +300,6 @@ func (g *Game) Update() error {
 	if g.ghostActive && g.state == STATE_PLAYING {
 		g.ghostMoveTimer -= dt
 		if g.ghostMoveTimer <= 0 {
-			// случайное перемещение на соседнюю клетку
 			dx, dy := 0, 0
 			switch g.rng.Intn(4) {
 			case 0:
@@ -453,11 +451,12 @@ func (g *Game) step() {
 	head := g.snake[0]
 	newHead := Vec{head.X + g.dir.X, head.Y + g.dir.Y}
 
-	// Стены или самостолкновение (если не призрачный режим)
+	// Стены
 	if newHead.X < 0 || newHead.X >= gridW || newHead.Y < 0 || newHead.Y >= gridH {
 		g.triggerExplosion(head, true)
 		return
 	}
+	// Самостолкновение (если не призрачный режим)
 	if !g.ghostModeActive() {
 		for _, s := range g.snake {
 			if s == newHead {
@@ -469,7 +468,6 @@ func (g *Game) step() {
 
 	g.snake = append([]Vec{newHead}, g.snake...)
 
-	// Съедание фрукта
 	ateFruit := false
 	if newHead.X == g.fruitX && newHead.Y == g.fruitY {
 		ateFruit = true
@@ -500,7 +498,7 @@ func (g *Game) step() {
 		g.snake = g.snake[:len(g.snake)-1]
 	}
 
-	// Проверка бомб
+	// Бомбы
 	for i := 0; i < len(g.bombs); i++ {
 		if g.bombs[i].X == newHead.X && g.bombs[i].Y == newHead.Y {
 			g.health -= 35
@@ -519,7 +517,7 @@ func (g *Game) step() {
 		g.sndHeal.Play()
 	}
 
-	// Призрак: если активен и голова совпадает с клеткой призрака
+	// Призрак
 	if g.ghostActive && newHead.X == g.ghostX && newHead.Y == g.ghostY {
 		g.ghostModeTimer = 5.0
 		g.ghostActive = false
@@ -528,7 +526,7 @@ func (g *Game) step() {
 		g.addParticles(float64(newHead.X*tileSize+tileSize/2), float64(newHead.Y*tileSize+tileSize/2), 60, color.RGBA{200, 200, 255, 200}, true)
 	}
 
-	// trail particles
+	// Частицы следа
 	g.addParticles(float64(newHead.X*tileSize+tileSize/2), float64(newHead.Y*tileSize+tileSize/2), 2, color.RGBA{0, 180, 220, 140}, false)
 	if g.frozenTimer > 0 {
 		g.addParticles(float64(newHead.X*tileSize+tileSize/2), float64(newHead.Y*tileSize+tileSize/2), 1, color.RGBA{150, 220, 255, 180}, true)
@@ -682,7 +680,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		if g.frozenTimer > 0 {
 			base = color.RGBA{80, 180, 255, 255}
 		} else if g.ghostModeActive() {
-			alpha := uint8(180) // полупрозрачная
+			alpha := uint8(180)
 			base = color.RGBA{20, 220, 90, alpha}
 		} else {
 			base = color.RGBA{20, 220, 90, 255}
@@ -714,7 +712,6 @@ func (g *Game) Draw(screen *ebiten.Image) {
 			ebitenutil.DrawRect(screen, x+float64(tileSize)-eyex-6, y+eyey, 4, 4, color.White)
 			ebitenutil.DrawRect(screen, x+eyex+1, y+eyey+1, 2, 2, color.Black)
 			ebitenutil.DrawRect(screen, x+float64(tileSize)-eyex-5, y+eyey+1, 2, 2, color.Black)
-			// язык
 			var tx, ty, w, h float64
 			switch g.dir {
 			case Vec{1, 0}:
@@ -745,16 +742,16 @@ func (g *Game) Draw(screen *ebiten.Image) {
 			ebitenutil.DrawCircle(screen, cx-3, cy-3, radius-4, color.RGBA{255, 100, 100, 150})
 			ebitenutil.DrawCircle(screen, cx-radius*0.3, cy-radius*0.35, radius*0.2, color.RGBA{255, 255, 255, 220})
 			// Веточка и листочек
-			ebitenutil.DrawRect(screen, cx+radius*0.5, cy-radius*0.8, 8, 4, color.RGBA{90, 70, 40, 255})   // веточка
-			ebitenutil.DrawRect(screen, cx+radius*0.6, cy-radius*0.9, 12, 6, color.RGBA{50, 180, 40, 255}) // лист
-			ebitenutil.DrawRect(screen, cx+radius*0.9, cy-radius*0.95, 6, 3, color.RGBA{40, 140, 30, 255}) // жилка
+			ebitenutil.DrawRect(screen, cx+radius*0.5, cy-radius*0.8, 8, 4, color.RGBA{90, 70, 40, 255})
+			ebitenutil.DrawRect(screen, cx+radius*0.6, cy-radius*0.9, 12, 6, color.RGBA{50, 180, 40, 255})
+			ebitenutil.DrawRect(screen, cx+radius*0.9, cy-radius*0.95, 6, 3, color.RGBA{40, 140, 30, 255})
 		case FRUIT_STRAWBERRY:
-			// Конусообразная клубника: рисуем серию кругов уменьшающихся к низу
+			// Конусообразная клубника
 			steps := 5
 			for i := 0; i < steps; i++ {
-				t := float64(i) / float64(steps-1) // 0 верх, 1 низ
+				t := float64(i) / float64(steps-1)
 				yOff := (t - 0.5) * radius * 1.2
-				r := radius * (1.0 - t*0.4) // сужение книзу
+				r := radius * (1.0 - t*0.4)
 				ebitenutil.DrawCircle(screen, cx, cy+yOff, r, color.RGBA{210, 30, 40, 255})
 			}
 			// Семечки
@@ -763,7 +760,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 				sy := cy + math.Sin(angle)*radius*0.6
 				ebitenutil.DrawRect(screen, sx-1.5, sy-1.5, 3, 3, color.RGBA{255, 210, 60, 255})
 			}
-			// Чашелистики (зелёные лепестки сверху)
+			// Чашелистики
 			for a := 0; a < 5; a++ {
 				ang := float64(a) * 2 * math.Pi / 5
 				lx := cx + math.Cos(ang)*radius*0.6
@@ -773,30 +770,34 @@ func (g *Game) Draw(screen *ebiten.Image) {
 			ebitenutil.DrawCircle(screen, cx, cy-radius*0.65, radius*0.2, color.RGBA{30, 140, 20, 255})
 			ebitenutil.DrawCircle(screen, cx-radius*0.2, cy-radius*0.2, radius*0.15, color.RGBA{255, 255, 255, 200})
 		case FRUIT_PIZZA:
-			// Кусочек пиццы (треугольник)
-			// Рисуем треугольник с закруглениями
-			points := []ebitenutil.Point{
-				{X: cx, Y: cy - radius*0.8}, // вершина
-				{X: cx - radius*0.8, Y: cy + radius*0.6},
-				{X: cx + radius*0.8, Y: cy + radius*0.6},
-			}
-			// Фон пиццы (тесто)
-			ebitenutil.DrawLine(screen, points[0].X, points[0].Y, points[1].X, points[1].Y, color.RGBA{210, 150, 80, 255})
-			ebitenutil.DrawLine(screen, points[0].X, points[0].Y, points[2].X, points[2].Y, color.RGBA{210, 150, 80, 255})
-			ebitenutil.DrawLine(screen, points[1].X, points[1].Y, points[2].X, points[2].Y, color.RGBA{210, 150, 80, 255})
-			// Заполним треугольник (просто нарисуем много точек)
-			for i := 0; i < 60; i++ {
-				// грубое заполнение
-				px := points[0].X + (points[1].X-points[0].X)*g.rng.Float64() + (points[2].X-points[0].X)*g.rng.Float64()
-				py := points[0].Y + (points[1].Y-points[0].Y)*g.rng.Float64() + (points[2].Y-points[0].Y)*g.rng.Float64()
+			// Кусочек пиццы
+			x1, y1 := cx, cy-radius*0.8
+			x2, y2 := cx-radius*0.8, cy+radius*0.6
+			x3, y3 := cx+radius*0.8, cy+radius*0.6
+			// Заполнение тестом
+			for i := 0; i < 200; i++ {
+				s := g.rng.Float64()
+				t := g.rng.Float64()
+				if s+t > 1 {
+					s = 1 - s
+					t = 1 - t
+				}
+				px := x1 + (x2-x1)*s + (x3-x1)*t
+				py := y1 + (y2-y1)*s + (y3-y1)*t
 				ebitenutil.DrawRect(screen, px-1, py-1, 2, 2, color.RGBA{230, 180, 100, 255})
 			}
-			// Соус и сыр
+			// Соус
 			ebitenutil.DrawCircle(screen, cx, cy+radius*0.1, radius*0.5, color.RGBA{200, 50, 30, 200})
+			// Сыр
+			ebitenutil.DrawCircle(screen, cx, cy+radius*0.05, radius*0.45, color.RGBA{240, 200, 80, 180})
 			// Пепперони
 			ebitenutil.DrawCircle(screen, cx-radius*0.3, cy+radius*0.2, radius*0.2, color.RGBA{150, 40, 20, 255})
 			ebitenutil.DrawCircle(screen, cx+radius*0.3, cy+radius*0.3, radius*0.15, color.RGBA{180, 50, 30, 255})
 			ebitenutil.DrawCircle(screen, cx, cy+radius*0.6, radius*0.18, color.RGBA{160, 45, 25, 255})
+			// Корка
+			ebitenutil.DrawLine(screen, x1, y1, x2, y2, color.RGBA{180, 120, 60, 255})
+			ebitenutil.DrawLine(screen, x1, y1, x3, y3, color.RGBA{180, 120, 60, 255})
+			ebitenutil.DrawLine(screen, x2, y2, x3, y3, color.RGBA{180, 120, 60, 255})
 		}
 	}
 
@@ -810,19 +811,21 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		ebitenutil.DrawCircle(screen, cx+radius*0.3, cy-radius*0.3, radius*0.25, color.RGBA{255, 255, 255, 200})
 	}
 
-	// Призрак (полтергейст)
+	// Призрак
 	if g.ghostActive {
 		cx := float64(g.ghostX*tileSize+tileSize/2) + ox
 		cy := float64(g.ghostY*tileSize+tileSize/2) + oy
 		radius := float64(tileSize) / 2 * 0.8
-		// Привидение: полупрозрачный белый круг с "хвостом"
 		ebitenutil.DrawCircle(screen, cx, cy, radius, color.RGBA{220, 220, 255, 180})
-		// Глаза
 		ebitenutil.DrawCircle(screen, cx-radius*0.3, cy-radius*0.2, radius*0.2, color.RGBA{0, 0, 0, 200})
 		ebitenutil.DrawCircle(screen, cx+radius*0.3, cy-radius*0.2, radius*0.2, color.RGBA{0, 0, 0, 200})
-		// Рот
-		ebitenutil.DrawArc(screen, cx, cy+radius*0.1, radius*0.3, 0, math.Pi, color.RGBA{0, 0, 0, 200})
-		// "Хвост" привидения - три маленьких кружка снизу
+		// Рот – полукруг из точек
+		for a := 0.0; a <= math.Pi; a += 0.1 {
+			mx := cx + math.Sin(a)*radius*0.3
+			my := cy + radius*0.1 + math.Cos(a)*radius*0.2
+			ebitenutil.DrawRect(screen, mx-1, my-1, 2, 2, color.RGBA{0, 0, 0, 200})
+		}
+		// Хвост
 		for i := -1; i <= 1; i++ {
 			ebitenutil.DrawCircle(screen, cx+float64(i)*radius*0.4, cy+radius*0.7, radius*0.3, color.RGBA{220, 220, 255, 180})
 		}
@@ -899,6 +902,7 @@ func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
 	return screenW, screenH
 }
 
+// Вспомогательные функции
 func inputPressed() bool {
 	return ebiten.IsKeyPressed(ebiten.KeyEnter) ||
 		ebiten.IsKeyPressed(ebiten.KeySpace) ||
@@ -915,7 +919,7 @@ func minInt(a, b int) int {
 	return b
 }
 
-// Audio functions (unchanged but added sndGhost)
+// Аудио
 func newSound(ctx *audio.Context, data []byte) *audio.Player {
 	d, err := wav.Decode(ctx, bytes.NewReader(data))
 	if err != nil {
