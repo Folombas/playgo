@@ -1,4 +1,3 @@
-// main.go
 package main
 
 import (
@@ -9,6 +8,7 @@ import (
 	"log"
 	"math"
 	mathrand "math/rand"
+	"os"
 	"strconv"
 	"time"
 
@@ -16,6 +16,9 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/audio"
 	"github.com/hajimehoshi/ebiten/v2/audio/wav"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
+	"github.com/hajimehoshi/ebiten/v2/text"
+	"golang.org/x/image/font"
+	"golang.org/x/image/font/opentype"
 )
 
 const (
@@ -33,11 +36,20 @@ type Vec struct{ X, Y int }
 type GameState int
 
 const (
-	STATE_MENU GameState = iota // главное меню (заставка с кнопками)
+	STATE_MENU GameState = iota
 	STATE_PLAYING
 	STATE_PAUSED
 	STATE_GAMEOVER
 )
+
+type Particle struct {
+	X, Y   float64
+	VX, VY float64
+	Life   float64
+	Color  color.RGBA
+	Size   float64
+	Glow   bool
+}
 
 type Game struct {
 	rng           *mathrand.Rand
@@ -62,9 +74,10 @@ type Game struct {
 	menuPulse     float64
 	pauseCooldown float64
 
-	// Меню с кнопками
-	menuSelected int // 0,1,2...
+	menuSelected int
 	menuButtons  []string
+
+	fontFace font.Face
 }
 
 func NewGame() *Game {
@@ -77,15 +90,36 @@ func NewGame() *Game {
 		menuSelected: 0,
 		menuButtons:  []string{"▶ Начать игру", "▶ Продолжить", "🔄 Новая игра", "🚪 Выйти из игры"},
 	}
-	// В меню «Продолжить» будет доступно только если есть сохранённая игра, но для упрощения покажем всегда.
-	// При выборе "Продолжить" в неигровом состоянии будет начинать новую.
 	g.reset()
 	g.audioCtx = audio.NewContext(44100)
 	g.sndEat = newSound(g.audioCtx, sndEat())
 	g.sndBoom = newSound(g.audioCtx, sndBoom())
 	g.sndHeal = newSound(g.audioCtx, sndHeal())
 	g.sndPause = newSound(g.audioCtx, sndPause())
+
+	// Загружаем шрифт (ищем font.ttf в текущей папке)
+	if err := g.loadFont(); err != nil {
+		log.Printf("Шрифт не загружен: %v. Русский текст не отобразится.", err)
+	}
 	return g
+}
+
+func (g *Game) loadFont() error {
+	data, err := os.ReadFile("font.ttf")
+	if err != nil {
+		return err
+	}
+	tt, err := opentype.Parse(data)
+	if err != nil {
+		return err
+	}
+	const dpi = 72
+	g.fontFace, err = opentype.NewFace(tt, &opentype.FaceOptions{
+		Size:    24,
+		DPI:     dpi,
+		Hinting: font.HintingFull,
+	})
+	return err
 }
 
 func (g *Game) reset() {
@@ -137,28 +171,35 @@ func (g *Game) Update() error {
 		g.pauseCooldown -= dt
 	}
 
-	// Глобальная обработка Esc для открытия меню (если не в меню)
-	if (ebiten.IsKeyPressed(ebiten.KeyEscape) || ebiten.IsKeyPressed(ebiten.KeyP)) && g.pauseCooldown <= 0 {
-		if g.state == STATE_PLAYING {
+	// ESC открывает меню
+	if ebiten.IsKeyPressed(ebiten.KeyEscape) && g.pauseCooldown <= 0 {
+		if g.state == STATE_PLAYING || g.state == STATE_PAUSED || g.state == STATE_GAMEOVER {
 			g.state = STATE_MENU
-			g.menuSelected = 1 // по умолчанию "Продолжить"
-			g.sndPause.Rewind()
-			g.sndPause.Play()
-		} else if g.state == STATE_MENU && g.menuButtons[g.menuSelected] != "▶ Начать игру" && g.menuButtons[g.menuSelected] != "▶ Продолжить" {
-			// Если в меню и не на пункте продолжения — ничего
-		} else {
-			// Если в паузе или геймовере — ведём в меню
-			g.state = STATE_MENU
-			g.menuSelected = 0
+			if g.state == STATE_PAUSED {
+				g.menuSelected = 1 // "Продолжить"
+			} else {
+				g.menuSelected = 0
+			}
 			g.sndPause.Rewind()
 			g.sndPause.Play()
 		}
 		g.pauseCooldown = 0.3
 	}
 
-	// Обработка меню
+	// Клавиша P – простая пауза (без меню)
+	if ebiten.IsKeyPressed(ebiten.KeyP) && g.pauseCooldown <= 0 && (g.state == STATE_PLAYING || g.state == STATE_PAUSED) {
+		if g.state == STATE_PLAYING {
+			g.state = STATE_PAUSED
+		} else {
+			g.state = STATE_PLAYING
+		}
+		g.sndPause.Rewind()
+		g.sndPause.Play()
+		g.pauseCooldown = 0.3
+	}
+
+	// Меню
 	if g.state == STATE_MENU {
-		// Навигация по кнопкам
 		if ebiten.IsKeyPressed(ebiten.KeyUp) && g.pauseCooldown <= 0 {
 			g.menuSelected--
 			if g.menuSelected < 0 {
@@ -173,7 +214,6 @@ func (g *Game) Update() error {
 			}
 			g.pauseCooldown = 0.15
 		}
-		// Выбор действия
 		if (ebiten.IsKeyPressed(ebiten.KeyEnter) || ebiten.IsKeyPressed(ebiten.KeySpace)) && g.pauseCooldown <= 0 {
 			switch g.menuButtons[g.menuSelected] {
 			case "▶ Начать игру", "▶ Продолжить", "🔄 Новая игра":
@@ -187,14 +227,13 @@ func (g *Game) Update() error {
 		return nil
 	}
 
-	// Обработка паузы (старая, но теперь её можно открыть только через меню? Оставим, но лучше через меню)
+	// Пауза – ничего не обновляем
 	if g.state == STATE_PAUSED {
-		// Старый способ паузы, но мы его почти не используем. Для совместимости оставим.
 		return nil
 	}
 
+	// GAME OVER – любая клавиша в меню
 	if g.state == STATE_GAMEOVER {
-		// При нажатии любой клавиши переходим в меню
 		if inputPressed() && g.pauseCooldown <= 0 {
 			g.state = STATE_MENU
 			g.menuSelected = 0
@@ -203,7 +242,6 @@ func (g *Game) Update() error {
 		return nil
 	}
 
-	// Игровая логика (STATE_PLAYING)
 	// Управление змейкой
 	if ebiten.IsKeyPressed(ebiten.KeyUp) && g.dir.Y != 1 {
 		g.nextDir = Vec{0, -1}
@@ -225,7 +263,7 @@ func (g *Game) Update() error {
 		g.step()
 	}
 
-	// Частицы, тряска, вспышка
+	// Частицы
 	for i := 0; i < len(g.particles); i++ {
 		p := &g.particles[i]
 		p.X += p.VX
@@ -284,7 +322,6 @@ func (g *Game) step() {
 			return
 		}
 	}
-
 	g.addParticles(float64(newHead.X*tileSize+tileSize/2), float64(newHead.Y*tileSize+tileSize/2), 2, color.RGBA{0, 180, 220, 140}, false)
 }
 
@@ -398,6 +435,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 			ebitenutil.DrawRect(screen, x+float64(tileSize)-eyex-6, y+eyey, 4, 4, color.White)
 			ebitenutil.DrawRect(screen, x+eyex+1, y+eyey+1, 2, 2, color.Black)
 			ebitenutil.DrawRect(screen, x+float64(tileSize)-eyex-5, y+eyey+1, 2, 2, color.Black)
+
 			var tx, ty, w, h float64
 			switch g.dir {
 			case Vec{1, 0}:
@@ -435,58 +473,57 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		ebitenutil.DrawRect(screen, p.X-p.Size+ox, p.Y-p.Size+oy, p.Size*2, p.Size*2, c)
 	}
 
-	// UI (русский язык)
-	ebitenutil.DebugPrintAt(screen, "Счёт: "+strconv.Itoa(g.score), 10, 10)
+	// Функция рисования текста
+	drawText := func(str string, x, y int, clr color.Color) {
+		if g.fontFace != nil {
+			text.Draw(screen, str, g.fontFace, x, y, clr)
+		} else {
+			ebitenutil.DebugPrintAt(screen, str, x, y)
+		}
+	}
+
+	// UI
+	drawText("Счёт: "+strconv.Itoa(g.score), 10, 25, color.White)
 	barX := float64(screenW - 20)
 	barW := 150.0
 	barH := 14.0
 	healthPct := float64(g.health) / float64(maxHealth)
 	ebitenutil.DrawRect(screen, barX-barW, 10, barW, barH, color.RGBA{30, 30, 40, 200})
 	ebitenutil.DrawRect(screen, barX-barW, 10, barW*healthPct, barH, color.RGBA{50, 255, 80, 255})
-	ebitenutil.DebugPrintAt(screen, "ЗДОРОВЬЕ", int(barX-barW+40), 12)
-	ebitenutil.DebugPrintAt(screen, "ESC - меню", screenW-100, screenH-20)
+	drawText("ЗДОРОВЬЕ", int(barX-barW+40), 25, color.White)
+	drawText("ESC - меню", screenW-100, screenH-20, color.White)
+	drawText("P - пауза", screenW-100, screenH-40, color.White)
 
-	// Отрисовка меню (если в состоянии меню)
-	if g.state == STATE_MENU {
-		// Полупрозрачный фон
+	// Меню / пауза / game over
+	switch g.state {
+	case STATE_MENU:
 		ebitenutil.DrawRect(screen, 0, 0, screenW, screenH, color.RGBA{0, 0, 0, 200})
-
-		// Заголовок
-		title := "S N A K E   R E V I V E D"
-		ebitenutil.DebugPrintAt(screen, title, screenW/2-len(title)*4, 150)
-
-		// Кнопки
+		drawText("S N A K E   R E V I V E D", screenW/2-180, 150, color.RGBA{255, 200, 100, 255})
 		startY := 280
 		step := 50
 		for i, btn := range g.menuButtons {
 			y := startY + i*step
-			// Выделение текущей кнопки
 			if i == g.menuSelected {
 				ebitenutil.DrawRect(screen, screenW/2-150, float64(y)-15, 300, 35, color.RGBA{100, 100, 150, 100})
-				ebitenutil.DebugPrintAt(screen, "→ "+btn, screenW/2-len(btn)*3, y)
+				drawText("→ "+btn, screenW/2-len(btn)*3, y, color.RGBA{255, 255, 0, 255})
 			} else {
-				ebitenutil.DebugPrintAt(screen, "  "+btn, screenW/2-len(btn)*3, y)
+				drawText("  "+btn, screenW/2-len(btn)*3, y, color.White)
 			}
 		}
-
-		// Подсказка
-		ebitenutil.DebugPrintAt(screen, "Управление: Стрелки вверх/вниз, Enter - выбор", screenW/2-280, screenH-80)
-		ebitenutil.DebugPrintAt(screen, "В игре: стрелки для движения змейки", screenW/2-200, screenH-50)
-	} else if g.state == STATE_PAUSED {
-		// Старый экран паузы (можно не использовать, но оставим)
-		ebitenutil.DrawRect(screen, 0, 0, screenW, screenH, color.RGBA{0, 0, 0, 120})
-		ebitenutil.DebugPrintAt(screen, "ПАУЗА", screenW/2-40, screenH/2-20)
-	} else if g.state == STATE_GAMEOVER {
+		drawText("Стрелки вверх/вниз, Enter - выбор", screenW/2-220, screenH-70, color.RGBA{200, 200, 200, 255})
+	case STATE_PAUSED:
+		ebitenutil.DrawRect(screen, 0, 0, screenW, screenH, color.RGBA{0, 0, 0, 150})
+		drawText("ПАУЗА", screenW/2-40, screenH/2, color.RGBA{255, 255, 150, 255})
+		drawText("Нажмите P для продолжения", screenW/2-150, screenH/2+40, color.White)
+	case STATE_GAMEOVER:
 		ebitenutil.DrawRect(screen, 100, 80, screenW-200, screenH-180, color.RGBA{40, 0, 0, 180})
-		ebitenutil.DebugPrintAt(screen, "ИГРА ОКОНЧЕНА", screenW/2-80, screenH/2-40)
-		ebitenutil.DebugPrintAt(screen, "Счёт: "+strconv.Itoa(g.score), screenW/2-80, screenH/2)
-		ebitenutil.DebugPrintAt(screen, "Нажмите любую клавишу для меню", screenW/2-150, screenH/2+40)
+		drawText("ИГРА ОКОНЧЕНА", screenW/2-80, screenH/2-40, color.RGBA{255, 100, 100, 255})
+		drawText("Счёт: "+strconv.Itoa(g.score), screenW/2-60, screenH/2, color.White)
+		drawText("Нажмите любую клавишу для меню", screenW/2-150, screenH/2+40, color.White)
 	}
 
-	// Вспышка
 	if g.flash > 0.01 {
-		alpha := uint8(g.flash * 150)
-		ebitenutil.DrawRect(screen, 0, 0, screenW, screenH, color.RGBA{255, 255, 255, alpha})
+		ebitenutil.DrawRect(screen, 0, 0, screenW, screenH, color.RGBA{255, 255, 255, uint8(g.flash * 150)})
 	}
 }
 
@@ -494,7 +531,7 @@ func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
 	return screenW, screenH
 }
 
-/* ---------- Вспомогательные функции ---------- */
+// Utility
 func inputPressed() bool {
 	return ebiten.IsKeyPressed(ebiten.KeyEnter) ||
 		ebiten.IsKeyPressed(ebiten.KeySpace) ||
@@ -511,16 +548,7 @@ func minInt(a, b int) int {
 	return b
 }
 
-/* ---------- Аудио (без изменений) ---------- */
-type Particle struct {
-	X, Y   float64
-	VX, VY float64
-	Life   float64
-	Color  color.RGBA
-	Size   float64
-	Glow   bool
-}
-
+// Audio (без изменений)
 func newSound(ctx *audio.Context, data []byte) *audio.Player {
 	d, err := wav.Decode(ctx, bytes.NewReader(data))
 	if err != nil {
@@ -634,6 +662,7 @@ func sndEat() []byte {
 	t2 := synthWave(sr, 0.1, 1200, 0.3, "sine", 200)
 	return mixToWAV(sr, [][]int16{t1, t2})
 }
+
 func sndBoom() []byte {
 	sr := 44100
 	low := synthWave(sr, 0.3, 80, 0.9, "sine", -30)
@@ -641,12 +670,14 @@ func sndBoom() []byte {
 	mid := synthWave(sr, 0.15, 300, 0.4, "square", -200)
 	return mixToWAV(sr, [][]int16{low, n, mid})
 }
+
 func sndHeal() []byte {
 	sr := 44100
 	t1 := synthWave(sr, 0.15, 400, 0.4, "sine", 300)
 	t2 := synthWave(sr, 0.2, 800, 0.3, "sine", 100)
 	return mixToWAV(sr, [][]int16{t1, t2})
 }
+
 func sndPause() []byte {
 	sr := 44100
 	t := synthWave(sr, 0.08, 220, 0.4, "square", -50)
@@ -657,8 +688,7 @@ func main() {
 	ebiten.SetWindowSize(screenW, screenH)
 	ebiten.SetWindowTitle("Змейка: Возрождение")
 	ebiten.SetFullscreen(true)
-	g := NewGame()
-	if err := ebiten.RunGame(g); err != nil {
+	if err := ebiten.RunGame(NewGame()); err != nil {
 		log.Fatal(err)
 	}
 }
