@@ -33,6 +33,11 @@ const (
 
 type Vec struct{ X, Y int }
 
+type Bomb struct {
+	X, Y  int
+	Timer float64
+}
+
 type GameState int
 
 const (
@@ -60,7 +65,7 @@ type Game struct {
 	ticker        float64
 	speed         float64
 	apple         Vec
-	bombs         []Vec
+	bombs         []Bomb
 	score         int
 	health        int
 	particles     []Particle
@@ -88,7 +93,7 @@ func NewGame() *Game {
 		health:       maxHealth,
 		menuPulse:    0,
 		menuSelected: 0,
-		menuButtons:  []string{"🎮 Начать игру", "⏯️ Продолжить", "🆕 Новая игра", "❌ Выйти из игры"},
+		menuButtons:  []string{"▶ Начать игру", "▶ Продолжить", "🔄 Новая игра", "✖ Выйти из игры"},
 	}
 	g.reset()
 	g.audioCtx = audio.NewContext(44100)
@@ -175,7 +180,7 @@ func (g *Game) Update() error {
 		if g.state == STATE_PLAYING || g.state == STATE_PAUSED || g.state == STATE_GAMEOVER {
 			g.state = STATE_MENU
 			if g.state == STATE_PAUSED {
-				g.menuSelected = 1 // "Продолжить"
+				g.menuSelected = 1
 			} else {
 				g.menuSelected = 0
 			}
@@ -215,10 +220,10 @@ func (g *Game) Update() error {
 		}
 		if (ebiten.IsKeyPressed(ebiten.KeyEnter) || ebiten.IsKeyPressed(ebiten.KeySpace)) && g.pauseCooldown <= 0 {
 			switch g.menuButtons[g.menuSelected] {
-			case "🎮 Начать игру", "⏯️ Продолжить", "🆕 Новая игра":
+			case "▶ Начать игру", "▶ Продолжить", "🔄 Новая игра":
 				g.reset()
 				g.state = STATE_PLAYING
-			case "❌ Выйти из игры":
+			case "✖ Выйти из игры":
 				return ebiten.Termination
 			}
 			g.pauseCooldown = 0.3
@@ -260,6 +265,15 @@ func (g *Game) Update() error {
 		g.ticker = 0
 		g.dir = g.nextDir
 		g.step()
+	}
+
+	// Обновление таймеров бомб (пульсация и взрыв)
+	for i := 0; i < len(g.bombs); i++ {
+		g.bombs[i].Timer -= dt
+		if g.bombs[i].Timer <= 0 {
+			g.bombExplode(i)
+			i-- // корректировка индекса после удаления
+		}
 	}
 
 	// Частицы
@@ -313,10 +327,13 @@ func (g *Game) step() {
 	} else {
 		g.snake = g.snake[:len(g.snake)-1]
 	}
-	for _, b := range g.bombs {
-		if b == newHead {
+
+	// Проверка столкновения с бомбами
+	for i := 0; i < len(g.bombs); i++ {
+		if g.bombs[i].X == newHead.X && g.bombs[i].Y == newHead.Y {
 			g.health -= 35
-			g.triggerExplosion(b, g.health <= 0)
+			g.triggerExplosion(newHead, g.health <= 0)
+			g.bombs = append(g.bombs[:i], g.bombs[i+1:]...)
 			return
 		}
 	}
@@ -338,6 +355,37 @@ func (g *Game) triggerExplosion(v Vec, fatal bool) {
 	}
 }
 
+func (g *Game) bombExplode(idx int) {
+	b := g.bombs[idx]
+	// Удаляем бомбу
+	g.bombs = append(g.bombs[:idx], g.bombs[idx+1:]...)
+
+	// Проверка урона змейке (голова в радиусе 1.5 клетки)
+	head := g.snake[0]
+	dx := math.Abs(float64(head.X - b.X))
+	dy := math.Abs(float64(head.Y - b.Y))
+	distance := dx + dy
+
+	g.flash = 1.0
+	g.shake = 12
+	g.sndBoom.Rewind()
+	g.sndBoom.Play()
+
+	cx := float64(b.X*tileSize + tileSize/2)
+	cy := float64(b.Y*tileSize + tileSize/2)
+
+	if distance <= 1.5 {
+		g.health -= 25
+		g.addParticles(cx, cy, 120, color.RGBA{255, 60, 30, 255}, true)
+		g.addParticles(cx, cy, 60, color.RGBA{255, 200, 50, 200}, true)
+		if g.health <= 0 {
+			g.state = STATE_GAMEOVER
+		}
+	} else {
+		g.addParticles(cx, cy, 80, color.RGBA{255, 100, 30, 255}, true)
+	}
+}
+
 func (g *Game) spawnBombRandom() {
 	if g.rng.Float64() < 0.4 {
 		for i := 0; i < 2000; i++ {
@@ -353,8 +401,14 @@ func (g *Game) spawnBombRandom() {
 					break
 				}
 			}
+			for _, b := range g.bombs {
+				if b.X == x && b.Y == y {
+					ok = false
+					break
+				}
+			}
 			if ok {
-				g.bombs = append(g.bombs, Vec{x, y})
+				g.bombs = append(g.bombs, Bomb{X: x, Y: y, Timer: 5.0})
 				return
 			}
 		}
@@ -399,19 +453,24 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		}
 	}
 
-	// Бомбы
-	pulse := math.Sin(g.menuPulse*3)*0.15 + 1.0
+	// Бомбы – увеличенные, пульсирующие, с обратным отсчётом
 	for _, b := range g.bombs {
 		cx := float64(b.X*tileSize+tileSize/2) + ox
 		cy := float64(b.Y*tileSize+tileSize/2) + oy
-		radius := float64(tileSize) / 2 * pulse * 0.85
-		ebitenutil.DrawCircle(screen, cx, cy, radius, color.RGBA{20, 20, 25, 255})
+		baseRadius := float64(tileSize) / 2 * 1.5 // увеличены в 1.5 раза
+		t := b.Timer
+		freq := 3.0 + 9.0*(1.0-math.Min(1.0, t/5.0))
+		pulse := 1.0 + 0.15*math.Sin(g.menuPulse*20*freq)
+		radius := baseRadius * pulse
+		// Цвет: от чёрного к красному при таймере < 2 сек
+		r := uint8(20)
+		if t < 2.0 {
+			r = uint8(80 + int(175*(1.0-t/2.0)))
+		}
+		ebitenutil.DrawCircle(screen, cx, cy, radius, color.RGBA{r, 20, 25, 255})
 		ebitenutil.DrawCircle(screen, cx-2, cy-2, radius-2, color.RGBA{0, 0, 0, 100})
 		ebitenutil.DrawCircle(screen, cx-radius*0.3, cy-radius*0.35, radius*0.25, color.RGBA{255, 255, 255, 180})
 		ebitenutil.DrawCircle(screen, cx+radius*0.2, cy+radius*0.2, radius*0.2, color.RGBA{255, 80, 80, 120})
-		ebitenutil.DrawRect(screen, cx+radius*0.7, cy-radius*1.1, 4, 6, color.RGBA{60, 50, 40, 255})
-		flicker := mathrand.Float64()*3 + 2
-		ebitenutil.DrawRect(screen, cx+radius*0.7, cy-radius*1.4, flicker, flicker, color.RGBA{255, 120, 20, 255})
 	}
 
 	// Змейка
