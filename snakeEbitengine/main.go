@@ -3,7 +3,9 @@ package main
 import (
 	"bytes"
 	"encoding/binary"
+	"image"
 	"image/color"
+	_ "image/png"
 	"io"
 	"log"
 	"math"
@@ -56,10 +58,13 @@ type Particle struct {
 	Glow   bool
 }
 
+// Типы фруктов – теперь 5 видов
 const (
 	FRUIT_APPLE = iota
 	FRUIT_STRAWBERRY
-	FRUIT_PIZZA
+	FRUIT_ORANGE
+	FRUIT_BANANA
+	FRUIT_PINEAPPLE
 )
 
 type IceBlock struct {
@@ -99,11 +104,31 @@ type Game struct {
 	buttonFlash    int
 	fontFace       font.Face
 
-	// Ghost (полтергейст)
+	// PNG спрайты фруктов
+	appleImg      *ebiten.Image
+	strawberryImg *ebiten.Image
+	orangeImg     *ebiten.Image
+	bananaImg     *ebiten.Image
+	pineappleImg  *ebiten.Image
+
 	ghostActive    bool
 	ghostX, ghostY int
 	ghostMoveTimer float64
 	ghostModeTimer float64
+}
+
+// Загрузка PNG
+func loadPNG(path string) (*ebiten.Image, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	img, _, err := image.Decode(file)
+	if err != nil {
+		return nil, err
+	}
+	return ebiten.NewImageFromImage(img), nil
 }
 
 func NewGame() *Game {
@@ -133,6 +158,30 @@ func NewGame() *Game {
 	if err := g.loadFont(); err != nil {
 		log.Printf("Шрифт не загружен: %v", err)
 	}
+
+	// Загрузка PNG
+	var err error
+	g.appleImg, err = loadPNG("apple.png")
+	if err != nil {
+		log.Printf("apple.png не загружен: %v", err)
+	}
+	g.strawberryImg, err = loadPNG("strawberry.png")
+	if err != nil {
+		log.Printf("strawberry.png не загружен: %v", err)
+	}
+	g.orangeImg, err = loadPNG("orange.png")
+	if err != nil {
+		log.Printf("orange.png не загружен: %v", err)
+	}
+	g.bananaImg, err = loadPNG("banana.png")
+	if err != nil {
+		log.Printf("banana.png не загружен: %v", err)
+	}
+	g.pineappleImg, err = loadPNG("pineapple.png")
+	if err != nil {
+		log.Printf("pineapple.png не загружен: %v", err)
+	}
+
 	return g
 }
 
@@ -197,14 +246,8 @@ func (g *Game) placeFruit() {
 		}
 		if ok {
 			g.fruitX, g.fruitY = x, y
-			r := g.rng.Float64()
-			if r < 0.4 {
-				g.fruitType = FRUIT_APPLE
-			} else if r < 0.8 {
-				g.fruitType = FRUIT_STRAWBERRY
-			} else {
-				g.fruitType = FRUIT_PIZZA
-			}
+			// Равные шансы для 5 фруктов (0..4)
+			g.fruitType = g.rng.Intn(5)
 			return
 		}
 	}
@@ -274,6 +317,7 @@ func (g *Game) spawnGhost() {
 	}
 }
 
+// ---------- Update ----------
 func (g *Game) Update() error {
 	dt := 1.0 / 60.0
 	g.menuPulse += 0.05
@@ -319,7 +363,7 @@ func (g *Game) Update() error {
 		}
 	}
 
-	// ESC меню
+	// ESC - меню
 	if ebiten.IsKeyPressed(ebiten.KeyEscape) && g.pauseCooldown <= 0 {
 		if g.state == STATE_PLAYING || g.state == STATE_PAUSED || g.state == STATE_GAMEOVER {
 			g.state = STATE_MENU
@@ -447,16 +491,15 @@ func (g *Game) Update() error {
 	return nil
 }
 
+// ---------- Шаг игры ----------
 func (g *Game) step() {
 	head := g.snake[0]
 	newHead := Vec{head.X + g.dir.X, head.Y + g.dir.Y}
 
-	// Стены
 	if newHead.X < 0 || newHead.X >= gridW || newHead.Y < 0 || newHead.Y >= gridH {
 		g.triggerExplosion(head, true)
 		return
 	}
-	// Самостолкновение (если не призрачный режим)
 	if !g.ghostModeActive() {
 		for _, s := range g.snake {
 			if s == newHead {
@@ -478,9 +521,15 @@ func (g *Game) step() {
 		case FRUIT_STRAWBERRY:
 			g.score += 2
 			g.health = minInt(maxHealth, g.health+40)
-		case FRUIT_PIZZA:
+		case FRUIT_ORANGE:
 			g.score += 3
 			g.health = minInt(maxHealth, g.health+35)
+		case FRUIT_BANANA:
+			g.score += 1
+			g.health = minInt(maxHealth, g.health+20)
+		case FRUIT_PINEAPPLE:
+			g.score += 4
+			g.health = minInt(maxHealth, g.health+45)
 		}
 		g.placeFruit()
 		g.spawnBombRandom()
@@ -491,7 +540,7 @@ func (g *Game) step() {
 		g.addParticles(float64(newHead.X*tileSize+tileSize/2), float64(newHead.Y*tileSize+tileSize/2), 25, color.RGBA{50, 255, 80, 255}, true)
 	}
 
-	// Рост/не рост из-за заморозки
+	// Заморозка отменяет рост
 	if g.frozenTimer > 0 && ateFruit {
 		g.snake = g.snake[:len(g.snake)-1]
 	} else if !ateFruit {
@@ -526,7 +575,6 @@ func (g *Game) step() {
 		g.addParticles(float64(newHead.X*tileSize+tileSize/2), float64(newHead.Y*tileSize+tileSize/2), 60, color.RGBA{200, 200, 255, 200}, true)
 	}
 
-	// Частицы следа
 	g.addParticles(float64(newHead.X*tileSize+tileSize/2), float64(newHead.Y*tileSize+tileSize/2), 2, color.RGBA{0, 180, 220, 140}, false)
 	if g.frozenTimer > 0 {
 		g.addParticles(float64(newHead.X*tileSize+tileSize/2), float64(newHead.Y*tileSize+tileSize/2), 1, color.RGBA{150, 220, 255, 180}, true)
@@ -623,6 +671,7 @@ func (g *Game) addParticles(x, y float64, n int, c color.RGBA, glow bool) {
 	}
 }
 
+// ---------- Отрисовка ----------
 func (g *Game) Draw(screen *ebiten.Image) {
 	screen.Fill(color.RGBA{12, 12, 20, 255})
 
@@ -660,6 +709,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		ebitenutil.DrawCircle(screen, cx-2, cy-2, radius-2, color.RGBA{0, 0, 0, 100})
 		ebitenutil.DrawCircle(screen, cx-radius*0.3, cy-radius*0.35, radius*0.25, color.RGBA{255, 255, 255, 180})
 		ebitenutil.DrawCircle(screen, cx+radius*0.2, cy+radius*0.2, radius*0.2, color.RGBA{255, 80, 80, 120})
+
 		// Фитиль
 		fuseLen := 20.0 * (t / 5.0)
 		fuseStartX := cx + radius*0.7
@@ -680,8 +730,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		if g.frozenTimer > 0 {
 			base = color.RGBA{80, 180, 255, 255}
 		} else if g.ghostModeActive() {
-			alpha := uint8(180)
-			base = color.RGBA{20, 220, 90, alpha}
+			base = color.RGBA{20, 220, 90, 180}
 		} else {
 			base = color.RGBA{20, 220, 90, 255}
 		}
@@ -706,12 +755,14 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		}
 		ebitenutil.DrawRect(screen, x, y, tileSize-1, tileSize-1, base)
 		if i == 0 {
+			// Глаза и язык
 			eyex := float64(tileSize)/4 - 2
 			eyey := float64(tileSize)/4 - 2
 			ebitenutil.DrawRect(screen, x+eyex, y+eyey, 4, 4, color.White)
 			ebitenutil.DrawRect(screen, x+float64(tileSize)-eyex-6, y+eyey, 4, 4, color.White)
 			ebitenutil.DrawRect(screen, x+eyex+1, y+eyey+1, 2, 2, color.Black)
 			ebitenutil.DrawRect(screen, x+float64(tileSize)-eyex-5, y+eyey+1, 2, 2, color.Black)
+
 			var tx, ty, w, h float64
 			switch g.dir {
 			case Vec{1, 0}:
@@ -727,77 +778,34 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		}
 	}
 
-	// Фрукты
+	// Фрукты (PNG), увеличенные в 1.5 раза
 	{
 		cx := float64(g.fruitX*tileSize+tileSize/2) + ox
 		cy := float64(g.fruitY*tileSize+tileSize/2) + oy
-		baseRadius := (float64(tileSize)/2 - 2) * 1.5
-		radius := baseRadius
-		ebitenutil.DrawCircle(screen, cx-2, cy-2, radius-2, color.RGBA{0, 0, 0, 80})
-
+		var img *ebiten.Image
 		switch g.fruitType {
 		case FRUIT_APPLE:
-			// Яблоко с листочком
-			ebitenutil.DrawCircle(screen, cx, cy, radius, color.RGBA{220, 40, 50, 255})
-			ebitenutil.DrawCircle(screen, cx-3, cy-3, radius-4, color.RGBA{255, 100, 100, 150})
-			ebitenutil.DrawCircle(screen, cx-radius*0.3, cy-radius*0.35, radius*0.2, color.RGBA{255, 255, 255, 220})
-			// Веточка и листочек
-			ebitenutil.DrawRect(screen, cx+radius*0.5, cy-radius*0.8, 8, 4, color.RGBA{90, 70, 40, 255})
-			ebitenutil.DrawRect(screen, cx+radius*0.6, cy-radius*0.9, 12, 6, color.RGBA{50, 180, 40, 255})
-			ebitenutil.DrawRect(screen, cx+radius*0.9, cy-radius*0.95, 6, 3, color.RGBA{40, 140, 30, 255})
+			img = g.appleImg
 		case FRUIT_STRAWBERRY:
-			// Конусообразная клубника
-			steps := 5
-			for i := 0; i < steps; i++ {
-				t := float64(i) / float64(steps-1)
-				yOff := (t - 0.5) * radius * 1.2
-				r := radius * (1.0 - t*0.4)
-				ebitenutil.DrawCircle(screen, cx, cy+yOff, r, color.RGBA{210, 30, 40, 255})
-			}
-			// Семечки
-			for _, angle := range []float64{0, 1.0, 2.0, 3.0, 4.0, 5.0} {
-				sx := cx + math.Cos(angle)*radius*0.7
-				sy := cy + math.Sin(angle)*radius*0.6
-				ebitenutil.DrawRect(screen, sx-1.5, sy-1.5, 3, 3, color.RGBA{255, 210, 60, 255})
-			}
-			// Чашелистики
-			for a := 0; a < 5; a++ {
-				ang := float64(a) * 2 * math.Pi / 5
-				lx := cx + math.Cos(ang)*radius*0.6
-				ly := cy - radius*0.7 + math.Sin(ang)*radius*0.2
-				ebitenutil.DrawRect(screen, lx-3, ly-2, 6, 4, color.RGBA{40, 160, 30, 255})
-			}
-			ebitenutil.DrawCircle(screen, cx, cy-radius*0.65, radius*0.2, color.RGBA{30, 140, 20, 255})
-			ebitenutil.DrawCircle(screen, cx-radius*0.2, cy-radius*0.2, radius*0.15, color.RGBA{255, 255, 255, 200})
-		case FRUIT_PIZZA:
-			// Кусочек пиццы
-			x1, y1 := cx, cy-radius*0.8
-			x2, y2 := cx-radius*0.8, cy+radius*0.6
-			x3, y3 := cx+radius*0.8, cy+radius*0.6
-			// Заполнение тестом
-			for i := 0; i < 200; i++ {
-				s := g.rng.Float64()
-				t := g.rng.Float64()
-				if s+t > 1 {
-					s = 1 - s
-					t = 1 - t
-				}
-				px := x1 + (x2-x1)*s + (x3-x1)*t
-				py := y1 + (y2-y1)*s + (y3-y1)*t
-				ebitenutil.DrawRect(screen, px-1, py-1, 2, 2, color.RGBA{230, 180, 100, 255})
-			}
-			// Соус
-			ebitenutil.DrawCircle(screen, cx, cy+radius*0.1, radius*0.5, color.RGBA{200, 50, 30, 200})
-			// Сыр
-			ebitenutil.DrawCircle(screen, cx, cy+radius*0.05, radius*0.45, color.RGBA{240, 200, 80, 180})
-			// Пепперони
-			ebitenutil.DrawCircle(screen, cx-radius*0.3, cy+radius*0.2, radius*0.2, color.RGBA{150, 40, 20, 255})
-			ebitenutil.DrawCircle(screen, cx+radius*0.3, cy+radius*0.3, radius*0.15, color.RGBA{180, 50, 30, 255})
-			ebitenutil.DrawCircle(screen, cx, cy+radius*0.6, radius*0.18, color.RGBA{160, 45, 25, 255})
-			// Корка
-			ebitenutil.DrawLine(screen, x1, y1, x2, y2, color.RGBA{180, 120, 60, 255})
-			ebitenutil.DrawLine(screen, x1, y1, x3, y3, color.RGBA{180, 120, 60, 255})
-			ebitenutil.DrawLine(screen, x2, y2, x3, y3, color.RGBA{180, 120, 60, 255})
+			img = g.strawberryImg
+		case FRUIT_ORANGE:
+			img = g.orangeImg
+		case FRUIT_BANANA:
+			img = g.bananaImg
+		case FRUIT_PINEAPPLE:
+			img = g.pineappleImg
+		}
+		if img != nil {
+			op := &ebiten.DrawImageOptions{}
+			w, h := img.Bounds().Dx(), img.Bounds().Dy()
+			scale := 1.5 // увеличиваем фрукты в 1.5 раза
+			op.GeoM.Scale(scale, scale)
+			op.GeoM.Translate(cx-float64(w)*scale/2, cy-float64(h)*scale/2)
+			op.GeoM.Translate(ox, oy)
+			screen.DrawImage(img, op)
+		} else {
+			// Заглушка – цветной квадрат
+			ebitenutil.DrawRect(screen, cx-float64(tileSize)/2+ox, cy-float64(tileSize)/2+oy, float64(tileSize), float64(tileSize), color.RGBA{200, 100, 50, 255})
 		}
 	}
 
@@ -819,13 +827,12 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		ebitenutil.DrawCircle(screen, cx, cy, radius, color.RGBA{220, 220, 255, 180})
 		ebitenutil.DrawCircle(screen, cx-radius*0.3, cy-radius*0.2, radius*0.2, color.RGBA{0, 0, 0, 200})
 		ebitenutil.DrawCircle(screen, cx+radius*0.3, cy-radius*0.2, radius*0.2, color.RGBA{0, 0, 0, 200})
-		// Рот – полукруг из точек
+		// Рот
 		for a := 0.0; a <= math.Pi; a += 0.1 {
 			mx := cx + math.Sin(a)*radius*0.3
 			my := cy + radius*0.1 + math.Cos(a)*radius*0.2
 			ebitenutil.DrawRect(screen, mx-1, my-1, 2, 2, color.RGBA{0, 0, 0, 200})
 		}
-		// Хвост
 		for i := -1; i <= 1; i++ {
 			ebitenutil.DrawCircle(screen, cx+float64(i)*radius*0.4, cy+radius*0.7, radius*0.3, color.RGBA{220, 220, 255, 180})
 		}
@@ -840,7 +847,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		ebitenutil.DrawRect(screen, p.X-p.Size+ox, p.Y-p.Size+oy, p.Size*2, p.Size*2, c)
 	}
 
-	// Текст
+	// Текст UI
 	drawText := func(str string, x, y int, clr color.Color) {
 		if g.fontFace != nil {
 			text.Draw(screen, str, g.fontFace, x, y, clr)
@@ -866,6 +873,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		drawText("ПРИЗРАЧНЫЙ РЕЖИМ", screenW/2-100, screenH-60, color.RGBA{200, 200, 255, 255})
 	}
 
+	// Меню, пауза, game over
 	switch g.state {
 	case STATE_MENU:
 		ebitenutil.DrawRect(screen, 0, 0, screenW, screenH, color.RGBA{0, 0, 0, 255})
@@ -902,7 +910,9 @@ func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
 	return screenW, screenH
 }
 
+// ------------------------------------------------
 // Вспомогательные функции
+// ------------------------------------------------
 func inputPressed() bool {
 	return ebiten.IsKeyPressed(ebiten.KeyEnter) ||
 		ebiten.IsKeyPressed(ebiten.KeySpace) ||
@@ -919,7 +929,9 @@ func minInt(a, b int) int {
 	return b
 }
 
-// Аудио
+// ------------------------------------------------
+// Аудио (синтез)
+// ------------------------------------------------
 func newSound(ctx *audio.Context, data []byte) *audio.Player {
 	d, err := wav.Decode(ctx, bytes.NewReader(data))
 	if err != nil {
