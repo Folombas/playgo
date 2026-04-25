@@ -59,7 +59,6 @@ type Particle struct {
 	Glow   bool
 }
 
-// Типы фруктов
 const (
 	FRUIT_APPLE = iota
 	FRUIT_STRAWBERRY
@@ -105,25 +104,28 @@ type Game struct {
 	buttonFlash    int
 	fontFace       font.Face
 
-	// PNG спрайты фруктов
 	appleImg      *ebiten.Image
 	strawberryImg *ebiten.Image
 	orangeImg     *ebiten.Image
 	bananaImg     *ebiten.Image
 	pineappleImg  *ebiten.Image
 
-	// Анимированный призрак (кадры)
-	ghostFrames    []*ebiten.Image
-	ghostFrameIdx  int
-	ghostAnimTimer float64
+	ghostFrames     []*ebiten.Image
+	ghostFrameIdx   int
+	ghostAnimTimer  float64
+	ghostActive     bool
+	ghostX, ghostY  int
+	ghostMoveTimer  float64
+	ghostModeTimer  float64
 
-	ghostActive    bool
-	ghostX, ghostY int
-	ghostMoveTimer float64
-	ghostModeTimer float64
+	roachFrames    []*ebiten.Image
+	roachFrameIdx  int
+	roachAnimTimer float64
+	roachActive    bool
+	roachX, roachY int
+	roachMoveTimer float64
 }
 
-// Загрузка PNG
 func loadPNG(path string) (*ebiten.Image, error) {
 	file, err := os.Open(path)
 	if err != nil {
@@ -135,6 +137,29 @@ func loadPNG(path string) (*ebiten.Image, error) {
 		return nil, err
 	}
 	return ebiten.NewImageFromImage(img), nil
+}
+
+func loadSpriteSheet(path string, frameW, frameH, cols, rows int) ([]*ebiten.Image, error) {
+	img, err := loadPNG(path)
+	if err != nil {
+		return nil, err
+	}
+	bounds := img.Bounds()
+	sheetW := bounds.Dx()
+	sheetH := bounds.Dy()
+	var frames []*ebiten.Image
+	for row := 0; row < rows; row++ {
+		for col := 0; col < cols; col++ {
+			x := col * frameW
+			y := row * frameH
+			if x+frameW > sheetW || y+frameH > sheetH {
+				continue
+			}
+			frameImg := img.SubImage(image.Rect(x, y, x+frameW, y+frameH))
+			frames = append(frames, ebiten.NewImageFromImage(frameImg))
+		}
+	}
+	return frames, nil
 }
 
 func NewGame() *Game {
@@ -152,6 +177,7 @@ func NewGame() *Game {
 		ghostModeTimer: 0,
 		ghostFrameIdx:  0,
 		ghostAnimTimer: 0,
+		roachActive:    false,
 	}
 	g.reset()
 	g.audioCtx = audio.NewContext(44100)
@@ -167,7 +193,6 @@ func NewGame() *Game {
 		log.Printf("Шрифт не загружен: %v", err)
 	}
 
-	// Загрузка PNG фруктов
 	var err error
 	g.appleImg, err = loadPNG("apple.png")
 	if err != nil {
@@ -190,18 +215,27 @@ func NewGame() *Game {
 		log.Printf("pineapple.png не загружен: %v", err)
 	}
 
-	// Загрузка кадров привидения (skeleton-animation_00.png ... 10)
 	g.ghostFrames = make([]*ebiten.Image, 11)
 	for i := 0; i <= 10; i++ {
 		filename := fmt.Sprintf("skeleton-animation_%02d.png", i)
 		img, err := loadPNG(filename)
 		if err != nil {
 			log.Printf("Не удалось загрузить %s: %v", filename, err)
-			// создаём заглушку (белый квадрат, чтобы не падать)
 			img = ebiten.NewImage(tileSize, tileSize)
 			img.Fill(color.White)
 		}
 		g.ghostFrames[i] = img
+	}
+
+	roachFrames, err := loadSpriteSheet("roach.png", 32, 32, 4, 5)
+	if err != nil {
+		log.Printf("roach.png не загружен: %v", err)
+	} else {
+		g.roachFrames = roachFrames
+		g.roachActive = true
+		g.roachX = g.rng.Intn(gridW)
+		g.roachY = g.rng.Intn(gridH)
+		g.roachMoveTimer = 1.0
 	}
 
 	return g
@@ -246,6 +280,14 @@ func (g *Game) reset() {
 	g.ghostModeTimer = 0
 	g.ghostFrameIdx = 0
 	g.ghostAnimTimer = 0
+	if g.roachFrames != nil {
+		g.roachActive = true
+		g.roachX = g.rng.Intn(gridW)
+		g.roachY = g.rng.Intn(gridH)
+		g.roachMoveTimer = 1.0
+		g.roachFrameIdx = 0
+		g.roachAnimTimer = 0
+	}
 }
 
 func (g *Game) placeFruit() {
@@ -342,7 +384,6 @@ func (g *Game) spawnGhost() {
 	}
 }
 
-// ---------- Update ----------
 func (g *Game) Update() error {
 	dt := 1.0 / 60.0
 	g.menuPulse += 0.05
@@ -365,16 +406,14 @@ func (g *Game) Update() error {
 		}
 	}
 
-	// Анимация призрака (если активен)
 	if g.ghostActive {
 		g.ghostAnimTimer += dt
-		if g.ghostAnimTimer >= 0.1 { // 10 кадров в секунду
+		if g.ghostAnimTimer >= 0.1 {
 			g.ghostAnimTimer = 0
 			g.ghostFrameIdx = (g.ghostFrameIdx + 1) % len(g.ghostFrames)
 		}
 	}
 
-	// Движение призрака
 	if g.ghostActive && g.state == STATE_PLAYING {
 		g.ghostMoveTimer -= dt
 		if g.ghostMoveTimer <= 0 {
@@ -397,7 +436,36 @@ func (g *Game) Update() error {
 		}
 	}
 
-	// ESC - меню
+	if g.roachActive && len(g.roachFrames) > 0 {
+		g.roachAnimTimer += dt
+		if g.roachAnimTimer >= 0.1 {
+			g.roachAnimTimer = 0
+			g.roachFrameIdx = (g.roachFrameIdx + 1) % len(g.roachFrames)
+		}
+	}
+
+	if g.roachActive && g.state == STATE_PLAYING {
+		g.roachMoveTimer -= dt
+		if g.roachMoveTimer <= 0 {
+			dx, dy := 0, 0
+			switch g.rng.Intn(4) {
+			case 0:
+				dx = 1
+			case 1:
+				dx = -1
+			case 2:
+				dy = 1
+			case 3:
+				dy = -1
+			}
+			nx, ny := g.roachX+dx, g.roachY+dy
+			if nx >= 0 && nx < gridW && ny >= 0 && ny < gridH {
+				g.roachX, g.roachY = nx, ny
+			}
+			g.roachMoveTimer = 0.8
+		}
+	}
+
 	if ebiten.IsKeyPressed(ebiten.KeyEscape) && g.pauseCooldown <= 0 {
 		if g.state == STATE_PLAYING || g.state == STATE_PAUSED || g.state == STATE_GAMEOVER {
 			g.state = STATE_MENU
@@ -412,7 +480,6 @@ func (g *Game) Update() error {
 		g.pauseCooldown = 0.3
 	}
 
-	// Пауза по P
 	if ebiten.IsKeyPressed(ebiten.KeyP) && g.pauseCooldown <= 0 && (g.state == STATE_PLAYING || g.state == STATE_PAUSED) {
 		if g.state == STATE_PLAYING {
 			g.state = STATE_PAUSED
@@ -424,7 +491,6 @@ func (g *Game) Update() error {
 		g.pauseCooldown = 0.3
 	}
 
-	// Меню
 	if g.state == STATE_MENU {
 		prev := g.menuSelected
 		if ebiten.IsKeyPressed(ebiten.KeyUp) && g.pauseCooldown <= 0 {
@@ -473,7 +539,6 @@ func (g *Game) Update() error {
 		return nil
 	}
 
-	// Управление змейкой
 	if ebiten.IsKeyPressed(ebiten.KeyUp) && g.dir.Y != 1 {
 		g.nextDir = Vec{0, -1}
 	}
@@ -494,7 +559,6 @@ func (g *Game) Update() error {
 		g.step()
 	}
 
-	// Обновление бомб
 	for i := 0; i < len(g.bombs); i++ {
 		g.bombs[i].Timer -= dt
 		if g.bombs[i].Timer <= 0 {
@@ -503,7 +567,6 @@ func (g *Game) Update() error {
 		}
 	}
 
-	// Частицы
 	for i := 0; i < len(g.particles); i++ {
 		p := &g.particles[i]
 		p.X += p.VX
@@ -525,7 +588,6 @@ func (g *Game) Update() error {
 	return nil
 }
 
-// ---------- Шаг игры ----------
 func (g *Game) step() {
 	head := g.snake[0]
 	newHead := Vec{head.X + g.dir.X, head.Y + g.dir.Y}
@@ -574,14 +636,12 @@ func (g *Game) step() {
 		g.addParticles(float64(newHead.X*tileSize+tileSize/2), float64(newHead.Y*tileSize+tileSize/2), 25, color.RGBA{50, 255, 80, 255}, true)
 	}
 
-	// Заморозка отменяет рост
 	if g.frozenTimer > 0 && ateFruit {
 		g.snake = g.snake[:len(g.snake)-1]
 	} else if !ateFruit {
 		g.snake = g.snake[:len(g.snake)-1]
 	}
 
-	// Бомбы
 	for i := 0; i < len(g.bombs); i++ {
 		if g.bombs[i].X == newHead.X && g.bombs[i].Y == newHead.Y {
 			g.health -= 35
@@ -591,7 +651,6 @@ func (g *Game) step() {
 		}
 	}
 
-	// Лёд
 	if g.iceActive && newHead.X == g.ice.X && newHead.Y == g.ice.Y {
 		g.frozenTimer = 5.0
 		g.iceActive = false
@@ -600,7 +659,6 @@ func (g *Game) step() {
 		g.sndHeal.Play()
 	}
 
-	// Призрак (анимированный)
 	if g.ghostActive && newHead.X == g.ghostX && newHead.Y == g.ghostY {
 		g.ghostModeTimer = 5.0
 		g.ghostActive = false
@@ -695,9 +753,11 @@ func (g *Game) addParticles(x, y float64, n int, c color.RGBA, glow bool) {
 		a := g.rng.Float64() * 2 * math.Pi
 		s := g.rng.Float64()*4 + 1.5
 		g.particles = append(g.particles, Particle{
-			X: x, Y: y,
-			VX: math.Cos(a) * s, VY: math.Sin(a) * s,
-			Life:  g.rng.Float64()*1.5 + 0.4,
+			X:    x,
+			Y:    y,
+			VX:   math.Cos(a) * s,
+			VY:   math.Sin(a) * s,
+			Life: g.rng.Float64()*1.5 + 0.4,
 			Color: c,
 			Size:  g.rng.Float64()*4 + 2,
 			Glow:  glow,
@@ -705,7 +765,6 @@ func (g *Game) addParticles(x, y float64, n int, c color.RGBA, glow bool) {
 	}
 }
 
-// ---------- Отрисовка ----------
 func (g *Game) Draw(screen *ebiten.Image) {
 	screen.Fill(color.RGBA{12, 12, 20, 255})
 
@@ -715,7 +774,6 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		oy = (mathrand.Float64()*2 - 1) * g.shake
 	}
 
-	// Сетка
 	for x := 0; x < gridW; x++ {
 		for y := 0; y < gridH; y++ {
 			c := color.RGBA{15, 15, 25, 255}
@@ -726,11 +784,10 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		}
 	}
 
-	// Бомбы (программная отрисовка – без изменений)
 	for _, b := range g.bombs {
 		cx := float64(b.X*tileSize+tileSize/2) + ox
 		cy := float64(b.Y*tileSize+tileSize/2) + oy
-		baseRadius := float64(tileSize) / 2 * 1.5
+		baseRadius := float64(tileSize)/2 * 1.5
 		t := b.Timer
 		freq := 3.0 + 9.0*(1.0-math.Min(1.0, t/5.0))
 		pulse := 1.0 + 0.15*math.Sin(g.menuPulse*20*freq)
@@ -743,7 +800,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		ebitenutil.DrawCircle(screen, cx-2, cy-2, radius-2, color.RGBA{0, 0, 0, 100})
 		ebitenutil.DrawCircle(screen, cx-radius*0.3, cy-radius*0.35, radius*0.25, color.RGBA{255, 255, 255, 180})
 		ebitenutil.DrawCircle(screen, cx+radius*0.2, cy+radius*0.2, radius*0.2, color.RGBA{255, 80, 80, 120})
-		// Фитиль
+
 		fuseLen := 20.0 * (t / 5.0)
 		fuseStartX := cx + radius*0.7
 		fuseStartY := cy - radius*1.1
@@ -755,7 +812,6 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		ebitenutil.DrawCircle(screen, fuseEndX, fuseEndY, fireSize*0.6, color.RGBA{255, 255, 100, 255})
 	}
 
-	// Змейка (без изменений)
 	for i, s := range g.snake {
 		x := float64(s.X*tileSize) + ox
 		y := float64(s.Y*tileSize) + oy
@@ -788,7 +844,6 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		}
 		ebitenutil.DrawRect(screen, x, y, tileSize-1, tileSize-1, base)
 		if i == 0 {
-			// Глаза и язык
 			eyex := float64(tileSize)/4 - 2
 			eyey := float64(tileSize)/4 - 2
 			ebitenutil.DrawRect(screen, x+eyex, y+eyey, 4, 4, color.White)
@@ -811,7 +866,6 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		}
 	}
 
-	// Фрукты (PNG, увеличены в 1.5 раза – без изменений)
 	{
 		cx := float64(g.fruitX*tileSize+tileSize/2) + ox
 		cy := float64(g.fruitY*tileSize+tileSize/2) + oy
@@ -841,17 +895,15 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		}
 	}
 
-	// Лёд (программный – без изменений)
 	if g.iceActive {
 		cx := float64(g.ice.X*tileSize+tileSize/2) + ox
 		cy := float64(g.ice.Y*tileSize+tileSize/2) + oy
-		radius := float64(tileSize) / 2 * 1.2
+		radius := float64(tileSize)/2 * 1.2
 		ebitenutil.DrawCircle(screen, cx, cy, radius, color.RGBA{150, 220, 255, 255})
 		ebitenutil.DrawCircle(screen, cx-2, cy-2, radius-3, color.RGBA{100, 200, 240, 200})
 		ebitenutil.DrawCircle(screen, cx+radius*0.3, cy-radius*0.3, radius*0.25, color.RGBA{255, 255, 255, 200})
 	}
 
-	// Анимированный призрак (PNG)
 	if g.ghostActive && len(g.ghostFrames) > 0 {
 		cx := float64(g.ghostX*tileSize+tileSize/2) + ox
 		cy := float64(g.ghostY*tileSize+tileSize/2) + oy
@@ -859,19 +911,29 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		if frame != nil {
 			op := &ebiten.DrawImageOptions{}
 			w, h := frame.Bounds().Dx(), frame.Bounds().Dy()
-			// Масштабируем под размер клетки (32) или чуть меньше
 			scale := float64(tileSize) / float64(w)
 			op.GeoM.Scale(scale, scale)
 			op.GeoM.Translate(cx-float64(w)*scale/2, cy-float64(h)*scale/2)
 			op.GeoM.Translate(ox, oy)
 			screen.DrawImage(frame, op)
-		} else {
-			// fallback: прямоугольник
-			ebitenutil.DrawRect(screen, cx-float64(tileSize)/2+ox, cy-float64(tileSize)/2+oy, float64(tileSize), float64(tileSize), color.RGBA{255, 255, 255, 180})
 		}
 	}
 
-	// Частицы
+	if g.roachActive && len(g.roachFrames) > 0 {
+		cx := float64(g.roachX*tileSize+tileSize/2) + ox
+		cy := float64(g.roachY*tileSize+tileSize/2) + oy
+		frame := g.roachFrames[g.roachFrameIdx]
+		if frame != nil {
+			op := &ebiten.DrawImageOptions{}
+			w, h := frame.Bounds().Dx(), frame.Bounds().Dy()
+			scale := float64(tileSize) / float64(w)
+			op.GeoM.Scale(scale, scale)
+			op.GeoM.Translate(cx-float64(w)*scale/2, cy-float64(h)*scale/2)
+			op.GeoM.Translate(ox, oy)
+			screen.DrawImage(frame, op)
+		}
+	}
+
 	for _, p := range g.particles {
 		c := p.Color
 		if p.Glow {
@@ -880,7 +942,6 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		ebitenutil.DrawRect(screen, p.X-p.Size+ox, p.Y-p.Size+oy, p.Size*2, p.Size*2, c)
 	}
 
-	// Текст UI
 	drawText := func(str string, x, y int, clr color.Color) {
 		if g.fontFace != nil {
 			text.Draw(screen, str, g.fontFace, x, y, clr)
@@ -906,7 +967,6 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		drawText("ПРИЗРАЧНЫЙ РЕЖИМ", screenW/2-100, screenH-60, color.RGBA{200, 200, 255, 255})
 	}
 
-	// Меню, пауза, game over (без изменений)
 	switch g.state {
 	case STATE_MENU:
 		ebitenutil.DrawRect(screen, 0, 0, screenW, screenH, color.RGBA{0, 0, 0, 255})
@@ -943,9 +1003,6 @@ func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
 	return screenW, screenH
 }
 
-// ------------------------------------------------
-// Вспомогательные функции
-// ------------------------------------------------
 func inputPressed() bool {
 	return ebiten.IsKeyPressed(ebiten.KeyEnter) ||
 		ebiten.IsKeyPressed(ebiten.KeySpace) ||
@@ -962,9 +1019,6 @@ func minInt(a, b int) int {
 	return b
 }
 
-// ------------------------------------------------
-// Аудио (синтез) – оставляем без изменений
-// ------------------------------------------------
 func newSound(ctx *audio.Context, data []byte) *audio.Player {
 	d, err := wav.Decode(ctx, bytes.NewReader(data))
 	if err != nil {
