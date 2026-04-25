@@ -120,7 +120,6 @@ type Game struct {
 
 	roachFrames    []*ebiten.Image
 	roachFrameIdx  int
-	roachAnimTimer float64
 	roachActive    bool
 	roachX, roachY int
 	roachMoveTimer float64
@@ -235,7 +234,7 @@ func NewGame() *Game {
 		g.roachActive = true
 		g.roachX = g.rng.Intn(gridW)
 		g.roachY = g.rng.Intn(gridH)
-		g.roachMoveTimer = 1.0
+		g.roachMoveTimer = 0.5
 	}
 
 	return g
@@ -284,9 +283,8 @@ func (g *Game) reset() {
 		g.roachActive = true
 		g.roachX = g.rng.Intn(gridW)
 		g.roachY = g.rng.Intn(gridH)
-		g.roachMoveTimer = 1.0
+		g.roachMoveTimer = 0.5
 		g.roachFrameIdx = 0
-		g.roachAnimTimer = 0
 	}
 }
 
@@ -406,6 +404,7 @@ func (g *Game) Update() error {
 		}
 	}
 
+	// Анимация призрака
 	if g.ghostActive {
 		g.ghostAnimTimer += dt
 		if g.ghostAnimTimer >= 0.1 {
@@ -414,6 +413,7 @@ func (g *Game) Update() error {
 		}
 	}
 
+	// Движение призрака
 	if g.ghostActive && g.state == STATE_PLAYING {
 		g.ghostMoveTimer -= dt
 		if g.ghostMoveTimer <= 0 {
@@ -436,14 +436,7 @@ func (g *Game) Update() error {
 		}
 	}
 
-	if g.roachActive && len(g.roachFrames) > 0 {
-		g.roachAnimTimer += dt
-		if g.roachAnimTimer >= 0.1 {
-			g.roachAnimTimer = 0
-			g.roachFrameIdx = (g.roachFrameIdx + 1) % len(g.roachFrames)
-		}
-	}
-
+	// Таракан: движение и анимация (кадр меняется ТОЛЬКО при движении)
 	if g.roachActive && g.state == STATE_PLAYING {
 		g.roachMoveTimer -= dt
 		if g.roachMoveTimer <= 0 {
@@ -461,11 +454,16 @@ func (g *Game) Update() error {
 			nx, ny := g.roachX+dx, g.roachY+dy
 			if nx >= 0 && nx < gridW && ny >= 0 && ny < gridH {
 				g.roachX, g.roachY = nx, ny
+				// Следующий кадр
+				if len(g.roachFrames) > 0 {
+					g.roachFrameIdx = (g.roachFrameIdx + 1) % len(g.roachFrames)
+				}
 			}
 			g.roachMoveTimer = 0.8
 		}
 	}
 
+	// ESC - меню
 	if ebiten.IsKeyPressed(ebiten.KeyEscape) && g.pauseCooldown <= 0 {
 		if g.state == STATE_PLAYING || g.state == STATE_PAUSED || g.state == STATE_GAMEOVER {
 			g.state = STATE_MENU
@@ -480,6 +478,7 @@ func (g *Game) Update() error {
 		g.pauseCooldown = 0.3
 	}
 
+	// Пауза по P
 	if ebiten.IsKeyPressed(ebiten.KeyP) && g.pauseCooldown <= 0 && (g.state == STATE_PLAYING || g.state == STATE_PAUSED) {
 		if g.state == STATE_PLAYING {
 			g.state = STATE_PAUSED
@@ -491,6 +490,7 @@ func (g *Game) Update() error {
 		g.pauseCooldown = 0.3
 	}
 
+	// Меню
 	if g.state == STATE_MENU {
 		prev := g.menuSelected
 		if ebiten.IsKeyPressed(ebiten.KeyUp) && g.pauseCooldown <= 0 {
@@ -539,6 +539,7 @@ func (g *Game) Update() error {
 		return nil
 	}
 
+	// Управление змейкой
 	if ebiten.IsKeyPressed(ebiten.KeyUp) && g.dir.Y != 1 {
 		g.nextDir = Vec{0, -1}
 	}
@@ -559,6 +560,7 @@ func (g *Game) Update() error {
 		g.step()
 	}
 
+	// Обновление бомб
 	for i := 0; i < len(g.bombs); i++ {
 		g.bombs[i].Timer -= dt
 		if g.bombs[i].Timer <= 0 {
@@ -567,6 +569,7 @@ func (g *Game) Update() error {
 		}
 	}
 
+	// Частицы
 	for i := 0; i < len(g.particles); i++ {
 		p := &g.particles[i]
 		p.X += p.VX
@@ -642,6 +645,7 @@ func (g *Game) step() {
 		g.snake = g.snake[:len(g.snake)-1]
 	}
 
+	// Бомбы
 	for i := 0; i < len(g.bombs); i++ {
 		if g.bombs[i].X == newHead.X && g.bombs[i].Y == newHead.Y {
 			g.health -= 35
@@ -651,6 +655,7 @@ func (g *Game) step() {
 		}
 	}
 
+	// Лёд
 	if g.iceActive && newHead.X == g.ice.X && newHead.Y == g.ice.Y {
 		g.frozenTimer = 5.0
 		g.iceActive = false
@@ -659,6 +664,7 @@ func (g *Game) step() {
 		g.sndHeal.Play()
 	}
 
+	// Призрак
 	if g.ghostActive && newHead.X == g.ghostX && newHead.Y == g.ghostY {
 		g.ghostModeTimer = 5.0
 		g.ghostActive = false
@@ -1019,6 +1025,9 @@ func minInt(a, b int) int {
 	return b
 }
 
+// --------------------------------------------------
+// Аудиосистема
+// --------------------------------------------------
 func newSound(ctx *audio.Context, data []byte) *audio.Player {
 	d, err := wav.Decode(ctx, bytes.NewReader(data))
 	if err != nil {
