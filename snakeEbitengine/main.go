@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"image"
 	"image/color"
 	_ "image/png"
@@ -58,7 +59,7 @@ type Particle struct {
 	Glow   bool
 }
 
-// Типы фруктов – теперь 5 видов
+// Типы фруктов
 const (
 	FRUIT_APPLE = iota
 	FRUIT_STRAWBERRY
@@ -111,6 +112,11 @@ type Game struct {
 	bananaImg     *ebiten.Image
 	pineappleImg  *ebiten.Image
 
+	// Анимированный призрак (кадры)
+	ghostFrames    []*ebiten.Image
+	ghostFrameIdx  int
+	ghostAnimTimer float64
+
 	ghostActive    bool
 	ghostX, ghostY int
 	ghostMoveTimer float64
@@ -144,6 +150,8 @@ func NewGame() *Game {
 		frozenTimer:    0,
 		ghostActive:    false,
 		ghostModeTimer: 0,
+		ghostFrameIdx:  0,
+		ghostAnimTimer: 0,
 	}
 	g.reset()
 	g.audioCtx = audio.NewContext(44100)
@@ -159,7 +167,7 @@ func NewGame() *Game {
 		log.Printf("Шрифт не загружен: %v", err)
 	}
 
-	// Загрузка PNG
+	// Загрузка PNG фруктов
 	var err error
 	g.appleImg, err = loadPNG("apple.png")
 	if err != nil {
@@ -180,6 +188,20 @@ func NewGame() *Game {
 	g.pineappleImg, err = loadPNG("pineapple.png")
 	if err != nil {
 		log.Printf("pineapple.png не загружен: %v", err)
+	}
+
+	// Загрузка кадров привидения (skeleton-animation_00.png ... 10)
+	g.ghostFrames = make([]*ebiten.Image, 11)
+	for i := 0; i <= 10; i++ {
+		filename := fmt.Sprintf("skeleton-animation_%02d.png", i)
+		img, err := loadPNG(filename)
+		if err != nil {
+			log.Printf("Не удалось загрузить %s: %v", filename, err)
+			// создаём заглушку (белый квадрат, чтобы не падать)
+			img = ebiten.NewImage(tileSize, tileSize)
+			img.Fill(color.White)
+		}
+		g.ghostFrames[i] = img
 	}
 
 	return g
@@ -222,6 +244,8 @@ func (g *Game) reset() {
 	g.particles = nil
 	g.ghostActive = false
 	g.ghostModeTimer = 0
+	g.ghostFrameIdx = 0
+	g.ghostAnimTimer = 0
 }
 
 func (g *Game) placeFruit() {
@@ -246,7 +270,6 @@ func (g *Game) placeFruit() {
 		}
 		if ok {
 			g.fruitX, g.fruitY = x, y
-			// Равные шансы для 5 фруктов (0..4)
 			g.fruitType = g.rng.Intn(5)
 			return
 		}
@@ -311,6 +334,8 @@ func (g *Game) spawnGhost() {
 				g.ghostActive = true
 				g.ghostX, g.ghostY = x, y
 				g.ghostMoveTimer = 0.5
+				g.ghostFrameIdx = 0
+				g.ghostAnimTimer = 0
 				return
 			}
 		}
@@ -337,6 +362,15 @@ func (g *Game) Update() error {
 		g.ghostModeTimer -= dt
 		if g.ghostModeTimer < 0 {
 			g.ghostModeTimer = 0
+		}
+	}
+
+	// Анимация призрака (если активен)
+	if g.ghostActive {
+		g.ghostAnimTimer += dt
+		if g.ghostAnimTimer >= 0.1 { // 10 кадров в секунду
+			g.ghostAnimTimer = 0
+			g.ghostFrameIdx = (g.ghostFrameIdx + 1) % len(g.ghostFrames)
 		}
 	}
 
@@ -566,7 +600,7 @@ func (g *Game) step() {
 		g.sndHeal.Play()
 	}
 
-	// Призрак
+	// Призрак (анимированный)
 	if g.ghostActive && newHead.X == g.ghostX && newHead.Y == g.ghostY {
 		g.ghostModeTimer = 5.0
 		g.ghostActive = false
@@ -692,7 +726,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		}
 	}
 
-	// Бомбы
+	// Бомбы (программная отрисовка – без изменений)
 	for _, b := range g.bombs {
 		cx := float64(b.X*tileSize+tileSize/2) + ox
 		cy := float64(b.Y*tileSize+tileSize/2) + oy
@@ -709,7 +743,6 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		ebitenutil.DrawCircle(screen, cx-2, cy-2, radius-2, color.RGBA{0, 0, 0, 100})
 		ebitenutil.DrawCircle(screen, cx-radius*0.3, cy-radius*0.35, radius*0.25, color.RGBA{255, 255, 255, 180})
 		ebitenutil.DrawCircle(screen, cx+radius*0.2, cy+radius*0.2, radius*0.2, color.RGBA{255, 80, 80, 120})
-
 		// Фитиль
 		fuseLen := 20.0 * (t / 5.0)
 		fuseStartX := cx + radius*0.7
@@ -722,7 +755,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		ebitenutil.DrawCircle(screen, fuseEndX, fuseEndY, fireSize*0.6, color.RGBA{255, 255, 100, 255})
 	}
 
-	// Змейка
+	// Змейка (без изменений)
 	for i, s := range g.snake {
 		x := float64(s.X*tileSize) + ox
 		y := float64(s.Y*tileSize) + oy
@@ -778,7 +811,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		}
 	}
 
-	// Фрукты (PNG), увеличенные в 1.5 раза
+	// Фрукты (PNG, увеличены в 1.5 раза – без изменений)
 	{
 		cx := float64(g.fruitX*tileSize+tileSize/2) + ox
 		cy := float64(g.fruitY*tileSize+tileSize/2) + oy
@@ -798,18 +831,17 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		if img != nil {
 			op := &ebiten.DrawImageOptions{}
 			w, h := img.Bounds().Dx(), img.Bounds().Dy()
-			scale := 1.5 // увеличиваем фрукты в 1.5 раза
+			scale := 1.5
 			op.GeoM.Scale(scale, scale)
 			op.GeoM.Translate(cx-float64(w)*scale/2, cy-float64(h)*scale/2)
 			op.GeoM.Translate(ox, oy)
 			screen.DrawImage(img, op)
 		} else {
-			// Заглушка – цветной квадрат
 			ebitenutil.DrawRect(screen, cx-float64(tileSize)/2+ox, cy-float64(tileSize)/2+oy, float64(tileSize), float64(tileSize), color.RGBA{200, 100, 50, 255})
 		}
 	}
 
-	// Лёд
+	// Лёд (программный – без изменений)
 	if g.iceActive {
 		cx := float64(g.ice.X*tileSize+tileSize/2) + ox
 		cy := float64(g.ice.Y*tileSize+tileSize/2) + oy
@@ -819,22 +851,23 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		ebitenutil.DrawCircle(screen, cx+radius*0.3, cy-radius*0.3, radius*0.25, color.RGBA{255, 255, 255, 200})
 	}
 
-	// Призрак
-	if g.ghostActive {
+	// Анимированный призрак (PNG)
+	if g.ghostActive && len(g.ghostFrames) > 0 {
 		cx := float64(g.ghostX*tileSize+tileSize/2) + ox
 		cy := float64(g.ghostY*tileSize+tileSize/2) + oy
-		radius := float64(tileSize) / 2 * 0.8
-		ebitenutil.DrawCircle(screen, cx, cy, radius, color.RGBA{220, 220, 255, 180})
-		ebitenutil.DrawCircle(screen, cx-radius*0.3, cy-radius*0.2, radius*0.2, color.RGBA{0, 0, 0, 200})
-		ebitenutil.DrawCircle(screen, cx+radius*0.3, cy-radius*0.2, radius*0.2, color.RGBA{0, 0, 0, 200})
-		// Рот
-		for a := 0.0; a <= math.Pi; a += 0.1 {
-			mx := cx + math.Sin(a)*radius*0.3
-			my := cy + radius*0.1 + math.Cos(a)*radius*0.2
-			ebitenutil.DrawRect(screen, mx-1, my-1, 2, 2, color.RGBA{0, 0, 0, 200})
-		}
-		for i := -1; i <= 1; i++ {
-			ebitenutil.DrawCircle(screen, cx+float64(i)*radius*0.4, cy+radius*0.7, radius*0.3, color.RGBA{220, 220, 255, 180})
+		frame := g.ghostFrames[g.ghostFrameIdx]
+		if frame != nil {
+			op := &ebiten.DrawImageOptions{}
+			w, h := frame.Bounds().Dx(), frame.Bounds().Dy()
+			// Масштабируем под размер клетки (32) или чуть меньше
+			scale := float64(tileSize) / float64(w)
+			op.GeoM.Scale(scale, scale)
+			op.GeoM.Translate(cx-float64(w)*scale/2, cy-float64(h)*scale/2)
+			op.GeoM.Translate(ox, oy)
+			screen.DrawImage(frame, op)
+		} else {
+			// fallback: прямоугольник
+			ebitenutil.DrawRect(screen, cx-float64(tileSize)/2+ox, cy-float64(tileSize)/2+oy, float64(tileSize), float64(tileSize), color.RGBA{255, 255, 255, 180})
 		}
 	}
 
@@ -873,7 +906,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		drawText("ПРИЗРАЧНЫЙ РЕЖИМ", screenW/2-100, screenH-60, color.RGBA{200, 200, 255, 255})
 	}
 
-	// Меню, пауза, game over
+	// Меню, пауза, game over (без изменений)
 	switch g.state {
 	case STATE_MENU:
 		ebitenutil.DrawRect(screen, 0, 0, screenW, screenH, color.RGBA{0, 0, 0, 255})
@@ -930,7 +963,7 @@ func minInt(a, b int) int {
 }
 
 // ------------------------------------------------
-// Аудио (синтез)
+// Аудио (синтез) – оставляем без изменений
 // ------------------------------------------------
 func newSound(ctx *audio.Context, data []byte) *audio.Player {
 	d, err := wav.Decode(ctx, bytes.NewReader(data))
