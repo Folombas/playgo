@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"image"
 	"image/color"
+	_ "image/jpeg"
 	_ "image/png"
 	"io"
 	"log"
@@ -71,6 +72,13 @@ type IceBlock struct {
 	X, Y int
 }
 
+type Viking struct {
+	X, Y   int
+	Frame  int
+	Timer  float64
+	Active bool
+}
+
 type Game struct {
 	rng            *mathrand.Rand
 	state          GameState
@@ -123,8 +131,13 @@ type Game struct {
 	roachActive    bool
 	roachX, roachY int
 	roachMoveTimer float64
+
+	vikingFrames    []*ebiten.Image
+	vikingList      []Viking
+	vikingSpawnTimer float64
 }
 
+// Исправленная функция загрузки PNG
 func loadPNG(path string) (*ebiten.Image, error) {
 	file, err := os.Open(path)
 	if err != nil {
@@ -138,8 +151,14 @@ func loadPNG(path string) (*ebiten.Image, error) {
 	return ebiten.NewImageFromImage(img), nil
 }
 
+// Исправленная загрузка спрайт-листа с явными размерами
 func loadSpriteSheet(path string, frameW, frameH, cols, rows int) ([]*ebiten.Image, error) {
-	img, err := loadPNG(path)
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	img, _, err := image.Decode(file)
 	if err != nil {
 		return nil, err
 	}
@@ -154,8 +173,40 @@ func loadSpriteSheet(path string, frameW, frameH, cols, rows int) ([]*ebiten.Ima
 			if x+frameW > sheetW || y+frameH > sheetH {
 				continue
 			}
-			frameImg := img.SubImage(image.Rect(x, y, x+frameW, y+frameH))
-			frames = append(frames, ebiten.NewImageFromImage(frameImg))
+			subImg := img.(interface {
+				SubImage(r image.Rectangle) image.Image
+			}).SubImage(image.Rect(x, y, x+frameW, y+frameH))
+			frames = append(frames, ebiten.NewImageFromImage(subImg))
+		}
+	}
+	return frames, nil
+}
+
+// Исправленная загрузка спрайт-листа с автоматическим определением размеров кадра
+func loadSpriteSheetAuto(path string, cols, rows int) ([]*ebiten.Image, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	img, _, err := image.Decode(file)
+	if err != nil {
+		return nil, err
+	}
+	bounds := img.Bounds()
+	sheetW := bounds.Dx()
+	sheetH := bounds.Dy()
+	frameW := sheetW / cols
+	frameH := sheetH / rows
+	var frames []*ebiten.Image
+	for row := 0; row < rows; row++ {
+		for col := 0; col < cols; col++ {
+			x := col * frameW
+			y := row * frameH
+			subImg := img.(interface {
+				SubImage(r image.Rectangle) image.Image
+			}).SubImage(image.Rect(x, y, x+frameW, y+frameH))
+			frames = append(frames, ebiten.NewImageFromImage(subImg))
 		}
 	}
 	return frames, nil
@@ -163,20 +214,21 @@ func loadSpriteSheet(path string, frameW, frameH, cols, rows int) ([]*ebiten.Ima
 
 func NewGame() *Game {
 	g := &Game{
-		rng:            mathrand.New(mathrand.NewSource(time.Now().UnixNano())),
-		state:          STATE_MENU,
-		speed:          9,
-		health:         maxHealth,
-		menuPulse:      0,
-		menuSelected:   0,
-		menuButtons:    []string{"Начать игру", "Продолжить", "Новая игра", "Выйти из игры"},
-		iceActive:      false,
-		frozenTimer:    0,
-		ghostActive:    false,
-		ghostModeTimer: 0,
-		ghostFrameIdx:  0,
-		ghostAnimTimer: 0,
-		roachActive:    false,
+		rng:             mathrand.New(mathrand.NewSource(time.Now().UnixNano())),
+		state:           STATE_MENU,
+		speed:           9,
+		health:          maxHealth,
+		menuPulse:       0,
+		menuSelected:    0,
+		menuButtons:     []string{"Начать игру", "Продолжить", "Новая игра", "Выйти из игры"},
+		iceActive:       false,
+		frozenTimer:     0,
+		ghostActive:     false,
+		ghostModeTimer:  0,
+		ghostFrameIdx:   0,
+		ghostAnimTimer:  0,
+		roachActive:     false,
+		vikingSpawnTimer: 0,
 	}
 	g.reset()
 	g.audioCtx = audio.NewContext(44100)
@@ -237,6 +289,13 @@ func NewGame() *Game {
 		g.roachMoveTimer = 0.5
 	}
 
+	vikingFrames, err := loadSpriteSheetAuto("2204_w053_n004_9_medicharacters_p1_9.jpg", 5, 2)
+	if err != nil {
+		log.Printf("Не удалось загрузить викингов: %v", err)
+	} else {
+		g.vikingFrames = vikingFrames
+	}
+
 	return g
 }
 
@@ -286,6 +345,8 @@ func (g *Game) reset() {
 		g.roachMoveTimer = 0.5
 		g.roachFrameIdx = 0
 	}
+	g.vikingList = nil
+	g.vikingSpawnTimer = 3.0
 }
 
 func (g *Game) placeFruit() {
@@ -382,6 +443,51 @@ func (g *Game) spawnGhost() {
 	}
 }
 
+func (g *Game) spawnViking() {
+	if len(g.vikingList) >= 3 {
+		return
+	}
+	for i := 0; i < 200; i++ {
+		x := g.rng.Intn(gridW)
+		y := g.rng.Intn(gridH)
+		if !g.isCellOccupied(x, y) {
+			g.vikingList = append(g.vikingList, Viking{
+				X:      x,
+				Y:      y,
+				Frame:  0,
+				Timer:  0,
+				Active: true,
+			})
+			return
+		}
+	}
+}
+
+func (g *Game) isCellOccupied(x, y int) bool {
+	for _, s := range g.snake {
+		if s.X == x && s.Y == y {
+			return true
+		}
+	}
+	for _, b := range g.bombs {
+		if b.X == x && b.Y == y {
+			return true
+		}
+	}
+	if g.iceActive && g.ice.X == x && g.ice.Y == y {
+		return true
+	}
+	if g.ghostActive && g.ghostX == x && g.ghostY == y {
+		return true
+	}
+	for _, v := range g.vikingList {
+		if v.X == x && v.Y == y {
+			return true
+		}
+	}
+	return false
+}
+
 func (g *Game) Update() error {
 	dt := 1.0 / 60.0
 	g.menuPulse += 0.05
@@ -404,7 +510,6 @@ func (g *Game) Update() error {
 		}
 	}
 
-	// Анимация призрака
 	if g.ghostActive {
 		g.ghostAnimTimer += dt
 		if g.ghostAnimTimer >= 0.1 {
@@ -413,7 +518,6 @@ func (g *Game) Update() error {
 		}
 	}
 
-	// Движение призрака
 	if g.ghostActive && g.state == STATE_PLAYING {
 		g.ghostMoveTimer -= dt
 		if g.ghostMoveTimer <= 0 {
@@ -436,7 +540,6 @@ func (g *Game) Update() error {
 		}
 	}
 
-	// Таракан: движение и анимация (кадр меняется ТОЛЬКО при движении)
 	if g.roachActive && g.state == STATE_PLAYING {
 		g.roachMoveTimer -= dt
 		if g.roachMoveTimer <= 0 {
@@ -452,9 +555,8 @@ func (g *Game) Update() error {
 				dy = -1
 			}
 			nx, ny := g.roachX+dx, g.roachY+dy
-			if nx >= 0 && nx < gridW && ny >= 0 && ny < gridH {
+			if nx >= 0 && nx < gridW && ny >= 0 && ny < gridH && !g.isCellOccupied(nx, ny) {
 				g.roachX, g.roachY = nx, ny
-				// Следующий кадр
 				if len(g.roachFrames) > 0 {
 					g.roachFrameIdx = (g.roachFrameIdx + 1) % len(g.roachFrames)
 				}
@@ -463,7 +565,50 @@ func (g *Game) Update() error {
 		}
 	}
 
-	// ESC - меню
+	if g.state == STATE_PLAYING {
+		g.vikingSpawnTimer -= dt
+		if g.vikingSpawnTimer <= 0 && len(g.vikingList) < 3 {
+			g.spawnViking()
+			g.vikingSpawnTimer = 10.0
+		}
+		for i := 0; i < len(g.vikingList); i++ {
+			v := &g.vikingList[i]
+			v.Timer += dt
+			if v.Timer >= 0.1 {
+				v.Timer = 0
+				v.Frame = (v.Frame + 1) % len(g.vikingFrames)
+			}
+			if g.rng.Float64() < 0.02 {
+				dx, dy := 0, 0
+				switch g.rng.Intn(4) {
+				case 0:
+					dx = 1
+				case 1:
+					dx = -1
+				case 2:
+					dy = 1
+				case 3:
+					dy = -1
+				}
+				nx, ny := v.X+dx, v.Y+dy
+				if nx >= 0 && nx < gridW && ny >= 0 && ny < gridH && !g.isCellOccupied(nx, ny) {
+					v.X, v.Y = nx, ny
+				}
+			}
+			if v.Active && g.snake[0].X == v.X && g.snake[0].Y == v.Y {
+				g.health -= 20
+				g.addParticles(float64(v.X*tileSize+tileSize/2), float64(v.Y*tileSize+tileSize/2), 40, color.RGBA{200, 50, 50, 255}, true)
+				g.sndHeal.Rewind()
+				g.sndHeal.Play()
+				g.vikingList = append(g.vikingList[:i], g.vikingList[i+1:]...)
+				i--
+				if g.health <= 0 {
+					g.state = STATE_GAMEOVER
+				}
+			}
+		}
+	}
+
 	if ebiten.IsKeyPressed(ebiten.KeyEscape) && g.pauseCooldown <= 0 {
 		if g.state == STATE_PLAYING || g.state == STATE_PAUSED || g.state == STATE_GAMEOVER {
 			g.state = STATE_MENU
@@ -478,7 +623,6 @@ func (g *Game) Update() error {
 		g.pauseCooldown = 0.3
 	}
 
-	// Пауза по P
 	if ebiten.IsKeyPressed(ebiten.KeyP) && g.pauseCooldown <= 0 && (g.state == STATE_PLAYING || g.state == STATE_PAUSED) {
 		if g.state == STATE_PLAYING {
 			g.state = STATE_PAUSED
@@ -490,7 +634,6 @@ func (g *Game) Update() error {
 		g.pauseCooldown = 0.3
 	}
 
-	// Меню
 	if g.state == STATE_MENU {
 		prev := g.menuSelected
 		if ebiten.IsKeyPressed(ebiten.KeyUp) && g.pauseCooldown <= 0 {
@@ -539,7 +682,6 @@ func (g *Game) Update() error {
 		return nil
 	}
 
-	// Управление змейкой
 	if ebiten.IsKeyPressed(ebiten.KeyUp) && g.dir.Y != 1 {
 		g.nextDir = Vec{0, -1}
 	}
@@ -560,7 +702,6 @@ func (g *Game) Update() error {
 		g.step()
 	}
 
-	// Обновление бомб
 	for i := 0; i < len(g.bombs); i++ {
 		g.bombs[i].Timer -= dt
 		if g.bombs[i].Timer <= 0 {
@@ -569,7 +710,6 @@ func (g *Game) Update() error {
 		}
 	}
 
-	// Частицы
 	for i := 0; i < len(g.particles); i++ {
 		p := &g.particles[i]
 		p.X += p.VX
@@ -645,7 +785,6 @@ func (g *Game) step() {
 		g.snake = g.snake[:len(g.snake)-1]
 	}
 
-	// Бомбы
 	for i := 0; i < len(g.bombs); i++ {
 		if g.bombs[i].X == newHead.X && g.bombs[i].Y == newHead.Y {
 			g.health -= 35
@@ -655,7 +794,6 @@ func (g *Game) step() {
 		}
 	}
 
-	// Лёд
 	if g.iceActive && newHead.X == g.ice.X && newHead.Y == g.ice.Y {
 		g.frozenTimer = 5.0
 		g.iceActive = false
@@ -664,7 +802,6 @@ func (g *Game) step() {
 		g.sndHeal.Play()
 	}
 
-	// Призрак
 	if g.ghostActive && newHead.X == g.ghostX && newHead.Y == g.ghostY {
 		g.ghostModeTimer = 5.0
 		g.ghostActive = false
@@ -759,11 +896,11 @@ func (g *Game) addParticles(x, y float64, n int, c color.RGBA, glow bool) {
 		a := g.rng.Float64() * 2 * math.Pi
 		s := g.rng.Float64()*4 + 1.5
 		g.particles = append(g.particles, Particle{
-			X:    x,
-			Y:    y,
-			VX:   math.Cos(a) * s,
-			VY:   math.Sin(a) * s,
-			Life: g.rng.Float64()*1.5 + 0.4,
+			X:     x,
+			Y:     y,
+			VX:    math.Cos(a) * s,
+			VY:    math.Sin(a) * s,
+			Life:  g.rng.Float64()*1.5 + 0.4,
 			Color: c,
 			Size:  g.rng.Float64()*4 + 2,
 			Glow:  glow,
@@ -940,6 +1077,21 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		}
 	}
 
+	if len(g.vikingFrames) > 0 {
+		for _, v := range g.vikingList {
+			cx := float64(v.X*tileSize+tileSize/2) + ox
+			cy := float64(v.Y*tileSize+tileSize/2) + oy
+			frame := g.vikingFrames[v.Frame%len(g.vikingFrames)]
+			op := &ebiten.DrawImageOptions{}
+			w, h := frame.Bounds().Dx(), frame.Bounds().Dy()
+			scale := float64(tileSize) / float64(w)
+			op.GeoM.Scale(scale, scale)
+			op.GeoM.Translate(cx-float64(w)*scale/2, cy-float64(h)*scale/2)
+			op.GeoM.Translate(ox, oy)
+			screen.DrawImage(frame, op)
+		}
+	}
+
 	for _, p := range g.particles {
 		c := p.Color
 		if p.Glow {
@@ -1025,9 +1177,9 @@ func minInt(a, b int) int {
 	return b
 }
 
-// --------------------------------------------------
-// Аудиосистема
-// --------------------------------------------------
+// ------------------------------------------------
+// Аудио (синтез)
+// ------------------------------------------------
 func newSound(ctx *audio.Context, data []byte) *audio.Player {
 	d, err := wav.Decode(ctx, bytes.NewReader(data))
 	if err != nil {
