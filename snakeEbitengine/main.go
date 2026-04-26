@@ -84,10 +84,10 @@ type Gift struct {
 }
 
 type Coin struct {
-	X, Y int
-	Frame int
-	Timer float64
-	Life  float64 // время жизни в секундах
+	X, Y   int
+	Frame  int
+	Timer  float64
+	Life   float64
 }
 
 type Key struct {
@@ -151,19 +151,18 @@ type Game struct {
 	roachX, roachY int
 	roachMoveTimer float64
 
-	vikingFrames    []*ebiten.Image
-	vikingList      []Viking
+	vikingFrames     []*ebiten.Image
+	vikingList       []Viking
 	vikingSpawnTimer float64
 
-	// Новые объекты
-	gifts        []Gift
-	coins        []Coin
-	key          Key
+	gifts         []Gift
+	coins         []Coin
+	key           Key
 	keySpawnTimer float64
-	coinCount    int
+	coinCount     int
 }
 
-// Функции для удаления фона (викинги)
+// Удаление белого фона для викингов
 func makeColorTransparent(img *ebiten.Image, targetColor color.Color) *ebiten.Image {
 	bounds := img.Bounds()
 	w, h := bounds.Dx(), bounds.Dy()
@@ -211,7 +210,7 @@ func loadPNG(path string) (*ebiten.Image, error) {
 	return ebiten.NewImageFromImage(img), nil
 }
 
-// Загрузка спрайт-листа (произвольные размеры)
+// Загрузка спрайт-листа с явными размерами
 func loadSpriteSheet(path string, frameW, frameH, cols, rows int, removeBg bool, bgColor color.Color) ([]*ebiten.Image, error) {
 	file, err := os.Open(path)
 	if err != nil {
@@ -246,7 +245,7 @@ func loadSpriteSheet(path string, frameW, frameH, cols, rows int, removeBg bool,
 	return frames, nil
 }
 
-// Автоматическое определение размеров кадра
+// Автоматическая загрузка спрайт-листа
 func loadSpriteSheetAuto(path string, cols, rows int, removeBg bool, bgColor color.Color) ([]*ebiten.Image, error) {
 	file, err := os.Open(path)
 	if err != nil {
@@ -265,24 +264,24 @@ func loadSpriteSheetAuto(path string, cols, rows int, removeBg bool, bgColor col
 
 func NewGame() *Game {
 	g := &Game{
-		rng:             mathrand.New(mathrand.NewSource(time.Now().UnixNano())),
-		state:           STATE_MENU,
-		speed:           9,
-		health:          maxHealth,
-		menuPulse:       0,
-		menuSelected:    0,
-		menuButtons:     []string{"Начать игру", "Продолжить", "Новая игра", "Выйти из игры"},
-		iceActive:       false,
-		frozenTimer:     0,
-		ghostActive:     false,
-		ghostModeTimer:  0,
-		ghostFrameIdx:   0,
-		ghostAnimTimer:  0,
-		roachActive:     false,
+		rng:              mathrand.New(mathrand.NewSource(time.Now().UnixNano())),
+		state:            STATE_MENU,
+		speed:            9,
+		health:           maxHealth,
+		menuPulse:        0,
+		menuSelected:     0,
+		menuButtons:      []string{"Начать игру", "Продолжить", "Новая игра", "Выйти из игры"},
+		iceActive:        false,
+		frozenTimer:      0,
+		ghostActive:      false,
+		ghostModeTimer:   0,
+		ghostFrameIdx:    0,
+		ghostAnimTimer:   0,
+		roachActive:      false,
 		vikingSpawnTimer: 0,
-		keySpawnTimer:   30.0,
-		key:             Key{Active: false},
-		coinCount:       0,
+		keySpawnTimer:    30.0,
+		key:              Key{Active: false},
+		coinCount:        0,
 	}
 	g.reset()
 	g.audioCtx = audio.NewContext(44100)
@@ -323,7 +322,6 @@ func NewGame() *Game {
 		log.Printf("pineapple.png не загружен: %v", err)
 	}
 
-	// Призрак (11 кадров)
 	g.ghostFrames = make([]*ebiten.Image, 11)
 	for i := 0; i <= 10; i++ {
 		filename := fmt.Sprintf("skeleton-animation_%02d.png", i)
@@ -336,7 +334,6 @@ func NewGame() *Game {
 		g.ghostFrames[i] = img
 	}
 
-	// Таракан
 	roachFrames, err := loadSpriteSheet("roach.png", 32, 32, 4, 5, false, nil)
 	if err != nil {
 		log.Printf("roach.png не загружен: %v", err)
@@ -348,7 +345,6 @@ func NewGame() *Game {
 		g.roachMoveTimer = 0.5
 	}
 
-	// Викинги (с удалением белого фона)
 	vikingFrames, err := loadSpriteSheetAuto("2204_w053_n004_9_medicharacters_p1_9.jpg", 5, 2, true, color.White)
 	if err != nil {
 		log.Printf("Не удалось загрузить викингов: %v", err)
@@ -356,7 +352,7 @@ func NewGame() *Game {
 		g.vikingFrames = vikingFrames
 	}
 
-	// Создание подарков (5 штук в случайных местах)
+	// Создание 5 подарков
 	g.gifts = nil
 	for i := 0; i < 5; i++ {
 		for tries := 0; tries < 200; tries++ {
@@ -424,7 +420,7 @@ func (g *Game) reset() {
 	g.keySpawnTimer = 30.0
 	g.coins = nil
 	g.coinCount = 0
-	// Пересоздаём подарки (но не пересоздаём, т.к. gifts уже созданы в NewGame)
+	// Подарки не пересоздаём при рестарте? Лучше оставить существующие.
 }
 
 func (g *Game) placeFruit() {
@@ -602,7 +598,6 @@ func (g *Game) collectKey() {
 		g.addParticles(float64(g.key.X*tileSize+tileSize/2), float64(g.key.Y*tileSize+tileSize/2), 50, color.RGBA{255, 215, 0, 255}, true)
 		g.sndKey.Rewind()
 		g.sndKey.Play()
-		// Можно добавить тряску камеры
 		g.shake = 6
 	}
 }
@@ -611,44 +606,42 @@ func (g *Game) openGiftAt(giftIdx int) {
 	if giftIdx < 0 || giftIdx >= len(g.gifts) {
 		return
 	}
-	// Проверяем, что голова змейки находится на клетке подарка
 	gift := g.gifts[giftIdx]
 	if g.snake[0].X != gift.X || g.snake[0].Y != gift.Y {
 		return
 	}
-	// Удаляем подарок
 	g.gifts = append(g.gifts[:giftIdx], g.gifts[giftIdx+1:]...)
-	// Визуальный эффект открытия
 	g.addParticles(float64(gift.X*tileSize+tileSize/2), float64(gift.Y*tileSize+tileSize/2), 70, color.RGBA{255, 200, 100, 255}, true)
 	g.sndGiftOpen.Rewind()
 	g.sndGiftOpen.Play()
-	// Создаём монетки (от 3 до 7 штук)
 	coinCount := g.rng.Intn(5) + 3
 	for i := 0; i < coinCount; i++ {
-		// Разбрасываем монетки на соседние клетки (включая ту же)
 		dx := g.rng.Intn(3) - 1
 		dy := g.rng.Intn(3) - 1
 		nx := gift.X + dx
 		ny := gift.Y + dy
-		if nx < 0 { nx = 0 }
-		if nx >= gridW { nx = gridW - 1 }
-		if ny < 0 { ny = 0 }
-		if ny >= gridH { ny = gridH - 1 }
-		// Проверяем, не занята ли клетка змейкой или другими объектами? Для простоты разрешаем оверлап, монетки будут собираться при движении.
-		// Но чтобы не накладывать на голову, лучше немного смещать.
+		if nx < 0 {
+			nx = 0
+		}
+		if nx >= gridW {
+			nx = gridW - 1
+		}
+		if ny < 0 {
+			ny = 0
+		}
+		if ny >= gridH {
+			ny = gridH - 1
+		}
 		g.coins = append(g.coins, Coin{X: nx, Y: ny, Frame: 0, Timer: 0, Life: 5.0})
 	}
 }
 
 func (g *Game) collectCoin(coinIdx int) {
-	// начисляем монетку
 	g.coinCount++
 	g.sndCoin.Rewind()
 	g.sndCoin.Play()
-	// частицы
 	coin := g.coins[coinIdx]
 	g.addParticles(float64(coin.X*tileSize+tileSize/2), float64(coin.Y*tileSize+tileSize/2), 20, color.RGBA{255, 215, 0, 180}, true)
-	// удаляем монетку
 	g.coins = append(g.coins[:coinIdx], g.coins[coinIdx+1:]...)
 }
 
@@ -775,7 +768,7 @@ func (g *Game) Update() error {
 		}
 	}
 
-	// Ключ – спавн раз в 30 секунд
+	// Ключ
 	if g.state == STATE_PLAYING {
 		g.keySpawnTimer -= dt
 		if g.keySpawnTimer <= 0 && !g.key.Active {
@@ -784,7 +777,7 @@ func (g *Game) Update() error {
 		}
 	}
 
-	// Монетки – обновление таймера жизни
+	// Монетки: обновление таймера жизни и анимации
 	for i := 0; i < len(g.coins); i++ {
 		g.coins[i].Life -= dt
 		if g.coins[i].Life <= 0 {
@@ -792,17 +785,15 @@ func (g *Game) Update() error {
 			i--
 			continue
 		}
-		// Анимация монеток (смена кадров)
 		g.coins[i].Timer += dt
 		if g.coins[i].Timer >= 0.1 {
 			g.coins[i].Timer = 0
-			g.coins[i].Frame = (g.coins[i].Frame + 1) % 4 // 4 кадра от coin_01 до coin_04
+			g.coins[i].Frame = (g.coins[i].Frame + 1) % 4
 		}
 	}
 
-	// Обработка ввода для открытия подарка (K)
+	// Открытие подарка по клавише K
 	if g.state == STATE_PLAYING && ebiten.IsKeyPressed(ebiten.KeyK) && g.pauseCooldown <= 0 {
-		// Ищем подарок на клетке головы
 		head := g.snake[0]
 		for i, gift := range g.gifts {
 			if gift.X == head.X && gift.Y == head.Y {
@@ -810,7 +801,7 @@ func (g *Game) Update() error {
 				break
 			}
 		}
-		g.pauseCooldown = 0.2 // небольшая задержка, чтобы не срабатывало несколько раз
+		g.pauseCooldown = 0.2
 	}
 
 	// Сбор ключа
@@ -829,8 +820,7 @@ func (g *Game) Update() error {
 		}
 	}
 
-	// Остальная логика (меню, управление змейкой и т.д.) без изменений
-	// ---------- Меню и пауза ----------
+	// ESC-меню
 	if ebiten.IsKeyPressed(ebiten.KeyEscape) && g.pauseCooldown <= 0 {
 		if g.state == STATE_PLAYING || g.state == STATE_PAUSED || g.state == STATE_GAMEOVER {
 			g.state = STATE_MENU
@@ -844,6 +834,8 @@ func (g *Game) Update() error {
 		}
 		g.pauseCooldown = 0.3
 	}
+
+	// Пауза по P
 	if ebiten.IsKeyPressed(ebiten.KeyP) && g.pauseCooldown <= 0 && (g.state == STATE_PLAYING || g.state == STATE_PAUSED) {
 		if g.state == STATE_PLAYING {
 			g.state = STATE_PAUSED
@@ -854,6 +846,8 @@ func (g *Game) Update() error {
 		g.sndPause.Play()
 		g.pauseCooldown = 0.3
 	}
+
+	// Меню
 	if g.state == STATE_MENU {
 		prev := g.menuSelected
 		if ebiten.IsKeyPressed(ebiten.KeyUp) && g.pauseCooldown <= 0 {
@@ -889,6 +883,7 @@ func (g *Game) Update() error {
 		}
 		return nil
 	}
+
 	if g.state == STATE_PAUSED {
 		return nil
 	}
@@ -922,7 +917,7 @@ func (g *Game) Update() error {
 		g.step()
 	}
 
-	// Обновление бомб
+	// Бомбы
 	for i := 0; i < len(g.bombs); i++ {
 		g.bombs[i].Timer -= dt
 		if g.bombs[i].Timer <= 0 {
@@ -1236,7 +1231,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		}
 	}
 
-	// Фрукты (увеличены в 1.5 раза)
+	// Фрукты
 	{
 		cx := float64(g.fruitX*tileSize+tileSize/2) + ox
 		cy := float64(g.fruitY*tileSize+tileSize/2) + oy
@@ -1325,10 +1320,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	}
 
 	// Подарки
-	giftImg, _ := loadPNG("gift_01a.png") // загружаем один раз? Лучше в NewGame, но для простоты здесь
-	if giftImg == nil {
-		giftImg, _ = loadPNG("gift_01a.png")
-	}
+	giftImg, _ := loadPNG("gift_01a.png")
 	if giftImg != nil {
 		for _, gft := range g.gifts {
 			cx := float64(gft.X*tileSize+tileSize/2) + ox
@@ -1410,10 +1402,14 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	ebitenutil.DrawRect(screen, barX-barW, 10, barW*healthPct, barH, color.RGBA{50, 255, 80, 255})
 	drawText("ЗДОРОВЬЕ", int(barX-barW+40), 25, color.White)
 
-	// Счётчик монеток (справа, ниже шкалы здоровья)
-	coinCountText := "Монеты: " + strconv.Itoa(g.coinCount)
-	textWidth := len(coinCountText) * 12 // приблизительно
-	drawText(coinCountText, int(barX-barW+150-textWidth), 25, color.RGBA{255, 215, 0, 255})
+	// Счётчик монет (исправлено приведение типов)
+	coinText := "Монеты: " + strconv.Itoa(g.coinCount)
+	textWidth := len(coinText) * 12
+	xPos := int(barX-barW+150) - textWidth
+	if xPos < 10 {
+		xPos = 10
+	}
+	drawText(coinText, xPos, 45, color.RGBA{255, 215, 0, 255})
 
 	drawText("ESC - меню", screenW-100, screenH-20, color.White)
 	drawText("P - пауза", screenW-100, screenH-40, color.White)
@@ -1478,9 +1474,9 @@ func minInt(a, b int) int {
 	return b
 }
 
-// ------------------------------------------------
-// Аудио (синтез) – добавляем новые звуки
-// ------------------------------------------------
+// --------------------------------------------------
+// Аудио (синтез) – все звуки остаются теми же
+// --------------------------------------------------
 func newSound(ctx *audio.Context, data []byte) *audio.Player {
 	d, err := wav.Decode(ctx, bytes.NewReader(data))
 	if err != nil {
