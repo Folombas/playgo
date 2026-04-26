@@ -80,12 +80,10 @@ type Viking struct {
 }
 
 type Gift struct {
-	X, Y          int
-	Type          int // 0..5 для gift_01a...f
-	Opened        bool
-	OpenFrameIdx  int
-	OpenAnimTimer float64
-	Life          float64
+	X, Y   int
+	Color  int
+	Opened bool
+	Life   float64
 }
 
 type Coin struct {
@@ -96,9 +94,9 @@ type Coin struct {
 }
 
 type KeyOnField struct {
-	X, Y     int
-	Active   bool
-	Life     float64
+	X, Y   int
+	Active bool
+	Life   float64
 }
 
 type Game struct {
@@ -163,18 +161,20 @@ type Game struct {
 	vikingSpawnTimer float64
 
 	gifts          []*Gift
-	giftClosedImgs []*ebiten.Image // 6 цветов
-	giftOpenFrames []*ebiten.Image // 6 кадров анимации
+	giftClosedImgs []*ebiten.Image
+	giftOpenFrames []*ebiten.Image
 	coins          []Coin
 	coinCount      int
+	coinFrames     []*ebiten.Image
 	keysCollected  int
 	carryingKey    bool
 	keySpawnTimer  float64
 	keyOnField     KeyOnField
+	keyImg         *ebiten.Image
 }
 
 // -----------------------------------------------------------------------------
-// Вспомогательные функции загрузки
+// Вспомогательные функции
 // -----------------------------------------------------------------------------
 func makeColorTransparent(img *ebiten.Image, targetColor color.Color) *ebiten.Image {
 	bounds := img.Bounds()
@@ -292,11 +292,11 @@ func NewGame() *Game {
 		ghostAnimTimer:   0,
 		roachActive:      false,
 		vikingSpawnTimer: 0,
-		keySpawnTimer:    15.0,
+		keySpawnTimer:    5.0,
 		keysCollected:    0,
 		carryingKey:      false,
 		coinCount:        0,
-		keyOnField:       KeyOnField{Active: false, Life: 0},
+		keyOnField:       KeyOnField{Active: false},
 	}
 	g.reset()
 	g.audioCtx = audio.NewContext(44100)
@@ -384,7 +384,7 @@ func NewGame() *Game {
 		g.giftClosedImgs[i] = img
 	}
 
-	// Открытые подарки (анимация 6 кадров)
+	// Открытые подарки (6 кадров)
 	g.giftOpenFrames = make([]*ebiten.Image, 6)
 	for i := 0; i < 6; i++ {
 		filename := fmt.Sprintf("giftopen_%02da.png", i+1)
@@ -397,21 +397,43 @@ func NewGame() *Game {
 		g.giftOpenFrames[i] = img
 	}
 
+	// Монетки (4 кадра)
+	g.coinFrames = make([]*ebiten.Image, 4)
+	for i := 0; i < 4; i++ {
+		filename := fmt.Sprintf("coin_%02da.png", i+1)
+		img, err := loadPNG(filename)
+		if err != nil {
+			log.Printf("Не удалось загрузить %s: %v", filename, err)
+			img = ebiten.NewImage(tileSize, tileSize)
+			img.Fill(color.RGBA{255, 215, 0, 255})
+		}
+		g.coinFrames[i] = img
+	}
+
+	// Ключ
+	g.keyImg, err = loadPNG("key_02d.png")
+	if err != nil {
+		log.Printf("key_02d.png не загружен: %v", err)
+		g.keyImg = ebiten.NewImage(tileSize, tileSize)
+		g.keyImg.Fill(color.RGBA{255, 215, 0, 255})
+	}
+
 	g.createGifts()
 	return g
 }
 
 func (g *Game) createGifts() {
 	g.gifts = nil
-	for i := 0; i < 5; i++ {
-		for tries := 0; tries < 200; tries++ {
+	numGifts := 6
+	for i := 0; i < numGifts; i++ {
+		for tries := 0; tries < 500; tries++ {
 			x := g.rng.Intn(gridW)
 			y := g.rng.Intn(gridH)
 			if !g.isCellOccupied(x, y) {
 				g.gifts = append(g.gifts, &Gift{
 					X:      x,
 					Y:      y,
-					Type:   g.rng.Intn(6),
+					Color:  g.rng.Intn(6),
 					Opened: false,
 					Life:   0,
 				})
@@ -471,9 +493,8 @@ func (g *Game) reset() {
 	g.vikingSpawnTimer = 3.0
 	g.keysCollected = 0
 	g.carryingKey = false
-	g.keySpawnTimer = 15.0
+	g.keySpawnTimer = 5.0
 	g.keyOnField.Active = false
-	g.keyOnField.Life = 0
 	g.coins = nil
 	g.coinCount = 0
 	g.createGifts()
@@ -647,8 +668,6 @@ func (g *Game) openGift(gift *Gift) {
 	}
 	g.carryingKey = false
 	gift.Opened = true
-	gift.OpenFrameIdx = 0
-	gift.OpenAnimTimer = 0
 	gift.Life = 5.0
 	g.sndGiftOpen.Rewind()
 	g.sndGiftOpen.Play()
@@ -859,25 +878,17 @@ func (g *Game) Update() error {
 		if g.keyOnField.Active {
 			g.keyOnField.Life -= dt
 			if g.keyOnField.Life <= 0 {
-				// Эффект исчезновения ключа
-				g.addParticles(float64(g.keyOnField.X*tileSize+tileSize/2), float64(g.keyOnField.Y*tileSize+tileSize/2), 30, color.RGBA{255, 215, 0, 100}, true)
 				g.keyOnField.Active = false
 			}
 		}
 		g.collectKeyFromField()
 	}
 
-	// Открытые подарки: анимация и угасание
+	// Открытые подарки: обновление жизни
 	for i := 0; i < len(g.gifts); i++ {
-		gift := g.gifts[i]
-		if gift.Opened {
-			gift.OpenAnimTimer += dt
-			if gift.OpenAnimTimer >= 0.1 && gift.OpenFrameIdx < len(g.giftOpenFrames)-1 {
-				gift.OpenAnimTimer = 0
-				gift.OpenFrameIdx++
-			}
-			gift.Life -= dt
-			if gift.Life <= 0 {
+		if g.gifts[i].Opened {
+			g.gifts[i].Life -= dt
+			if g.gifts[i].Life <= 0 {
 				g.gifts = append(g.gifts[:i], g.gifts[i+1:]...)
 				i--
 			}
@@ -1423,34 +1434,28 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		}
 	}
 
-	// Подарки (закрытые и открытые)
+	// Подарки
 	for _, gift := range g.gifts {
 		cx := float64(gift.X*tileSize+tileSize/2) + ox
 		cy := float64(gift.Y*tileSize+tileSize/2) + oy
 		var img *ebiten.Image
 		if gift.Opened {
-			if gift.OpenFrameIdx < len(g.giftOpenFrames) {
-				img = g.giftOpenFrames[gift.OpenFrameIdx]
-			} else {
-				img = g.giftOpenFrames[len(g.giftOpenFrames)-1]
-			}
+			// Используем первый кадр открытого подарка (статический)
+			img = g.giftOpenFrames[0]
 			op := &ebiten.DrawImageOptions{}
 			w, h := img.Bounds().Dx(), img.Bounds().Dy()
 			scale := float64(tileSize) / float64(w)
 			op.GeoM.Scale(scale, scale)
 			op.GeoM.Translate(cx-float64(w)*scale/2, cy-float64(h)*scale/2)
 			op.GeoM.Translate(ox, oy)
-			if gift.Life < 2.0 {
-				alpha := float32(gift.Life / 2.0)
-				if alpha < 0 {
-					alpha = 0
-				}
+			if gift.Life < 2.0 && gift.Life > 0 {
+				alpha := gift.Life / 2.0
 				op.ColorM.Scale(1, 1, 1, alpha)
 			}
 			screen.DrawImage(img, op)
 		} else {
-			if gift.Type < len(g.giftClosedImgs) {
-				img = g.giftClosedImgs[gift.Type]
+			if gift.Color >= 0 && gift.Color < len(g.giftClosedImgs) {
+				img = g.giftClosedImgs[gift.Color]
 			} else {
 				img = g.giftClosedImgs[0]
 			}
@@ -1465,49 +1470,41 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	}
 
 	// Ключ на поле
-	if g.keyOnField.Active {
-		keyImg, _ := loadPNG("key_02d.png")
-		if keyImg != nil {
-			cx := float64(g.keyOnField.X*tileSize+tileSize/2) + ox
-			cy := float64(g.keyOnField.Y*tileSize+tileSize/2) + oy
-			op := &ebiten.DrawImageOptions{}
-			w, h := keyImg.Bounds().Dx(), keyImg.Bounds().Dy()
-			scale := float64(tileSize) / float64(w)
-			op.GeoM.Scale(scale, scale)
-			op.GeoM.Translate(cx-float64(w)*scale/2, cy-float64(h)*scale/2)
-			op.GeoM.Translate(ox, oy)
-			// Плавное исчезновение за последнюю секунду
-			if g.keyOnField.Life < 1.0 {
-				alpha := float32(g.keyOnField.Life)
-				op.ColorM.Scale(1, 1, 1, alpha)
-			}
-			screen.DrawImage(keyImg, op)
+	if g.keyOnField.Active && g.keyImg != nil {
+		cx := float64(g.keyOnField.X*tileSize+tileSize/2) + ox
+		cy := float64(g.keyOnField.Y*tileSize+tileSize/2) + oy
+		op := &ebiten.DrawImageOptions{}
+		w, h := g.keyImg.Bounds().Dx(), g.keyImg.Bounds().Dy()
+		scale := float64(tileSize) / float64(w)
+		op.GeoM.Scale(scale, scale)
+		op.GeoM.Translate(cx-float64(w)*scale/2, cy-float64(h)*scale/2)
+		op.GeoM.Translate(ox, oy)
+		if g.keyOnField.Life < 2.0 {
+			alpha := g.keyOnField.Life / 2.0
+			op.ColorM.Scale(1, 1, 1, alpha)
 		}
+		screen.DrawImage(g.keyImg, op)
 	}
 
 	// Монетки
-	coinImgs := make([]*ebiten.Image, 4)
-	for i := 0; i < 4; i++ {
-		filename := fmt.Sprintf("coin_%02da.png", i+1)
-		coinImgs[i], _ = loadPNG(filename)
-	}
 	for _, c := range g.coins {
-		if len(coinImgs) == 0 {
+		if len(g.coinFrames) == 0 {
 			continue
 		}
-		frameIdx := c.Frame % 4
-		if coinImgs[frameIdx] == nil {
+		frameIdx := c.Frame % len(g.coinFrames)
+		img := g.coinFrames[frameIdx]
+		if img == nil {
 			continue
 		}
 		cx := float64(c.X*tileSize+tileSize/2) + ox
 		cy := float64(c.Y*tileSize+tileSize/2) + oy
 		op := &ebiten.DrawImageOptions{}
-		w, h := coinImgs[frameIdx].Bounds().Dx(), coinImgs[frameIdx].Bounds().Dy()
+		w, h := img.Bounds().Dx(), img.Bounds().Dy()
 		scale := float64(tileSize) / float64(w)
 		op.GeoM.Scale(scale, scale)
 		op.GeoM.Translate(cx-float64(w)*scale/2, cy-float64(h)*scale/2)
 		op.GeoM.Translate(ox, oy)
-		screen.DrawImage(coinImgs[frameIdx], op)
+		screen.DrawImage(img, op)
 	}
 
 	// Частицы
@@ -1606,7 +1603,7 @@ func minInt(a, b int) int {
 }
 
 // --------------------------------------------------
-// Аудио (синтез) – без изменений
+// Аудио
 // --------------------------------------------------
 func newSound(ctx *audio.Context, data []byte) *audio.Player {
 	d, err := wav.Decode(ctx, bytes.NewReader(data))
