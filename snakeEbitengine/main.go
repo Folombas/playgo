@@ -79,6 +79,7 @@ type Viking struct {
 	Active bool
 }
 
+// Gift: цвет (0..5) соответствует буквам a..f
 type Gift struct {
 	X, Y   int
 	Color  int
@@ -161,11 +162,11 @@ type Game struct {
 	vikingSpawnTimer float64
 
 	gifts          []*Gift
-	giftClosedImgs []*ebiten.Image
-	giftOpenFrames []*ebiten.Image
+	giftClosedImgs []*ebiten.Image // 6 штук: gift_01a.png .. gift_01f.png
+	giftOpenFrames []*ebiten.Image // 6 штук: giftopen_01a.png .. giftopen_01f.png
 	coins          []Coin
 	coinCount      int
-	coinFrames     []*ebiten.Image
+	coinFrames     []*ebiten.Image // 4 кадра монет
 	keysCollected  int
 	carryingKey    bool
 	keySpawnTimer  float64
@@ -174,7 +175,7 @@ type Game struct {
 }
 
 // -----------------------------------------------------------------------------
-// Вспомогательные функции
+// Вспомогательные функции загрузки
 // -----------------------------------------------------------------------------
 func makeColorTransparent(img *ebiten.Image, targetColor color.Color) *ebiten.Image {
 	bounds := img.Bounds()
@@ -338,7 +339,6 @@ func NewGame() *Game {
 		log.Printf("pineapple.png не загружен: %v", err)
 	}
 
-	// Призрак (11 кадров)
 	g.ghostFrames = make([]*ebiten.Image, 11)
 	for i := 0; i <= 10; i++ {
 		filename := fmt.Sprintf("skeleton-animation_%02d.png", i)
@@ -351,7 +351,6 @@ func NewGame() *Game {
 		g.ghostFrames[i] = img
 	}
 
-	// Таракан
 	roachFrames, err := loadSpriteSheet("roach.png", 32, 32, 4, 5, false, nil)
 	if err != nil {
 		log.Printf("roach.png не загружен: %v", err)
@@ -363,7 +362,6 @@ func NewGame() *Game {
 		g.roachMoveTimer = 0.5
 	}
 
-	// Викинги
 	vikingFrames, err := loadSpriteSheetAuto("2204_w053_n004_9_medicharacters_p1_9.jpg", 5, 2, true, color.White)
 	if err != nil {
 		log.Printf("Не удалось загрузить викингов: %v", err)
@@ -371,10 +369,11 @@ func NewGame() *Game {
 		g.vikingFrames = vikingFrames
 	}
 
-	// Закрытые подарки (6 цветов)
+	// Закрытые подарки: gift_01a.png, gift_01b.png, ..., gift_01f.png
 	g.giftClosedImgs = make([]*ebiten.Image, 6)
 	for i := 0; i < 6; i++ {
-		filename := fmt.Sprintf("gift_%02da.png", i+1)
+		letter := string(rune('a' + i))
+		filename := fmt.Sprintf("gift_01%s.png", letter)
 		img, err := loadPNG(filename)
 		if err != nil {
 			log.Printf("Не удалось загрузить %s: %v", filename, err)
@@ -384,10 +383,11 @@ func NewGame() *Game {
 		g.giftClosedImgs[i] = img
 	}
 
-	// Открытые подарки (6 кадров)
+	// Открытые подарки: giftopen_01a.png, giftopen_01b.png, ..., giftopen_01f.png
 	g.giftOpenFrames = make([]*ebiten.Image, 6)
 	for i := 0; i < 6; i++ {
-		filename := fmt.Sprintf("giftopen_%02da.png", i+1)
+		letter := string(rune('a' + i))
+		filename := fmt.Sprintf("giftopen_01%s.png", letter)
 		img, err := loadPNG(filename)
 		if err != nil {
 			log.Printf("Не удалось загрузить %s: %v", filename, err)
@@ -397,7 +397,7 @@ func NewGame() *Game {
 		g.giftOpenFrames[i] = img
 	}
 
-	// Монетки (4 кадра)
+	// Монетки: 4 кадра (coin_01a.png, coin_02a.png, coin_03a.png, coin_04a.png)
 	g.coinFrames = make([]*ebiten.Image, 4)
 	for i := 0; i < 4; i++ {
 		filename := fmt.Sprintf("coin_%02da.png", i+1)
@@ -410,7 +410,6 @@ func NewGame() *Game {
 		g.coinFrames[i] = img
 	}
 
-	// Ключ
 	g.keyImg, err = loadPNG("key_02d.png")
 	if err != nil {
 		log.Printf("key_02d.png не загружен: %v", err)
@@ -767,7 +766,6 @@ func (g *Game) Update() error {
 		}
 	}
 
-	// Призрак
 	if g.ghostActive {
 		g.ghostAnimTimer += dt
 		if g.ghostAnimTimer >= 0.1 {
@@ -797,7 +795,6 @@ func (g *Game) Update() error {
 		}
 	}
 
-	// Таракан
 	if g.roachActive && g.state == STATE_PLAYING {
 		g.roachMoveTimer -= dt
 		if g.roachMoveTimer <= 0 {
@@ -823,7 +820,6 @@ func (g *Game) Update() error {
 		}
 	}
 
-	// Викинги
 	if g.state == STATE_PLAYING {
 		g.vikingSpawnTimer -= dt
 		if g.vikingSpawnTimer <= 0 && len(g.vikingList) < 3 {
@@ -868,7 +864,6 @@ func (g *Game) Update() error {
 		}
 	}
 
-	// Ключ на поле
 	if g.state == STATE_PLAYING {
 		g.keySpawnTimer -= dt
 		if g.keySpawnTimer <= 0 && !g.keyOnField.Active {
@@ -884,7 +879,6 @@ func (g *Game) Update() error {
 		g.collectKeyFromField()
 	}
 
-	// Открытые подарки: обновление жизни
 	for i := 0; i < len(g.gifts); i++ {
 		if g.gifts[i].Opened {
 			g.gifts[i].Life -= dt
@@ -895,7 +889,6 @@ func (g *Game) Update() error {
 		}
 	}
 
-	// Монетки
 	for i := 0; i < len(g.coins); i++ {
 		g.coins[i].Life -= dt
 		if g.coins[i].Life <= 0 {
@@ -910,13 +903,11 @@ func (g *Game) Update() error {
 		}
 	}
 
-	// Использование ключа по K
 	if g.state == STATE_PLAYING && ebiten.IsKeyPressed(ebiten.KeyK) && g.pauseCooldown <= 0 {
 		g.useKey()
 		g.pauseCooldown = 0.2
 	}
 
-	// Открытие подарка при касании (если есть ключ)
 	if g.state == STATE_PLAYING && g.carryingKey {
 		head := g.snake[0]
 		for _, gift := range g.gifts {
@@ -927,7 +918,6 @@ func (g *Game) Update() error {
 		}
 	}
 
-	// Сбор монеток
 	if g.state == STATE_PLAYING && len(g.coins) > 0 {
 		head := g.snake[0]
 		for i, coin := range g.coins {
@@ -938,7 +928,6 @@ func (g *Game) Update() error {
 		}
 	}
 
-	// ESC и P
 	if ebiten.IsKeyPressed(ebiten.KeyEscape) && g.pauseCooldown <= 0 {
 		if g.state == STATE_PLAYING || g.state == STATE_PAUSED || g.state == STATE_GAMEOVER {
 			g.state = STATE_MENU
@@ -963,7 +952,6 @@ func (g *Game) Update() error {
 		g.pauseCooldown = 0.3
 	}
 
-	// Меню
 	if g.state == STATE_MENU {
 		prev := g.menuSelected
 		if ebiten.IsKeyPressed(ebiten.KeyUp) && g.pauseCooldown <= 0 {
@@ -1012,7 +1000,6 @@ func (g *Game) Update() error {
 		return nil
 	}
 
-	// Управление змейкой
 	if ebiten.IsKeyPressed(ebiten.KeyUp) && g.dir.Y != 1 {
 		g.nextDir = Vec{0, -1}
 	}
@@ -1033,7 +1020,6 @@ func (g *Game) Update() error {
 		g.step()
 	}
 
-	// Бомбы
 	for i := 0; i < len(g.bombs); i++ {
 		g.bombs[i].Timer -= dt
 		if g.bombs[i].Timer <= 0 {
@@ -1042,7 +1028,6 @@ func (g *Game) Update() error {
 		}
 	}
 
-	// Частицы
 	for i := 0; i < len(g.particles); i++ {
 		p := &g.particles[i]
 		p.X += p.VX
@@ -1253,7 +1238,6 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		oy = (mathrand.Float64()*2 - 1) * g.shake
 	}
 
-	// Сетка
 	for x := 0; x < gridW; x++ {
 		for y := 0; y < gridH; y++ {
 			c := color.RGBA{15, 15, 25, 255}
@@ -1264,7 +1248,6 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		}
 	}
 
-	// Бомбы
 	for _, b := range g.bombs {
 		cx := float64(b.X*tileSize+tileSize/2) + ox
 		cy := float64(b.Y*tileSize+tileSize/2) + oy
@@ -1292,7 +1275,6 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		ebitenutil.DrawCircle(screen, fuseEndX, fuseEndY, fireSize*0.6, color.RGBA{255, 255, 100, 255})
 	}
 
-	// Змейка
 	for i, s := range g.snake {
 		x := float64(s.X*tileSize) + ox
 		y := float64(s.Y*tileSize) + oy
@@ -1346,7 +1328,6 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		}
 	}
 
-	// Фрукты
 	{
 		cx := float64(g.fruitX*tileSize+tileSize/2) + ox
 		cy := float64(g.fruitY*tileSize+tileSize/2) + oy
@@ -1376,7 +1357,6 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		}
 	}
 
-	// Лёд
 	if g.iceActive {
 		cx := float64(g.ice.X*tileSize+tileSize/2) + ox
 		cy := float64(g.ice.Y*tileSize+tileSize/2) + oy
@@ -1386,7 +1366,6 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		ebitenutil.DrawCircle(screen, cx+radius*0.3, cy-radius*0.3, radius*0.25, color.RGBA{255, 255, 255, 200})
 	}
 
-	// Призрак
 	if g.ghostActive && len(g.ghostFrames) > 0 {
 		cx := float64(g.ghostX*tileSize+tileSize/2) + ox
 		cy := float64(g.ghostY*tileSize+tileSize/2) + oy
@@ -1402,7 +1381,6 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		}
 	}
 
-	// Таракан
 	if g.roachActive && len(g.roachFrames) > 0 {
 		cx := float64(g.roachX*tileSize+tileSize/2) + ox
 		cy := float64(g.roachY*tileSize+tileSize/2) + oy
@@ -1418,7 +1396,6 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		}
 	}
 
-	// Викинги
 	if len(g.vikingFrames) > 0 {
 		for _, v := range g.vikingList {
 			cx := float64(v.X*tileSize+tileSize/2) + ox
@@ -1434,14 +1411,17 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		}
 	}
 
-	// Подарки
 	for _, gift := range g.gifts {
 		cx := float64(gift.X*tileSize+tileSize/2) + ox
 		cy := float64(gift.Y*tileSize+tileSize/2) + oy
 		var img *ebiten.Image
 		if gift.Opened {
-			// Используем первый кадр открытого подарка (статический)
-			img = g.giftOpenFrames[0]
+			// Используем первый кадр анимации открытого подарка (можно анимировать, но для простоты так)
+			if gift.Color >= 0 && gift.Color < len(g.giftOpenFrames) {
+				img = g.giftOpenFrames[gift.Color]
+			} else {
+				img = g.giftOpenFrames[0]
+			}
 			op := &ebiten.DrawImageOptions{}
 			w, h := img.Bounds().Dx(), img.Bounds().Dy()
 			scale := float64(tileSize) / float64(w)
@@ -1450,6 +1430,9 @@ func (g *Game) Draw(screen *ebiten.Image) {
 			op.GeoM.Translate(ox, oy)
 			if gift.Life < 2.0 && gift.Life > 0 {
 				alpha := gift.Life / 2.0
+				if alpha < 0 {
+					alpha = 0
+				}
 				op.ColorM.Scale(1, 1, 1, alpha)
 			}
 			screen.DrawImage(img, op)
@@ -1469,7 +1452,6 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		}
 	}
 
-	// Ключ на поле
 	if g.keyOnField.Active && g.keyImg != nil {
 		cx := float64(g.keyOnField.X*tileSize+tileSize/2) + ox
 		cy := float64(g.keyOnField.Y*tileSize+tileSize/2) + oy
@@ -1479,14 +1461,16 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		op.GeoM.Scale(scale, scale)
 		op.GeoM.Translate(cx-float64(w)*scale/2, cy-float64(h)*scale/2)
 		op.GeoM.Translate(ox, oy)
-		if g.keyOnField.Life < 2.0 {
+		if g.keyOnField.Life < 2.0 && g.keyOnField.Life > 0 {
 			alpha := g.keyOnField.Life / 2.0
+			if alpha < 0 {
+				alpha = 0
+			}
 			op.ColorM.Scale(1, 1, 1, alpha)
 		}
 		screen.DrawImage(g.keyImg, op)
 	}
 
-	// Монетки
 	for _, c := range g.coins {
 		if len(g.coinFrames) == 0 {
 			continue
@@ -1507,7 +1491,6 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		screen.DrawImage(img, op)
 	}
 
-	// Частицы
 	for _, p := range g.particles {
 		c := p.Color
 		if p.Glow {
@@ -1516,7 +1499,6 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		ebitenutil.DrawRect(screen, p.X-p.Size+ox, p.Y-p.Size+oy, p.Size*2, p.Size*2, c)
 	}
 
-	// UI текст
 	drawText := func(str string, x, y int, clr color.Color) {
 		if g.fontFace != nil {
 			text.Draw(screen, str, g.fontFace, x, y, clr)
@@ -1603,7 +1585,7 @@ func minInt(a, b int) int {
 }
 
 // --------------------------------------------------
-// Аудио
+// Аудио (синтез) – без изменений
 // --------------------------------------------------
 func newSound(ctx *audio.Context, data []byte) *audio.Player {
 	d, err := wav.Decode(ctx, bytes.NewReader(data))
