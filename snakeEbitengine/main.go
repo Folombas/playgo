@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"image"
 	"image/color"
@@ -20,6 +21,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/audio"
 	"github.com/hajimehoshi/ebiten/v2/audio/wav"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
+	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"github.com/hajimehoshi/ebiten/v2/text"
 	"golang.org/x/image/font"
 	"golang.org/x/image/font/opentype"
@@ -35,13 +37,31 @@ const (
 	maxHealth     = 100
 )
 
-type Vec struct{ X, Y int }
+// -----------------------------------------------------------------------------
+// Настройки
+// -----------------------------------------------------------------------------
+type Settings struct {
+	Volume              float64 `json:"volume"`
+	Language            string  `json:"language"`
+	Difficulty          string  `json:"difficulty"`
+	BackgroundAnimation bool    `json:"background_animation"`
+}
 
+var currentSettings = Settings{
+	Volume:              0.7,
+	Language:            "ru",
+	Difficulty:          "normal",
+	BackgroundAnimation: true,
+}
+
+// -----------------------------------------------------------------------------
+// Игровые типы
+// -----------------------------------------------------------------------------
+type Vec struct{ X, Y int }
 type Bomb struct {
 	X, Y  int
 	Timer float64
 }
-
 type GameState int
 
 const (
@@ -49,6 +69,7 @@ const (
 	STATE_PLAYING
 	STATE_PAUSED
 	STATE_GAMEOVER
+	STATE_SETTINGS
 )
 
 type Particle struct {
@@ -68,32 +89,25 @@ const (
 	FRUIT_PINEAPPLE
 )
 
-type IceBlock struct {
-	X, Y int
-}
-
+type IceBlock struct{ X, Y int }
 type Viking struct {
 	X, Y   int
 	Frame  int
 	Timer  float64
 	Active bool
 }
-
-// Gift: цвет (0..5) соответствует буквам a..f
 type Gift struct {
 	X, Y   int
 	Color  int
 	Opened bool
 	Life   float64
 }
-
 type Coin struct {
-	X, Y   int
-	Frame  int
-	Timer  float64
-	Life   float64
+	X, Y  int
+	Frame int
+	Timer float64
+	Life  float64
 }
-
 type KeyOnField struct {
 	X, Y   int
 	Active bool
@@ -101,8 +115,9 @@ type KeyOnField struct {
 }
 
 type Game struct {
-	rng            *mathrand.Rand
-	state          GameState
+	rng   *mathrand.Rand
+	state GameState
+
 	snake          []Vec
 	dir            Vec
 	nextDir        Vec
@@ -117,25 +132,27 @@ type Game struct {
 	score          int
 	health         int
 	particles      []Particle
-	audioCtx       *audio.Context
-	sndEat         *audio.Player
-	sndBoom        *audio.Player
-	sndHeal        *audio.Player
-	sndPause       *audio.Player
-	sndMenuMove    *audio.Player
-	sndMenuSelect  *audio.Player
-	sndGhost       *audio.Player
-	sndKeyCollect  *audio.Player
-	sndKeyUse      *audio.Player
-	sndGiftOpen    *audio.Player
-	sndCoin        *audio.Player
-	shake          float64
-	menuPulse      float64
-	pauseCooldown  float64
-	menuSelected   int
-	menuButtons    []string
-	buttonFlash    int
-	fontFace       font.Face
+
+	audioCtx      *audio.Context
+	sndEat        *audio.Player
+	sndBoom       *audio.Player
+	sndHeal       *audio.Player
+	sndPause      *audio.Player
+	sndMenuMove   *audio.Player
+	sndMenuSelect *audio.Player
+	sndGhost      *audio.Player
+	sndKeyCollect *audio.Player
+	sndKeyUse     *audio.Player
+	sndGiftOpen   *audio.Player
+	sndCoin       *audio.Player
+
+	shake         float64
+	menuPulse     float64
+	pauseCooldown float64
+	menuSelected  int
+	menuButtons   []string
+	buttonFlash   int
+	fontFace      font.Face
 
 	appleImg      *ebiten.Image
 	strawberryImg *ebiten.Image
@@ -143,13 +160,13 @@ type Game struct {
 	bananaImg     *ebiten.Image
 	pineappleImg  *ebiten.Image
 
-	ghostFrames     []*ebiten.Image
-	ghostFrameIdx   int
-	ghostAnimTimer  float64
-	ghostActive     bool
-	ghostX, ghostY  int
-	ghostMoveTimer  float64
-	ghostModeTimer  float64
+	ghostFrames    []*ebiten.Image
+	ghostFrameIdx  int
+	ghostAnimTimer float64
+	ghostActive    bool
+	ghostX, ghostY int
+	ghostMoveTimer float64
+	ghostModeTimer float64
 
 	roachFrames    []*ebiten.Image
 	roachFrameIdx  int
@@ -162,20 +179,73 @@ type Game struct {
 	vikingSpawnTimer float64
 
 	gifts          []*Gift
-	giftClosedImgs []*ebiten.Image // 6 штук: gift_01a.png .. gift_01f.png
-	giftOpenFrames []*ebiten.Image // 6 штук: giftopen_01a.png .. giftopen_01f.png
+	giftClosedImgs []*ebiten.Image
+	giftOpenFrames []*ebiten.Image
 	coins          []Coin
 	coinCount      int
-	coinFrames     []*ebiten.Image // 4 кадра монет
+	coinFrames     []*ebiten.Image
 	keysCollected  int
 	carryingKey    bool
 	keySpawnTimer  float64
 	keyOnField     KeyOnField
 	keyImg         *ebiten.Image
+
+	settingsVolumeSlider    float64
+	settingsLanguageIndex   int
+	settingsDifficultyIndex int
+	settingsAnimations      bool
+	settingsSliderGrabbed   bool
 }
 
 // -----------------------------------------------------------------------------
-// Вспомогательные функции загрузки
+// Загрузка/сохранение настроек
+// -----------------------------------------------------------------------------
+func loadSettings() {
+	data, err := os.ReadFile("settings.json")
+	if err != nil {
+		currentSettings.Volume = 0.7
+		currentSettings.Language = "ru"
+		currentSettings.Difficulty = "normal"
+		currentSettings.BackgroundAnimation = true
+		saveSettings()
+		return
+	}
+	json.Unmarshal(data, &currentSettings)
+}
+
+func saveSettings() {
+	data, _ := json.MarshalIndent(currentSettings, "", "  ")
+	os.WriteFile("settings.json", data, 0644)
+}
+
+func (g *Game) applySettings() {
+	vol := currentSettings.Volume // float64
+	g.sndEat.SetVolume(vol)
+	g.sndBoom.SetVolume(vol)
+	g.sndHeal.SetVolume(vol)
+	g.sndPause.SetVolume(vol)
+	g.sndMenuMove.SetVolume(vol)
+	g.sndMenuSelect.SetVolume(vol)
+	g.sndGhost.SetVolume(vol)
+	g.sndKeyCollect.SetVolume(vol)
+	g.sndKeyUse.SetVolume(vol)
+	g.sndGiftOpen.SetVolume(vol)
+	g.sndCoin.SetVolume(vol)
+
+	switch currentSettings.Difficulty {
+	case "easy":
+		g.speed = 6
+	case "normal":
+		g.speed = 9
+	case "hard":
+		g.speed = 12
+	}
+}
+
+// Фоновые анимации будут проверяться в Update и Draw
+
+// -----------------------------------------------------------------------------
+// Вспомогательные функции (удаление фона, загрузка PNG и спрайт-листов)
 // -----------------------------------------------------------------------------
 func makeColorTransparent(img *ebiten.Image, targetColor color.Color) *ebiten.Image {
 	bounds := img.Bounds()
@@ -274,31 +344,55 @@ func loadSpriteSheetAuto(path string, cols, rows int, removeBg bool, bgColor col
 }
 
 // -----------------------------------------------------------------------------
-// Инициализация
+// Инициализация игры
 // -----------------------------------------------------------------------------
 func NewGame() *Game {
 	g := &Game{
-		rng:              mathrand.New(mathrand.NewSource(time.Now().UnixNano())),
-		state:            STATE_MENU,
-		speed:            9,
-		health:           maxHealth,
-		menuPulse:        0,
-		menuSelected:     0,
-		menuButtons:      []string{"Начать игру", "Продолжить", "Новая игра", "Выйти из игры"},
-		iceActive:        false,
-		frozenTimer:      0,
-		ghostActive:      false,
-		ghostModeTimer:   0,
-		ghostFrameIdx:    0,
-		ghostAnimTimer:   0,
-		roachActive:      false,
-		vikingSpawnTimer: 0,
-		keySpawnTimer:    5.0,
-		keysCollected:    0,
-		carryingKey:      false,
-		coinCount:        0,
-		keyOnField:       KeyOnField{Active: false},
+		rng:                     mathrand.New(mathrand.NewSource(time.Now().UnixNano())),
+		state:                   STATE_MENU,
+		speed:                   9,
+		health:                  maxHealth,
+		menuPulse:               0,
+		menuSelected:            0,
+		menuButtons:             []string{"Начать игру", "Продолжить", "Новая игра", "Настройки", "Выйти из игры"},
+		iceActive:               false,
+		frozenTimer:             0,
+		ghostActive:             false,
+		ghostModeTimer:          0,
+		ghostFrameIdx:           0,
+		ghostAnimTimer:          0,
+		roachActive:             false,
+		vikingSpawnTimer:        0,
+		keySpawnTimer:           5.0,
+		keysCollected:           0,
+		carryingKey:             false,
+		coinCount:               0,
+		keyOnField:              KeyOnField{Active: false},
+		settingsVolumeSlider:    0.7,
+		settingsLanguageIndex:   0,
+		settingsDifficultyIndex: 1,
+		settingsAnimations:      true,
+		settingsSliderGrabbed:   false,
 	}
+	// Загрузка настроек из файла
+	loadSettings()
+	// Копируем настройки в поля UI
+	if currentSettings.Language == "ru" {
+		g.settingsLanguageIndex = 0
+	} else {
+		g.settingsLanguageIndex = 1
+	}
+	switch currentSettings.Difficulty {
+	case "easy":
+		g.settingsDifficultyIndex = 0
+	case "normal":
+		g.settingsDifficultyIndex = 1
+	case "hard":
+		g.settingsDifficultyIndex = 2
+	}
+	g.settingsVolumeSlider = currentSettings.Volume
+	g.settingsAnimations = currentSettings.BackgroundAnimation
+
 	g.reset()
 	g.audioCtx = audio.NewContext(44100)
 	g.sndEat = newSound(g.audioCtx, sndEat())
@@ -312,6 +406,8 @@ func NewGame() *Game {
 	g.sndKeyUse = newSound(g.audioCtx, sndKeyUse())
 	g.sndGiftOpen = newSound(g.audioCtx, sndGiftOpen())
 	g.sndCoin = newSound(g.audioCtx, sndCoin())
+
+	g.applySettings()
 
 	if err := g.loadFont(); err != nil {
 		log.Printf("Шрифт не загружен: %v", err)
@@ -369,11 +465,9 @@ func NewGame() *Game {
 		g.vikingFrames = vikingFrames
 	}
 
-	// Закрытые подарки: gift_01a.png, gift_01b.png, ..., gift_01f.png
 	g.giftClosedImgs = make([]*ebiten.Image, 6)
 	for i := 0; i < 6; i++ {
-		letter := string(rune('a' + i))
-		filename := fmt.Sprintf("gift_01%s.png", letter)
+		filename := fmt.Sprintf("gift_%02da.png", i+1)
 		img, err := loadPNG(filename)
 		if err != nil {
 			log.Printf("Не удалось загрузить %s: %v", filename, err)
@@ -383,11 +477,9 @@ func NewGame() *Game {
 		g.giftClosedImgs[i] = img
 	}
 
-	// Открытые подарки: giftopen_01a.png, giftopen_01b.png, ..., giftopen_01f.png
 	g.giftOpenFrames = make([]*ebiten.Image, 6)
 	for i := 0; i < 6; i++ {
-		letter := string(rune('a' + i))
-		filename := fmt.Sprintf("giftopen_01%s.png", letter)
+		filename := fmt.Sprintf("giftopen_%02da.png", i+1)
 		img, err := loadPNG(filename)
 		if err != nil {
 			log.Printf("Не удалось загрузить %s: %v", filename, err)
@@ -397,7 +489,6 @@ func NewGame() *Game {
 		g.giftOpenFrames[i] = img
 	}
 
-	// Монетки: 4 кадра (coin_01a.png, coin_02a.png, coin_03a.png, coin_04a.png)
 	g.coinFrames = make([]*ebiten.Image, 4)
 	for i := 0; i < 4; i++ {
 		filename := fmt.Sprintf("coin_%02da.png", i+1)
@@ -421,6 +512,9 @@ func NewGame() *Game {
 	return g
 }
 
+// -----------------------------------------------------------------------------
+// Создание подарков, сброс игры и вспомогательные методы
+// -----------------------------------------------------------------------------
 func (g *Game) createGifts() {
 	g.gifts = nil
 	numGifts := 6
@@ -742,7 +836,7 @@ func (g *Game) isCellOccupied(x, y int) bool {
 }
 
 // -----------------------------------------------------------------------------
-// Основной цикл Update
+// Основной цикл Update (состояния: меню, настройки, игра, пауза, game over)
 // -----------------------------------------------------------------------------
 func (g *Game) Update() error {
 	dt := 1.0 / 60.0
@@ -766,6 +860,127 @@ func (g *Game) Update() error {
 		}
 	}
 
+	// -------------------------------------------------------------------------
+	// Состояние НАСТРОЙКИ
+	// -------------------------------------------------------------------------
+	if g.state == STATE_SETTINGS {
+		// Возврат в главное меню по Escape
+		if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
+			g.state = STATE_MENU
+			g.pauseCooldown = 0.3
+			g.sndPause.Rewind()
+			g.sndPause.Play()
+		}
+		// Переключение между опциями стрелками
+		// Для простоты в настройках используем стрелки вверх/вниз для выбора поля,
+		// а стрелки влево/вправо – для изменения значения.
+		// Сначала определим, какой параметр выбран (0-3)
+		selected := 0
+		if inpututil.IsKeyJustPressed(ebiten.KeyUp) {
+			selected = (selected - 1 + 4) % 4
+			g.sndMenuMove.Rewind()
+			g.sndMenuMove.Play()
+			g.pauseCooldown = 0.15
+		}
+		if inpututil.IsKeyJustPressed(ebiten.KeyDown) {
+			selected = (selected + 1) % 4
+			g.sndMenuMove.Rewind()
+			g.sndMenuMove.Play()
+			g.pauseCooldown = 0.15
+		}
+		// Изменение выбранного параметра
+		if selected == 0 { // Громкость
+			if inpututil.IsKeyJustPressed(ebiten.KeyLeft) {
+				g.settingsVolumeSlider -= 0.05
+				if g.settingsVolumeSlider < 0 {
+					g.settingsVolumeSlider = 0
+				}
+				currentSettings.Volume = g.settingsVolumeSlider
+				g.applySettings()
+				saveSettings()
+				g.sndMenuMove.Rewind()
+				g.sndMenuMove.Play()
+				g.pauseCooldown = 0.15
+			}
+			if inpututil.IsKeyJustPressed(ebiten.KeyRight) {
+				g.settingsVolumeSlider += 0.05
+				if g.settingsVolumeSlider > 1 {
+					g.settingsVolumeSlider = 1
+				}
+				currentSettings.Volume = g.settingsVolumeSlider
+				g.applySettings()
+				saveSettings()
+				g.sndMenuMove.Rewind()
+				g.sndMenuMove.Play()
+				g.pauseCooldown = 0.15
+			}
+		}
+		if selected == 1 { // Язык
+			if inpututil.IsKeyJustPressed(ebiten.KeyLeft) || inpututil.IsKeyJustPressed(ebiten.KeyRight) {
+				g.settingsLanguageIndex = (g.settingsLanguageIndex + 1) % 2
+				if g.settingsLanguageIndex == 0 {
+					currentSettings.Language = "ru"
+				} else {
+					currentSettings.Language = "en"
+				}
+				saveSettings()
+				// Обновляем текст кнопок меню (если нужно)
+				g.updateMenuButtonsLanguage()
+				g.sndMenuMove.Rewind()
+				g.sndMenuMove.Play()
+				g.pauseCooldown = 0.15
+			}
+		}
+		if selected == 2 { // Сложность
+			if inpututil.IsKeyJustPressed(ebiten.KeyLeft) {
+				g.settingsDifficultyIndex = (g.settingsDifficultyIndex - 1 + 3) % 3
+				switch g.settingsDifficultyIndex {
+				case 0:
+					currentSettings.Difficulty = "easy"
+				case 1:
+					currentSettings.Difficulty = "normal"
+				case 2:
+					currentSettings.Difficulty = "hard"
+				}
+				saveSettings()
+				g.applySettings()
+				g.sndMenuMove.Rewind()
+				g.sndMenuMove.Play()
+				g.pauseCooldown = 0.15
+			}
+			if inpututil.IsKeyJustPressed(ebiten.KeyRight) {
+				g.settingsDifficultyIndex = (g.settingsDifficultyIndex + 1) % 3
+				switch g.settingsDifficultyIndex {
+				case 0:
+					currentSettings.Difficulty = "easy"
+				case 1:
+					currentSettings.Difficulty = "normal"
+				case 2:
+					currentSettings.Difficulty = "hard"
+				}
+				saveSettings()
+				g.applySettings()
+				g.sndMenuMove.Rewind()
+				g.sndMenuMove.Play()
+				g.pauseCooldown = 0.15
+			}
+		}
+		if selected == 3 { // Фоновые анимации
+			if inpututil.IsKeyJustPressed(ebiten.KeyLeft) || inpututil.IsKeyJustPressed(ebiten.KeyRight) {
+				g.settingsAnimations = !g.settingsAnimations
+				currentSettings.BackgroundAnimation = g.settingsAnimations
+				saveSettings()
+				g.sndMenuMove.Rewind()
+				g.sndMenuMove.Play()
+				g.pauseCooldown = 0.15
+			}
+		}
+		return nil
+	}
+
+	// -------------------------------------------------------------------------
+	// Призрак
+	// -------------------------------------------------------------------------
 	if g.ghostActive {
 		g.ghostAnimTimer += dt
 		if g.ghostAnimTimer >= 0.1 {
@@ -795,32 +1010,42 @@ func (g *Game) Update() error {
 		}
 	}
 
-	if g.roachActive && g.state == STATE_PLAYING {
-		g.roachMoveTimer -= dt
-		if g.roachMoveTimer <= 0 {
-			dx, dy := 0, 0
-			switch g.rng.Intn(4) {
-			case 0:
-				dx = 1
-			case 1:
-				dx = -1
-			case 2:
-				dy = 1
-			case 3:
-				dy = -1
-			}
-			nx, ny := g.roachX+dx, g.roachY+dy
-			if nx >= 0 && nx < gridW && ny >= 0 && ny < gridH && !g.isCellOccupied(nx, ny) {
-				g.roachX, g.roachY = nx, ny
-				if len(g.roachFrames) > 0 {
-					g.roachFrameIdx = (g.roachFrameIdx + 1) % len(g.roachFrames)
+	// -------------------------------------------------------------------------
+	// Таракан (фоновые анимации могут отключать)
+	// -------------------------------------------------------------------------
+	if g.state == STATE_PLAYING && currentSettings.BackgroundAnimation {
+		if g.roachActive {
+			g.roachMoveTimer -= dt
+			if g.roachMoveTimer <= 0 {
+				dx, dy := 0, 0
+				switch g.rng.Intn(4) {
+				case 0:
+					dx = 1
+				case 1:
+					dx = -1
+				case 2:
+					dy = 1
+				case 3:
+					dy = -1
 				}
+				nx, ny := g.roachX+dx, g.roachY+dy
+				if nx >= 0 && nx < gridW && ny >= 0 && ny < gridH && !g.isCellOccupied(nx, ny) {
+					g.roachX, g.roachY = nx, ny
+					if len(g.roachFrames) > 0 {
+						g.roachFrameIdx = (g.roachFrameIdx + 1) % len(g.roachFrames)
+					}
+				}
+				g.roachMoveTimer = 0.8
 			}
-			g.roachMoveTimer = 0.8
 		}
+	} else {
+		// Если фоновые анимации выключены, таракан не двигается
 	}
 
-	if g.state == STATE_PLAYING {
+	// -------------------------------------------------------------------------
+	// Викинги (могут быть отключены настройками)
+	// -------------------------------------------------------------------------
+	if g.state == STATE_PLAYING && currentSettings.BackgroundAnimation {
 		g.vikingSpawnTimer -= dt
 		if g.vikingSpawnTimer <= 0 && len(g.vikingList) < 3 {
 			g.spawnViking()
@@ -864,6 +1089,9 @@ func (g *Game) Update() error {
 		}
 	}
 
+	// -------------------------------------------------------------------------
+	// Ключ на поле
+	// -------------------------------------------------------------------------
 	if g.state == STATE_PLAYING {
 		g.keySpawnTimer -= dt
 		if g.keySpawnTimer <= 0 && !g.keyOnField.Active {
@@ -879,6 +1107,9 @@ func (g *Game) Update() error {
 		g.collectKeyFromField()
 	}
 
+	// -------------------------------------------------------------------------
+	// Открытые подарки: жизнь
+	// -------------------------------------------------------------------------
 	for i := 0; i < len(g.gifts); i++ {
 		if g.gifts[i].Opened {
 			g.gifts[i].Life -= dt
@@ -889,6 +1120,9 @@ func (g *Game) Update() error {
 		}
 	}
 
+	// -------------------------------------------------------------------------
+	// Монетки
+	// -------------------------------------------------------------------------
 	for i := 0; i < len(g.coins); i++ {
 		g.coins[i].Life -= dt
 		if g.coins[i].Life <= 0 {
@@ -903,11 +1137,17 @@ func (g *Game) Update() error {
 		}
 	}
 
+	// -------------------------------------------------------------------------
+	// Использование ключа по K
+	// -------------------------------------------------------------------------
 	if g.state == STATE_PLAYING && ebiten.IsKeyPressed(ebiten.KeyK) && g.pauseCooldown <= 0 {
 		g.useKey()
 		g.pauseCooldown = 0.2
 	}
 
+	// -------------------------------------------------------------------------
+	// Открытие подарка при касании
+	// -------------------------------------------------------------------------
 	if g.state == STATE_PLAYING && g.carryingKey {
 		head := g.snake[0]
 		for _, gift := range g.gifts {
@@ -918,6 +1158,9 @@ func (g *Game) Update() error {
 		}
 	}
 
+	// -------------------------------------------------------------------------
+	// Сбор монеток
+	// -------------------------------------------------------------------------
 	if g.state == STATE_PLAYING && len(g.coins) > 0 {
 		head := g.snake[0]
 		for i, coin := range g.coins {
@@ -928,6 +1171,9 @@ func (g *Game) Update() error {
 		}
 	}
 
+	// -------------------------------------------------------------------------
+	// Esc и P
+	// -------------------------------------------------------------------------
 	if ebiten.IsKeyPressed(ebiten.KeyEscape) && g.pauseCooldown <= 0 {
 		if g.state == STATE_PLAYING || g.state == STATE_PAUSED || g.state == STATE_GAMEOVER {
 			g.state = STATE_MENU
@@ -952,6 +1198,9 @@ func (g *Game) Update() error {
 		g.pauseCooldown = 0.3
 	}
 
+	// -------------------------------------------------------------------------
+	// Обработка главного меню
+	// -------------------------------------------------------------------------
 	if g.state == STATE_MENU {
 		prev := g.menuSelected
 		if ebiten.IsKeyPressed(ebiten.KeyUp) && g.pauseCooldown <= 0 {
@@ -977,10 +1226,18 @@ func (g *Game) Update() error {
 			g.sndMenuSelect.Play()
 			g.buttonFlash = 5
 			switch g.menuSelected {
-			case 0, 1, 2:
+			case 0: // Начать игру
 				g.reset()
 				g.state = STATE_PLAYING
-			case 3:
+			case 1: // Продолжить
+				g.reset()
+				g.state = STATE_PLAYING
+			case 2: // Новая игра
+				g.reset()
+				g.state = STATE_PLAYING
+			case 3: // Настройки
+				g.state = STATE_SETTINGS
+			case 4: // Выйти из игры
 				return ebiten.Termination
 			}
 			g.pauseCooldown = 0.3
@@ -1000,6 +1257,9 @@ func (g *Game) Update() error {
 		return nil
 	}
 
+	// -------------------------------------------------------------------------
+	// Управление змейкой
+	// -------------------------------------------------------------------------
 	if ebiten.IsKeyPressed(ebiten.KeyUp) && g.dir.Y != 1 {
 		g.nextDir = Vec{0, -1}
 	}
@@ -1020,6 +1280,9 @@ func (g *Game) Update() error {
 		g.step()
 	}
 
+	// -------------------------------------------------------------------------
+	// Бомбы
+	// -------------------------------------------------------------------------
 	for i := 0; i < len(g.bombs); i++ {
 		g.bombs[i].Timer -= dt
 		if g.bombs[i].Timer <= 0 {
@@ -1028,6 +1291,9 @@ func (g *Game) Update() error {
 		}
 	}
 
+	// -------------------------------------------------------------------------
+	// Частицы (если фоновые анимации отключены, можно их не рисовать, но они нужны для эффектов)
+	// -------------------------------------------------------------------------
 	for i := 0; i < len(g.particles); i++ {
 		p := &g.particles[i]
 		p.X += p.VX
@@ -1049,6 +1315,9 @@ func (g *Game) Update() error {
 	return nil
 }
 
+// -----------------------------------------------------------------------------
+// Шаг игры (движение змейки, столкновения, поедание фруктов)
+// -----------------------------------------------------------------------------
 func (g *Game) step() {
 	head := g.snake[0]
 	newHead := Vec{head.X + g.dir.X, head.Y + g.dir.Y}
@@ -1238,6 +1507,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		oy = (mathrand.Float64()*2 - 1) * g.shake
 	}
 
+	// Сетка (всегда)
 	for x := 0; x < gridW; x++ {
 		for y := 0; y < gridH; y++ {
 			c := color.RGBA{15, 15, 25, 255}
@@ -1248,10 +1518,11 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		}
 	}
 
+	// Бомбы (всегда)
 	for _, b := range g.bombs {
 		cx := float64(b.X*tileSize+tileSize/2) + ox
 		cy := float64(b.Y*tileSize+tileSize/2) + oy
-		baseRadius := float64(tileSize)/2 * 1.5
+		baseRadius := float64(tileSize) / 2 * 1.5
 		t := b.Timer
 		freq := 3.0 + 9.0*(1.0-math.Min(1.0, t/5.0))
 		pulse := 1.0 + 0.15*math.Sin(g.menuPulse*20*freq)
@@ -1275,6 +1546,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		ebitenutil.DrawCircle(screen, fuseEndX, fuseEndY, fireSize*0.6, color.RGBA{255, 255, 100, 255})
 	}
 
+	// Змейка (всегда)
 	for i, s := range g.snake {
 		x := float64(s.X*tileSize) + ox
 		y := float64(s.Y*tileSize) + oy
@@ -1328,6 +1600,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		}
 	}
 
+	// Фрукты (всегда)
 	{
 		cx := float64(g.fruitX*tileSize+tileSize/2) + ox
 		cy := float64(g.fruitY*tileSize+tileSize/2) + oy
@@ -1357,15 +1630,17 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		}
 	}
 
+	// Лёд
 	if g.iceActive {
 		cx := float64(g.ice.X*tileSize+tileSize/2) + ox
 		cy := float64(g.ice.Y*tileSize+tileSize/2) + oy
-		radius := float64(tileSize)/2 * 1.2
+		radius := float64(tileSize) / 2 * 1.2
 		ebitenutil.DrawCircle(screen, cx, cy, radius, color.RGBA{150, 220, 255, 255})
 		ebitenutil.DrawCircle(screen, cx-2, cy-2, radius-3, color.RGBA{100, 200, 240, 200})
 		ebitenutil.DrawCircle(screen, cx+radius*0.3, cy-radius*0.3, radius*0.25, color.RGBA{255, 255, 255, 200})
 	}
 
+	// Призрак (отображается всегда, но может быть отключён настройками, но оставим)
 	if g.ghostActive && len(g.ghostFrames) > 0 {
 		cx := float64(g.ghostX*tileSize+tileSize/2) + ox
 		cy := float64(g.ghostY*tileSize+tileSize/2) + oy
@@ -1381,7 +1656,8 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		}
 	}
 
-	if g.roachActive && len(g.roachFrames) > 0 {
+	// Таракан (отображается только если фоновые анимации включены)
+	if g.roachActive && len(g.roachFrames) > 0 && currentSettings.BackgroundAnimation {
 		cx := float64(g.roachX*tileSize+tileSize/2) + ox
 		cy := float64(g.roachY*tileSize+tileSize/2) + oy
 		frame := g.roachFrames[g.roachFrameIdx]
@@ -1396,7 +1672,8 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		}
 	}
 
-	if len(g.vikingFrames) > 0 {
+	// Викинги (отображаются, только если включены фоновые анимации)
+	if len(g.vikingFrames) > 0 && currentSettings.BackgroundAnimation {
 		for _, v := range g.vikingList {
 			cx := float64(v.X*tileSize+tileSize/2) + ox
 			cy := float64(v.Y*tileSize+tileSize/2) + oy
@@ -1411,17 +1688,13 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		}
 	}
 
+	// Подарки (всегда)
 	for _, gift := range g.gifts {
 		cx := float64(gift.X*tileSize+tileSize/2) + ox
 		cy := float64(gift.Y*tileSize+tileSize/2) + oy
 		var img *ebiten.Image
 		if gift.Opened {
-			// Используем первый кадр анимации открытого подарка (можно анимировать, но для простоты так)
-			if gift.Color >= 0 && gift.Color < len(g.giftOpenFrames) {
-				img = g.giftOpenFrames[gift.Color]
-			} else {
-				img = g.giftOpenFrames[0]
-			}
+			img = g.giftOpenFrames[0]
 			op := &ebiten.DrawImageOptions{}
 			w, h := img.Bounds().Dx(), img.Bounds().Dy()
 			scale := float64(tileSize) / float64(w)
@@ -1452,6 +1725,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		}
 	}
 
+	// Ключ на поле
 	if g.keyOnField.Active && g.keyImg != nil {
 		cx := float64(g.keyOnField.X*tileSize+tileSize/2) + ox
 		cy := float64(g.keyOnField.Y*tileSize+tileSize/2) + oy
@@ -1471,6 +1745,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		screen.DrawImage(g.keyImg, op)
 	}
 
+	// Монетки (всегда)
 	for _, c := range g.coins {
 		if len(g.coinFrames) == 0 {
 			continue
@@ -1491,6 +1766,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		screen.DrawImage(img, op)
 	}
 
+	// Частицы (всегда нужны для эффектов)
 	for _, p := range g.particles {
 		c := p.Color
 		if p.Glow {
@@ -1499,6 +1775,9 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		ebitenutil.DrawRect(screen, p.X-p.Size+ox, p.Y-p.Size+oy, p.Size*2, p.Size*2, c)
 	}
 
+	// -------------------------------------------------------------------------
+	// Текст интерфейса (зависит от языка)
+	// -------------------------------------------------------------------------
 	drawText := func(str string, x, y int, clr color.Color) {
 		if g.fontFace != nil {
 			text.Draw(screen, str, g.fontFace, x, y, clr)
@@ -1506,36 +1785,75 @@ func (g *Game) Draw(screen *ebiten.Image) {
 			ebitenutil.DebugPrintAt(screen, str, x, y)
 		}
 	}
-	drawText("Счёт: "+strconv.Itoa(g.score), 10, 25, color.White)
+
+	// Текст всегда на языке выбранном в настройках
+	if currentSettings.Language == "ru" {
+		drawText("Счёт: "+strconv.Itoa(g.score), 10, 25, color.White)
+	} else {
+		drawText("Score: "+strconv.Itoa(g.score), 10, 25, color.White)
+	}
 	barX := float64(screenW - 20)
 	barW := 150.0
 	barH := 14.0
 	healthPct := float64(g.health) / float64(maxHealth)
 	ebitenutil.DrawRect(screen, barX-barW, 10, barW, barH, color.RGBA{30, 30, 40, 200})
 	ebitenutil.DrawRect(screen, barX-barW, 10, barW*healthPct, barH, color.RGBA{50, 255, 80, 255})
-	drawText("ЗДОРОВЬЕ", int(barX-barW+40), 25, color.White)
-
-	drawText("Ключи: "+strconv.Itoa(g.keysCollected), 10, 55, color.RGBA{255, 215, 0, 255})
-	if g.carryingKey {
-		drawText("Ключ активирован!", 10, 80, color.RGBA{255, 200, 100, 255})
+	if currentSettings.Language == "ru" {
+		drawText("ЗДОРОВЬЕ", int(barX-barW+40), 25, color.White)
+	} else {
+		drawText("HEALTH", int(barX-barW+40), 25, color.White)
 	}
-	drawText("Монеты: "+strconv.Itoa(g.coinCount), 10, 105, color.RGBA{255, 215, 0, 255})
 
-	drawText("ESC - меню", screenW-100, screenH-20, color.White)
-	drawText("P - пауза", screenW-100, screenH-40, color.White)
-	drawText("K - взять ключ", screenW-100, screenH-60, color.White)
+	if currentSettings.Language == "ru" {
+		drawText("Ключи: "+strconv.Itoa(g.keysCollected), 10, 55, color.RGBA{255, 215, 0, 255})
+		if g.carryingKey {
+			drawText("Ключ активирован!", 10, 80, color.RGBA{255, 200, 100, 255})
+		}
+		drawText("Монеты: "+strconv.Itoa(g.coinCount), 10, 105, color.RGBA{255, 215, 0, 255})
+	} else {
+		drawText("Keys: "+strconv.Itoa(g.keysCollected), 10, 55, color.RGBA{255, 215, 0, 255})
+		if g.carryingKey {
+			drawText("Key activated!", 10, 80, color.RGBA{255, 200, 100, 255})
+		}
+		drawText("Coins: "+strconv.Itoa(g.coinCount), 10, 105, color.RGBA{255, 215, 0, 255})
+	}
+
+	if currentSettings.Language == "ru" {
+		drawText("ESC - меню", screenW-100, screenH-20, color.White)
+		drawText("P - пауза", screenW-100, screenH-40, color.White)
+		drawText("K - взять ключ", screenW-100, screenH-60, color.White)
+	} else {
+		drawText("ESC - menu", screenW-100, screenH-20, color.White)
+		drawText("P - pause", screenW-100, screenH-40, color.White)
+		drawText("K - get key", screenW-100, screenH-60, color.White)
+	}
 
 	if g.frozenTimer > 0 {
-		drawText("ЗАМОРОЗКА", screenW/2-60, screenH-30, color.RGBA{100, 200, 255, 255})
+		if currentSettings.Language == "ru" {
+			drawText("ЗАМОРОЗКА", screenW/2-60, screenH-30, color.RGBA{100, 200, 255, 255})
+		} else {
+			drawText("FROZEN", screenW/2-60, screenH-30, color.RGBA{100, 200, 255, 255})
+		}
 	}
 	if g.ghostModeActive() {
-		drawText("ПРИЗРАЧНЫЙ РЕЖИМ", screenW/2-100, screenH-60, color.RGBA{200, 200, 255, 255})
+		if currentSettings.Language == "ru" {
+			drawText("ПРИЗРАЧНЫЙ РЕЖИМ", screenW/2-100, screenH-60, color.RGBA{200, 200, 255, 255})
+		} else {
+			drawText("GHOST MODE", screenW/2-100, screenH-60, color.RGBA{200, 200, 255, 255})
+		}
 	}
 
+	// -------------------------------------------------------------------------
+	// Отрисовка состояний: МЕНЮ, ПАУЗА, GAME OVER, НАСТРОЙКИ
+	// -------------------------------------------------------------------------
 	switch g.state {
 	case STATE_MENU:
 		ebitenutil.DrawRect(screen, 0, 0, screenW, screenH, color.RGBA{0, 0, 0, 255})
-		drawText("S N A K E   R E V I V E D", screenW/2-180, 150, color.RGBA{255, 200, 100, 255})
+		if currentSettings.Language == "ru" {
+			drawText("S N A K E   R E V I V E D", screenW/2-180, 150, color.RGBA{255, 200, 100, 255})
+		} else {
+			drawText("S N A K E   R E V I V E D", screenW/2-180, 150, color.RGBA{255, 200, 100, 255})
+		}
 		startY := 280
 		step := 50
 		for i, btn := range g.menuButtons {
@@ -1551,16 +1869,126 @@ func (g *Game) Draw(screen *ebiten.Image) {
 				drawText(btn, screenW/2-len(btn)*3, y, color.White)
 			}
 		}
-		drawText("Стрелки вверх/вниз, Enter - выбор", screenW/2-220, screenH-70, color.RGBA{200, 200, 200, 255})
+		if currentSettings.Language == "ru" {
+			drawText("Стрелки вверх/вниз, Enter - выбор", screenW/2-220, screenH-70, color.RGBA{200, 200, 200, 255})
+		} else {
+			drawText("Arrow keys up/down, Enter - select", screenW/2-240, screenH-70, color.RGBA{200, 200, 200, 255})
+		}
 	case STATE_PAUSED:
 		ebitenutil.DrawRect(screen, 0, 0, screenW, screenH, color.RGBA{0, 0, 0, 200})
-		drawText("ПАУЗА", screenW/2-40, screenH/2, color.RGBA{255, 255, 150, 255})
-		drawText("Нажмите P для продолжения", screenW/2-150, screenH/2+40, color.White)
+		if currentSettings.Language == "ru" {
+			drawText("ПАУЗА", screenW/2-40, screenH/2, color.RGBA{255, 255, 150, 255})
+			drawText("Нажмите P для продолжения", screenW/2-150, screenH/2+40, color.White)
+		} else {
+			drawText("PAUSED", screenW/2-40, screenH/2, color.RGBA{255, 255, 150, 255})
+			drawText("Press P to resume", screenW/2-150, screenH/2+40, color.White)
+		}
 	case STATE_GAMEOVER:
 		ebitenutil.DrawRect(screen, 100, 80, screenW-200, screenH-180, color.RGBA{40, 0, 0, 255})
-		drawText("ИГРА ОКОНЧЕНА", screenW/2-80, screenH/2-40, color.RGBA{255, 100, 100, 255})
-		drawText("Счёт: "+strconv.Itoa(g.score), screenW/2-60, screenH/2, color.White)
-		drawText("Нажмите любую клавишу для меню", screenW/2-150, screenH/2+40, color.White)
+		if currentSettings.Language == "ru" {
+			drawText("ИГРА ОКОНЧЕНА", screenW/2-80, screenH/2-40, color.RGBA{255, 100, 100, 255})
+			drawText("Счёт: "+strconv.Itoa(g.score), screenW/2-60, screenH/2, color.White)
+			drawText("Нажмите любую клавишу для меню", screenW/2-150, screenH/2+40, color.White)
+		} else {
+			drawText("GAME OVER", screenW/2-80, screenH/2-40, color.RGBA{255, 100, 100, 255})
+			drawText("Score: "+strconv.Itoa(g.score), screenW/2-60, screenH/2, color.White)
+			drawText("Press any key for menu", screenW/2-150, screenH/2+40, color.White)
+		}
+	case STATE_SETTINGS:
+		// Полупрозрачный фон
+		ebitenutil.DrawRect(screen, 0, 0, screenW, screenH, color.RGBA{0, 0, 0, 220})
+		if currentSettings.Language == "ru" {
+			drawText("НАСТРОЙКИ", screenW/2-100, 100, color.RGBA{255, 255, 150, 255})
+		} else {
+			drawText("SETTINGS", screenW/2-80, 100, color.RGBA{255, 255, 150, 255})
+		}
+
+		// Строка громкости
+		y := 180
+		stepY := 60
+		if currentSettings.Language == "ru" {
+			drawText("Громкость:", 300, y, color.White)
+		} else {
+			drawText("Volume:", 300, y, color.White)
+		}
+		// Ползунок
+		sliderX := 500
+		sliderW := 300
+		sliderH := 10
+		ebitenutil.DrawRect(screen, float64(sliderX), float64(y)-5, float64(sliderW), float64(sliderH), color.RGBA{100, 100, 100, 255})
+		handleX := sliderX + int(g.settingsVolumeSlider*float64(sliderW))
+		ebitenutil.DrawRect(screen, float64(handleX-8), float64(y)-15, 16, 24, color.RGBA{255, 200, 100, 255})
+		// Процент
+		drawText(fmt.Sprintf("%d%%", int(g.settingsVolumeSlider*100)), sliderX+sliderW+20, y+5, color.White)
+
+		y += stepY
+		if currentSettings.Language == "ru" {
+			drawText("Язык:", 300, y, color.White)
+			if g.settingsLanguageIndex == 0 {
+				drawText("Русский", 500, y, color.RGBA{255, 255, 0, 255})
+			} else {
+				drawText("English", 500, y, color.RGBA{200, 200, 200, 255})
+			}
+		} else {
+			drawText("Language:", 300, y, color.White)
+			if g.settingsLanguageIndex == 0 {
+				drawText("Russian", 500, y, color.RGBA{200, 200, 200, 255})
+			} else {
+				drawText("English", 500, y, color.RGBA{255, 255, 0, 255})
+			}
+		}
+
+		y += stepY
+		if currentSettings.Language == "ru" {
+			drawText("Сложность:", 300, y, color.White)
+			switch g.settingsDifficultyIndex {
+			case 0:
+				drawText("Лёгкая", 500, y, color.RGBA{100, 200, 100, 255})
+			case 1:
+				drawText("Средняя", 500, y, color.RGBA{255, 255, 0, 255})
+			case 2:
+				drawText("Сложная", 500, y, color.RGBA{255, 100, 100, 255})
+			}
+		} else {
+			drawText("Difficulty:", 300, y, color.White)
+			switch g.settingsDifficultyIndex {
+			case 0:
+				drawText("Easy", 500, y, color.RGBA{100, 200, 100, 255})
+			case 1:
+				drawText("Normal", 500, y, color.RGBA{255, 255, 0, 255})
+			case 2:
+				drawText("Hard", 500, y, color.RGBA{255, 100, 100, 255})
+			}
+		}
+
+		y += stepY
+		if currentSettings.Language == "ru" {
+			drawText("Фоновые анимации:", 300, y, color.White)
+			if g.settingsAnimations {
+				drawText("Вкл", 600, y, color.RGBA{100, 255, 100, 255})
+			} else {
+				drawText("Выкл", 600, y, color.RGBA{255, 100, 100, 255})
+			}
+		} else {
+			drawText("BG animations:", 300, y, color.White)
+			if g.settingsAnimations {
+				drawText("ON", 600, y, color.RGBA{100, 255, 100, 255})
+			} else {
+				drawText("OFF", 600, y, color.RGBA{255, 100, 100, 255})
+			}
+		}
+		drawText("ESC - назад", screenW/2-80, screenH-50, color.RGBA{200, 200, 200, 255})
+	}
+}
+
+// -----------------------------------------------------------------------------
+// Вспомогательные функции
+// -----------------------------------------------------------------------------
+func (g *Game) updateMenuButtonsLanguage() {
+	if currentSettings.Language == "ru" {
+		g.menuButtons = []string{"Начать игру", "Продолжить", "Новая игра", "Настройки", "Выйти из игры"}
+	} else {
+		g.menuButtons = []string{"Start game", "Continue", "New game", "Settings", "Exit game"}
 	}
 }
 
@@ -1584,9 +2012,9 @@ func minInt(a, b int) int {
 	return b
 }
 
-// --------------------------------------------------
-// Аудио (синтез) – без изменений
-// --------------------------------------------------
+// -----------------------------------------------------------------------------
+// Аудио (синтез) – все звуки идентичны предыдущей версии
+// -----------------------------------------------------------------------------
 func newSound(ctx *audio.Context, data []byte) *audio.Player {
 	d, err := wav.Decode(ctx, bytes.NewReader(data))
 	if err != nil {
@@ -1759,6 +2187,9 @@ func sndCoin() []byte {
 	return mixToWAV(sr, [][]int16{t})
 }
 
+// -----------------------------------------------------------------------------
+// Точка входа
+// -----------------------------------------------------------------------------
 func main() {
 	ebiten.SetWindowSize(screenW, screenH)
 	ebiten.SetWindowTitle("Змейка: Возрождение")
