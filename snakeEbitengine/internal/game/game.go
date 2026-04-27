@@ -1,7 +1,6 @@
 package game
 
 import (
-	"fmt"
 	"image/color"
 	"log"
 	"math"
@@ -15,7 +14,9 @@ import (
 	myaudio "snake/internal/audio"
 	"snake/internal/entities"
 	"snake/internal/settings"
-    "snake/internal/assets"
+	"snake/internal/assets"
+	"snake/internal/types"
+
 
 )
 
