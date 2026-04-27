@@ -209,7 +209,22 @@ func (g *Game) applySettings() {
 	}
 }
 
-func (g *Game) loadImages() { /* assets are loaded via AssetManager */ }
+func (g *Game) loadImages() {
+    if g.assets == nil {
+        return
+    }
+    // Assign sprite frames and images from AssetManager
+    g.giftClosedImgs = g.assets.GiftClosedImgs
+    g.giftOpenFrames = g.assets.GiftOpenFrames
+    g.coinFrames = g.assets.CoinFrames
+    g.keyImg = g.assets.KeyImg
+    // Optional: assign other animation frames if needed elsewhere
+    g.ghostFrames = g.assets.GhostFrames
+    g.roachFrames = g.assets.RoachFrames
+    g.vikingFrames = g.assets.VikingFrames
+    // Fruit images can be accessed via assets directly in rendering; no need to store them here.
+}
+
 
 
 func (g *Game) createGifts() {

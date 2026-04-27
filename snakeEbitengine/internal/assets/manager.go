@@ -30,21 +30,22 @@ func New() *AssetManager {
 }
 
 func (am *AssetManager) loadImages() {
-    // Helper to load image with placeholder on error
-    loadOrPlaceholder := func(path string) *ebiten.Image {
-        img, err := entities.LoadPNG(path)
-        if err != nil {
-            log.Printf("failed to load %s: %v, using placeholder", path, err)
-            img = ebiten.NewImage(types.TileSize, types.TileSize)
-            img.Fill(color.White)
-        }
-        return img
-    }
+	// Helper that loads an image (PNG or JPEG) and returns a placeholder on error.
+	loadImage := func(path string) *ebiten.Image {
+		img, _, err := ebiten.NewImageFromFile(path)
+		if err != nil {
+			log.Printf("failed to load %s: %v, using placeholder", path, err)
+			img = ebiten.NewImage(types.TileSize, types.TileSize)
+			img.Fill(color.White)
+		}
+		return img
+	}
+
 
     // Fruits
-    am.Apple = loadOrPlaceholder("assets/fruits/apple.png")
+    am.Apple = loadImage("assets/fruits/apple.png")
     am.Strawberry = loadOrPlaceholder("assets/fruits/strawberry.png")
-    am.Orange = loadOrPlaceholder("assets/fruits/orange.png")
+    am.Orange = loadImage("assets/fruits/orange.png")
     am.Banana = loadOrPlaceholder("assets/fruits/banana.png")
     am.Pineapple = loadOrPlaceholder("assets/fruits/pineapple.png")
 
