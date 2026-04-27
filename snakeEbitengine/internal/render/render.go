@@ -296,37 +296,41 @@ func DrawGifts(screen *ebiten.Image, gifts []*types.Gift, closedImgs, openFrames
 		cy := float64(gift.Y*types.TileSize+types.TileSize/2) + oy
 		var img *ebiten.Image
 		if gift.Opened {
-			img = openFrames[0]
-			if img != nil {
-				op := &ebiten.DrawImageOptions{}
-				w, h := img.Bounds().Dx(), img.Bounds().Dy()
-				scale := float64(types.TileSize) / float64(w)
-				op.GeoM.Scale(scale, scale)
-				op.GeoM.Translate(cx-float64(w)*scale/2, cy-float64(h)*scale/2)
-				op.GeoM.Translate(ox, oy)
-				if gift.Life < 2.0 && gift.Life > 0 {
-					alpha := gift.Life / 2.0
-					if alpha < 0 {
-						alpha = 0
+			if len(openFrames) > 0 {
+				img = openFrames[0]
+				if img != nil {
+					op := &ebiten.DrawImageOptions{}
+					w, h := img.Bounds().Dx(), img.Bounds().Dy()
+					scale := float64(types.TileSize) / float64(w)
+					op.GeoM.Scale(scale, scale)
+					op.GeoM.Translate(cx-float64(w)*scale/2, cy-float64(h)*scale/2)
+					op.GeoM.Translate(ox, oy)
+					if gift.Life < 2.0 && gift.Life > 0 {
+						alpha := gift.Life / 2.0
+						if alpha < 0 {
+							alpha = 0
+						}
+						op.ColorM.Scale(1, 1, 1, alpha)
 					}
-					op.ColorM.Scale(1, 1, 1, alpha)
+					screen.DrawImage(img, op)
 				}
-				screen.DrawImage(img, op)
 			}
 		} else {
-			if gift.Color >= 0 && gift.Color < len(closedImgs) {
-				img = closedImgs[gift.Color]
-			} else {
-				img = closedImgs[0]
-			}
-			if img != nil {
-				op := &ebiten.DrawImageOptions{}
-				w, h := img.Bounds().Dx(), img.Bounds().Dy()
-				scale := float64(types.TileSize) / float64(w)
-				op.GeoM.Scale(scale, scale)
-				op.GeoM.Translate(cx-float64(w)*scale/2, cy-float64(h)*scale/2)
-				op.GeoM.Translate(ox, oy)
-				screen.DrawImage(img, op)
+			if len(closedImgs) > 0 {
+				if gift.Color >= 0 && gift.Color < len(closedImgs) {
+					img = closedImgs[gift.Color]
+				} else {
+					img = closedImgs[0]
+				}
+				if img != nil {
+					op := &ebiten.DrawImageOptions{}
+					w, h := img.Bounds().Dx(), img.Bounds().Dy()
+					scale := float64(types.TileSize) / float64(w)
+					op.GeoM.Scale(scale, scale)
+					op.GeoM.Translate(cx-float64(w)*scale/2, cy-float64(h)*scale/2)
+					op.GeoM.Translate(ox, oy)
+					screen.DrawImage(img, op)
+				}
 			}
 		}
 	}

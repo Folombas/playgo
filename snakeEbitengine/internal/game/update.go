@@ -141,7 +141,9 @@ func (g *Game) Update() error {
 		g.ghostAnimTimer += dt
 		if g.ghostAnimTimer >= 0.1 {
 			g.ghostAnimTimer = 0
-			g.ghostFrameIdx = (g.ghostFrameIdx + 1) % len(g.ghostFrames)
+			if len(g.ghostFrames) > 0 {
+				g.ghostFrameIdx = (g.ghostFrameIdx + 1) % len(g.ghostFrames)
+			}
 		}
 	}
 	if g.ghostActive && g.state == types.STATE_PLAYING {

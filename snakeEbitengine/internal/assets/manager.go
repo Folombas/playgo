@@ -4,7 +4,9 @@ import (
     "fmt"
     "image/color"
     "log"
-    "github.com/hajimehoshi/ebiten/v2"
+	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
+
     "snake/internal/constants"
     "snake/internal/entities"
     "snake/internal/types"
@@ -32,7 +34,7 @@ func New() *AssetManager {
 func (am *AssetManager) loadImages() {
 	// Helper that loads an image (PNG or JPEG) and returns a placeholder on error.
 	loadImage := func(path string) *ebiten.Image {
-		img, _, err := ebiten.NewImageFromFile(path)
+		img, _, err := ebitenutil.NewImageFromFile(path)
 		if err != nil {
 			log.Printf("failed to load %s: %v, using placeholder", path, err)
 			img = ebiten.NewImage(types.TileSize, types.TileSize)
@@ -44,16 +46,16 @@ func (am *AssetManager) loadImages() {
 
     // Fruits
     am.Apple = loadImage("assets/fruits/apple.png")
-    am.Strawberry = loadOrPlaceholder("assets/fruits/strawberry.png")
+    am.Strawberry = loadImage("assets/fruits/strawberry.png")
     am.Orange = loadImage("assets/fruits/orange.png")
-    am.Banana = loadOrPlaceholder("assets/fruits/banana.png")
-    am.Pineapple = loadOrPlaceholder("assets/fruits/pineapple.png")
+    am.Banana = loadImage("assets/fruits/banana.png")
+    am.Pineapple = loadImage("assets/fruits/pineapple.png")
 
     // Ghost animation frames (11 frames)
     am.GhostFrames = make([]*ebiten.Image, constants.GhostFrames)
     for i := 0; i < constants.GhostFrames; i++ {
         filename := fmt.Sprintf("assets/ghost/skeleton-animation_%02d.png", i)
-        am.GhostFrames[i] = loadOrPlaceholder(filename)
+        am.GhostFrames[i] = loadImage(filename)
     }
 
     // Roach sprite sheet (auto‑slice)
@@ -75,23 +77,23 @@ func (am *AssetManager) loadImages() {
     am.GiftClosedImgs = make([]*ebiten.Image, constants.GiftCount)
     for i := 0; i < constants.GiftCount; i++ {
         fname := fmt.Sprintf("assets/gifts/gift_01%s.png", letters[i])
-        am.GiftClosedImgs[i] = loadOrPlaceholder(fname)
+        am.GiftClosedImgs[i] = loadImage(fname)
     }
     am.GiftOpenFrames = make([]*ebiten.Image, constants.GiftCount)
     for i := 0; i < constants.GiftCount; i++ {
         fname := fmt.Sprintf("assets/gifts/giftopen_01%s.png", letters[i])
-        am.GiftOpenFrames[i] = loadOrPlaceholder(fname)
+        am.GiftOpenFrames[i] = loadImage(fname)
     }
 
     // Coins
     am.CoinFrames = make([]*ebiten.Image, constants.CoinFrames)
     for i := 0; i < constants.CoinFrames; i++ {
         fname := fmt.Sprintf("assets/coins/coin_%02da.png", i+1)
-        am.CoinFrames[i] = loadOrPlaceholder(fname)
+        am.CoinFrames[i] = loadImage(fname)
     }
 
     // Key image
-    am.KeyImg = loadOrPlaceholder("assets/keys/key_02d.png")
+    am.KeyImg = loadImage("assets/keys/key_02d.png")
 }
 
 // Helper imports not present in this snippet – they are added via go.mod imports.
