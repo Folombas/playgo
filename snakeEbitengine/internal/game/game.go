@@ -15,7 +15,8 @@ import (
 	myaudio "snake/internal/audio"
 	"snake/internal/entities"
 	"snake/internal/settings"
-	"snake/internal/types"
+    "snake/internal/assets"
+
 )
 
 type Game struct {
@@ -58,11 +59,8 @@ type Game struct {
 	buttonFlash    int
 	fontFace       font.Face
 
-	appleImg       *ebiten.Image
-	strawberryImg  *ebiten.Image
-	orangeImg      *ebiten.Image
-	bananaImg      *ebiten.Image
-	pineappleImg   *ebiten.Image
+    assets *assets.AssetManager
+
 
 	ghostFrames      []*ebiten.Image
 	ghostFrameIdx    int
@@ -155,7 +153,7 @@ func NewGame() *Game {
 		log.Printf("Шрифт не загружен: %v", err)
 	}
 
-	g.loadImages()
+    g.assets = assets.New()
 	g.createGifts()
 	return g
 }
@@ -210,82 +208,8 @@ func (g *Game) applySettings() {
 	}
 }
 
-func (g *Game) loadImages() {
-	g.appleImg, _ = entities.LoadPNG("assets/fruits/apple.png")
-	g.strawberryImg, _ = entities.LoadPNG("assets/fruits/strawberry.png")
-	g.orangeImg, _ = entities.LoadPNG("assets/fruits/orange.png")
-	g.bananaImg, _ = entities.LoadPNG("assets/fruits/banana.png")
-	g.pineappleImg, _ = entities.LoadPNG("assets/fruits/pineapple.png")
+func (g *Game) loadImages() { /* assets are loaded via AssetManager */ }
 
-	g.ghostFrames = make([]*ebiten.Image, 11)
-	for i := 0; i <= 10; i++ {
-		filename := fmt.Sprintf("assets/ghost/skeleton-animation_%02d.png", i)
-		img, err := entities.LoadPNG(filename)
-		if err != nil {
-			log.Printf("Не удалось загрузить %s: %v", filename, err)
-			img = ebiten.NewImage(types.TileSize, types.TileSize)
-			img.Fill(color.White)
-		}
-		g.ghostFrames[i] = img
-	}
-
-	roachFrames, err := entities.LoadSpriteSheet("assets/roach/roach.png", 32, 32, 4, 5, false, nil)
-	if err != nil {
-		log.Printf("roach.png не загружен: %v", err)
-	} else {
-		g.roachFrames = roachFrames
-		g.roachActive = true
-		g.roachX = g.rng.Intn(types.GridW)
-		g.roachY = g.rng.Intn(types.GridH)
-		g.roachMoveTimer = 0.5
-	}
-
-	vikingFrames, err := entities.LoadSpriteSheetAuto("assets/vikings/2204_w053_n004_9_medicharacters_p1_9.jpg", 5, 2, true, color.White)
-	if err != nil {
-		log.Printf("Не удалось загрузить викингов: %v", err)
-	} else {
-		g.vikingFrames = vikingFrames
-	}
-
-	g.giftClosedImgs = make([]*ebiten.Image, 6)
-	letters := []string{"a", "b", "c", "d", "e", "f"}
-	for i := 0; i < 6; i++ {
-		filename := fmt.Sprintf("assets/gifts/gift_01%s.png", letters[i])
-		img, err := entities.LoadPNG(filename)
-		if err != nil {
-			log.Printf("Не удалось загрузить %s: %v", filename, err)
-			img = ebiten.NewImage(types.TileSize, types.TileSize)
-			img.Fill(color.RGBA{150, 100, 100, 255})
-		}
-		g.giftClosedImgs[i] = img
-	}
-
-	g.giftOpenFrames = make([]*ebiten.Image, 6)
-	for i := 0; i < 6; i++ {
-		filename := fmt.Sprintf("assets/gifts/giftopen_01%s.png", letters[i])
-		img, err := entities.LoadPNG(filename)
-		if err != nil {
-			log.Printf("Не удалось загрузить %s: %v", filename, err)
-			img = ebiten.NewImage(types.TileSize, types.TileSize)
-			img.Fill(color.RGBA{200, 200, 100, 255})
-		}
-		g.giftOpenFrames[i] = img
-	}
-
-	g.coinFrames = make([]*ebiten.Image, 4)
-	for i := 0; i < 4; i++ {
-		filename := fmt.Sprintf("assets/coins/coin_%02da.png", i+1)
-		img, err := entities.LoadPNG(filename)
-		if err != nil {
-			log.Printf("Не удалось загрузить %s: %v", filename, err)
-			img = ebiten.NewImage(types.TileSize, types.TileSize)
-			img.Fill(color.RGBA{255, 215, 0, 255})
-		}
-		g.coinFrames[i] = img
-	}
-
-	g.keyImg, _ = entities.LoadPNG("assets/keys/key_02d.png")
-}
 
 func (g *Game) createGifts() {
 	g.gifts = nil
