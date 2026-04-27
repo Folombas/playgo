@@ -39,20 +39,19 @@ func (g *Game) Update() error {
 			g.sndPause.Rewind()
 			g.sndPause.Play()
 		}
-		selected := 0
 		if inpututil.IsKeyJustPressed(ebiten.KeyUp) {
-			selected = (selected - 1 + 4) % 4
+			g.settingsSelected = (g.settingsSelected - 1 + 4) % 4
 			g.sndMenuMove.Rewind()
 			g.sndMenuMove.Play()
 			g.pauseCooldown = 0.15
 		}
 		if inpututil.IsKeyJustPressed(ebiten.KeyDown) {
-			selected = (selected + 1) % 4
+			g.settingsSelected = (g.settingsSelected + 1) % 4
 			g.sndMenuMove.Rewind()
 			g.sndMenuMove.Play()
 			g.pauseCooldown = 0.15
 		}
-		switch selected {
+		switch g.settingsSelected {
 		case 0:
 			if inpututil.IsKeyJustPressed(ebiten.KeyLeft) {
 				g.settingsVolumeSlider -= 0.05

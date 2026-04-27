@@ -72,3 +72,4 @@ func (g *Game) GetSettingsVolumeSlider() float64 { return g.settingsVolumeSlider
 func (g *Game) GetSettingsLanguageIndex() int { return g.settingsLanguageIndex }
 func (g *Game) GetSettingsDifficultyIndex() int { return g.settingsDifficultyIndex }
 func (g *Game) GetSettingsAnimations() bool { return g.settingsAnimations }
+func (g *Game) GetSettingsSelected() int { return g.settingsSelected }

@@ -66,6 +66,7 @@ func Draw(screen *ebiten.Image, g interface {
 	GetSettingsLanguageIndex() int
 	GetSettingsDifficultyIndex() int
 	GetSettingsAnimations() bool
+	GetSettingsSelected() int
 }, drawText DrawFunc) {
 
 	screen.Fill(color.RGBA{12, 12, 20, 255})
@@ -512,6 +513,7 @@ func DrawSettings(screen *ebiten.Image, g interface {
 	GetSettingsLanguageIndex() int
 	GetSettingsDifficultyIndex() int
 	GetSettingsAnimations() bool
+	GetSettingsSelected() int
 }, drawText DrawFunc) {
 	ebitenutil.DrawRect(screen, 0, 0, types.ScreenW, types.ScreenH, color.RGBA{0, 0, 0, 220})
 	if settings.Current.Language == "ru" {
@@ -525,6 +527,9 @@ func DrawSettings(screen *ebiten.Image, g interface {
 	sliderX := 500
 	sliderW := 300
 
+	if g.GetSettingsSelected() == 0 {
+		ebitenutil.DrawRect(screen, 280, float64(y)-10, 350, 30, color.RGBA{80, 80, 120, 255})
+	}
 	if settings.Current.Language == "ru" {
 		drawText("Громкость:", 300, y, color.White)
 	} else {
@@ -536,6 +541,9 @@ func DrawSettings(screen *ebiten.Image, g interface {
 	drawText(strconv.Itoa(int(g.GetSettingsVolumeSlider()*100))+"%", sliderX+sliderW+20, y+5, color.White)
 	y += stepY
 
+	if g.GetSettingsSelected() == 1 {
+		ebitenutil.DrawRect(screen, 280, float64(y)-10, 350, 30, color.RGBA{80, 80, 120, 255})
+	}
 	if settings.Current.Language == "ru" {
 		drawText("Язык:", 300, y, color.White)
 		if g.GetSettingsLanguageIndex() == 0 {
@@ -553,6 +561,9 @@ func DrawSettings(screen *ebiten.Image, g interface {
 	}
 	y += stepY
 
+	if g.GetSettingsSelected() == 2 {
+		ebitenutil.DrawRect(screen, 280, float64(y)-10, 350, 30, color.RGBA{80, 80, 120, 255})
+	}
 	if settings.Current.Language == "ru" {
 		drawText("Сложность:", 300, y, color.White)
 		switch g.GetSettingsDifficultyIndex() {
@@ -576,6 +587,9 @@ func DrawSettings(screen *ebiten.Image, g interface {
 	}
 	y += stepY
 
+	if g.GetSettingsSelected() == 3 {
+		ebitenutil.DrawRect(screen, 280, float64(y)-10, 350, 30, color.RGBA{80, 80, 120, 255})
+	}
 	if settings.Current.Language == "ru" {
 		drawText("Фоновые анимации:", 300, y, color.White)
 		if g.GetSettingsAnimations() {

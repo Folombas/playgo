@@ -99,6 +99,7 @@ type Game struct {
 	settingsDifficultyIndex int
 	settingsAnimations     bool
 	settingsSliderGrabbed  bool
+	settingsSelected       int
 }
 
 func NewGame() *Game {
@@ -127,6 +128,7 @@ func NewGame() *Game {
 		settingsLanguageIndex: 0,
 		settingsDifficultyIndex: 1,
 		settingsAnimations: true,
+		settingsSelected:   0,
 	}
 
 	settings.Load()
