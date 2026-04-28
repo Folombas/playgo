@@ -1,6 +1,7 @@
 package game
 
 import (
+	"snake/internal/levels"
 	"image/color"
 	"log"
 	"math"
@@ -21,6 +22,7 @@ import (
 )
 
 type Game struct {
+	level *levels.Level
 	rng   *mathrand.Rand
 	state types.GameState
 
