@@ -45,7 +45,11 @@ func (g *Game) step() {
 			g.score += 4
 			g.health = minInt(types.MaxHealth, g.health+45)
 		}
-		g.placeFruit()
+		if g.score%10 == 0 {
+			g.sndLevelUp.Rewind()
+			g.sndLevelUp.Play()
+		}
+
 		g.spawnBombRandom()
 		g.spawnIce()
 		g.spawnGhost()

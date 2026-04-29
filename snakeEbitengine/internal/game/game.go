@@ -53,6 +53,8 @@ type Game struct {
 	sndKeyUse      *ebitenAudio.Player
 	sndGiftOpen    *ebitenAudio.Player
 	sndCoin        *ebitenAudio.Player
+	sndLevelUp    *ebitenAudio.Player
+	sndGameOver   *ebitenAudio.Player
 
 	shake          float64
 	menuPulse      float64
@@ -182,7 +184,8 @@ func (g *Game) initAudio() {
 	g.sndKeyCollect = myaudio.NewPlayer(g.audioCtx, myaudio.SndKey())
 	g.sndKeyUse = myaudio.NewPlayer(g.audioCtx, myaudio.SndKeyUse())
 	g.sndGiftOpen = myaudio.NewPlayer(g.audioCtx, myaudio.SndGiftOpen())
-	g.sndCoin = myaudio.NewPlayer(g.audioCtx, myaudio.SndCoin())
+	g.sndLevelUp = myaudio.NewPlayer(g.audioCtx, myaudio.SndLevelUp())
+	g.sndGameOver = myaudio.NewPlayer(g.audioCtx, myaudio.SndGameOver())
 
 	g.applySettings()
 }
@@ -566,7 +569,9 @@ func (g *Game) bombExplode(idx int) {
 		g.addParticles(cx, cy, 120, color.RGBA{255, 60, 30, 255}, true)
 		g.addParticles(cx, cy, 60, color.RGBA{255, 200, 50, 200}, true)
 		if g.health <= 0 {
-			g.state = types.STATE_GAMEOVER
+		g.state = types.STATE_GAMEOVER
+		g.sndGameOver.Rewind()
+		g.sndGameOver.Play()
 		}
 	} else {
 		g.addParticles(cx, cy, 80, color.RGBA{255, 100, 30, 255}, true)

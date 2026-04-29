@@ -74,3 +74,17 @@ func SndCoin() []byte {
 	t := SynthWave(sr, 0.1, 1000, 0.4, "sine", -600)
 	return MixToWAV(sr, [][]int16{t})
 }
+
+// New sound effects
+func SndLevelUp() []byte {
+    sr := 44100
+    t := SynthWave(sr, 0.2, 1200, 0.5, "sine", 200)
+    return MixToWAV(sr, [][]int16{t})
+}
+
+func SndGameOver() []byte {
+    sr := 44100
+    low := SynthWave(sr, 0.5, 80, 0.9, "sine", -30)
+    noise := SynthWave(sr, 0.5, 0, 0.7, "noise", 0)
+    return MixToWAV(sr, [][]int16{low, noise})
+}

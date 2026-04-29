@@ -11,7 +11,7 @@ import (
 
 func main() {
 	ebiten.SetWindowSize(types.ScreenW, types.ScreenH)
-	ebiten.SetWindowTitle("Змейка: Возрождение")
+	ebiten.SetWindowTitle("Змейка: Подарок Судьбы")
 	ebiten.SetFullscreen(true)
 	if err := ebiten.RunGame(game.NewGame()); err != nil {
 		log.Fatal(err)
