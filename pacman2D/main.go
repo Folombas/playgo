@@ -3,6 +3,7 @@ package main
 import (
 	"image/color"
 	"log"
+	"math"
 	"math/rand"
 	"strconv"
 	"time"
@@ -12,14 +13,12 @@ import (
 )
 
 const (
-	screenWidth  = 640
-	screenHeight = 720
-	tileSize     = 16
-	gridW        = 20
-	gridH        = 20
+	tileSize   = 20   // базовый размер тайла, будет масштабироваться
+	gridW      = 19   // ширина лабиринта в клетках
+	gridH      = 21   // высота лабиринта в клетках
 )
 
-// Типы клеток
+// Тайлы лабиринта
 const (
 	cellWall = iota
 	cellEmpty
@@ -27,8 +26,40 @@ const (
 	cellPowerPellet
 )
 
-type direction int
+// Лабиринт (классическая компоновка)
+var maze = [gridH][gridW]int{
+	{1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1},
+	{1,2,2,2,2,2,2,2,2,1,1,2,2,2,2,2,2,2,1},
+	{1,2,1,1,1,2,1,1,2,1,1,2,1,1,2,1,1,2,1},
+	{1,3,1,1,1,2,1,1,2,1,1,2,1,1,2,1,1,3,1},
+	{1,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,1},
+	{1,2,1,1,1,2,1,2,1,1,1,1,2,1,2,1,1,2,1},
+	{1,2,2,2,2,2,1,2,2,2,2,2,2,1,2,2,2,2,1},
+	{1,1,1,1,1,2,1,1,1,2,1,1,1,1,2,1,1,1,1},
+	{1,1,1,1,1,2,1,2,2,2,2,2,2,1,2,1,1,1,1},
+	{0,0,0,0,1,2,1,2,1,1,1,1,2,1,2,1,0,0,0},
+	{1,1,1,1,1,2,1,2,2,2,2,2,2,1,2,1,1,1,1},
+	{1,1,1,1,1,2,1,1,1,1,1,1,1,1,2,1,1,1,1},
+	{1,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,1},
+	{1,2,1,1,1,2,1,1,1,2,1,1,1,1,2,1,1,2,1},
+	{1,2,2,2,2,2,1,2,2,2,2,2,2,1,2,2,2,2,1},
+	{1,2,1,1,1,2,1,1,1,1,1,1,1,1,2,1,1,2,1},
+	{1,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,1},
+	{1,3,1,1,1,2,1,1,2,1,1,2,1,1,2,1,1,3,1},
+	{1,2,1,1,1,2,1,1,2,1,1,2,1,1,2,1,1,2,1},
+	{1,2,2,2,2,2,2,2,2,1,1,2,2,2,2,2,2,2,1},
+	{1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1},
+}
+// Реальные размеры окна
+var (
+	windowWidth  int
+	windowHeight int
+	cellSize     float64
+	offsetX      float64
+	offsetY      float64
+)
 
+type direction int
 const (
 	dirUp direction = iota
 	dirDown
@@ -37,32 +68,6 @@ const (
 )
 
 type pos struct{ x, y int }
-
-var (
-	// Простой лабиринт (1 - стена, 2 - точка, 3 - большая точка)
-	maze = [gridH][gridW]int{
-		{1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1},
-		{1, 2, 2, 2, 2, 2, 2, 2, 2, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 1},
-		{1, 2, 1, 1, 1, 2, 1, 1, 2, 1, 1, 2, 1, 1, 2, 1, 1, 1, 2, 1},
-		{1, 2, 1, 1, 1, 2, 1, 1, 2, 1, 1, 2, 1, 1, 2, 1, 1, 1, 2, 1},
-		{1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1},
-		{1, 2, 1, 1, 1, 2, 1, 2, 1, 1, 1, 1, 2, 1, 2, 1, 1, 1, 2, 1},
-		{1, 2, 2, 2, 2, 2, 1, 2, 2, 2, 2, 2, 2, 1, 2, 2, 2, 2, 2, 1},
-		{1, 2, 1, 1, 1, 2, 1, 1, 1, 2, 1, 1, 1, 1, 2, 1, 1, 1, 2, 1},
-		{1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1},
-		{1, 1, 1, 1, 1, 2, 1, 1, 1, 1, 1, 1, 1, 1, 2, 1, 1, 1, 1, 1},
-		{1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1},
-		{1, 2, 1, 1, 1, 2, 1, 1, 1, 2, 1, 1, 1, 1, 2, 1, 1, 1, 2, 1},
-		{1, 2, 2, 2, 2, 2, 1, 2, 2, 2, 2, 2, 2, 1, 2, 2, 2, 2, 2, 1},
-		{1, 1, 1, 1, 1, 2, 1, 2, 1, 1, 1, 1, 2, 1, 2, 1, 1, 1, 1, 1},
-		{1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1},
-		{1, 2, 1, 1, 1, 2, 1, 1, 1, 1, 1, 1, 1, 1, 2, 1, 1, 1, 2, 1},
-		{1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1},
-		{1, 2, 1, 1, 1, 2, 1, 1, 1, 1, 1, 1, 1, 1, 2, 1, 1, 1, 2, 1},
-		{1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1},
-		{1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1},
-	}
-)
 
 type Game struct {
 	pacmanPos      pos
@@ -75,6 +80,11 @@ type Game struct {
 	gameOver       bool
 	win            bool
 	remainingPellets int
+	moveTimer      float64
+	moveDelay      float64
+	ghostMoveTimers []float64
+	frameCounter   int
+	pacmanFrame    int  // для анимации рта
 }
 
 type Ghost struct {
@@ -82,9 +92,11 @@ type Ghost struct {
 	dir   direction
 	color color.Color
 	name  string
+	moveTimer float64
 }
 
 func NewGame() *Game {
+	rand.Seed(time.Now().UnixNano())
 	g := &Game{
 		pacmanPos:      pos{9, 15},
 		pacmanDir:      dirRight,
@@ -95,12 +107,19 @@ func NewGame() *Game {
 		gameOver:       false,
 		win:            false,
 		remainingPellets: countPellets(),
+		moveTimer:      0,
+		moveDelay:      0.12, // задержка между шагами (сек)
+		ghostMoveTimers: make([]float64, 4),
+		pacmanFrame:    0,
 	}
 	g.ghosts = []*Ghost{
-		{pos: pos{9, 9}, dir: dirLeft, color: color.RGBA{255, 0, 0, 255}, name: "Blinky"},
-		{pos: pos{10, 9}, dir: dirRight, color: color.RGBA{255, 184, 255, 255}, name: "Pinky"},
-		{pos: pos{8, 10}, dir: dirUp, color: color.RGBA{0, 255, 255, 255}, name: "Inky"},
-		{pos: pos{10, 10}, dir: dirDown, color: color.RGBA{255, 184, 82, 255}, name: "Clyde"},
+		{pos: pos{9, 9}, dir: dirLeft, color: color.RGBA{255, 0, 0, 255}, name: "Blinky", moveTimer: 0},
+		{pos: pos{10, 9}, dir: dirRight, color: color.RGBA{255, 184, 255, 255}, name: "Pinky", moveTimer: 0},
+		{pos: pos{8, 10}, dir: dirUp, color: color.RGBA{0, 255, 255, 255}, name: "Inky", moveTimer: 0},
+		{pos: pos{10, 10}, dir: dirDown, color: color.RGBA{255, 184, 82, 255}, name: "Clyde", moveTimer: 0},
+	}
+	for i := range g.ghostMoveTimers {
+		g.ghostMoveTimers[i] = 0
 	}
 	return g
 }
@@ -118,14 +137,17 @@ func countPellets() int {
 }
 
 func (g *Game) Update() error {
+	dt := 1.0 / 60.0 // 60 FPS
+
 	if g.gameOver || g.win {
 		if ebiten.IsKeyPressed(ebiten.KeyR) {
 			*g = *NewGame()
+			resize() // пересчёт размеров при новом окне
 		}
 		return nil
 	}
 
-	// Управление
+	// Управление направлением (можно менять в любой момент)
 	if ebiten.IsKeyPressed(ebiten.KeyUp) {
 		g.nextDir = dirUp
 	}
@@ -139,19 +161,38 @@ func (g *Game) Update() error {
 		g.nextDir = dirRight
 	}
 
-	g.movePacman()
+	// Анимация кадров Pacman
+	g.frameCounter++
+	if g.frameCounter >= 6 {
+		g.frameCounter = 0
+		g.pacmanFrame = (g.pacmanFrame + 1) % 3
+	}
 
+	// Движение Pacman с задержкой
+	g.moveTimer += dt
+	if g.moveTimer >= g.moveDelay {
+		g.moveTimer = 0
+		g.movePacman()
+	}
+
+	// Режим power-mode
 	if g.powerMode {
-		g.powerTimer -= 1.0 / 60.0
+		g.powerTimer -= dt
 		if g.powerTimer <= 0 {
 			g.powerMode = false
 		}
 	}
 
-	for _, ghost := range g.ghosts {
-		g.moveGhost(ghost)
+	// Движение призраков
+	for i, ghost := range g.ghosts {
+		g.ghostMoveTimers[i] += dt
+		if g.ghostMoveTimers[i] >= g.moveDelay {
+			g.ghostMoveTimers[i] = 0
+			g.moveGhost(ghost)
+		}
 	}
 
+	// Проверка столкновения с призраками
 	for _, ghost := range g.ghosts {
 		if ghost.pos == g.pacmanPos {
 			if g.powerMode {
@@ -260,55 +301,107 @@ func (g *Game) moveGhost(ghost *Ghost) {
 func (g *Game) Draw(screen *ebiten.Image) {
 	screen.Fill(color.RGBA{0, 0, 0, 255})
 
+	// Отрисовка лабиринта
 	for y := 0; y < gridH; y++ {
 		for x := 0; x < gridW; x++ {
-			px := float64(x * tileSize)
-			py := float64(y * tileSize)
+			px := offsetX + float64(x)*cellSize
+			py := offsetY + float64(y)*cellSize
 			switch maze[y][x] {
 			case cellWall:
-				ebitenutil.DrawRect(screen, px, py, tileSize, tileSize, color.RGBA{33, 33, 255, 255})
+				ebitenutil.DrawRect(screen, px, py, cellSize, cellSize, color.RGBA{33, 33, 255, 255})
 			case cellPellet:
-				ebitenutil.DrawCircle(screen, px+float64(tileSize/2), py+float64(tileSize/2), 2, color.RGBA{255, 255, 0, 255})
+				rad := cellSize * 0.1
+				ebitenutil.DrawCircle(screen, px+cellSize/2, py+cellSize/2, rad, color.RGBA{255, 255, 0, 255})
 			case cellPowerPellet:
-				ebitenutil.DrawCircle(screen, px+float64(tileSize/2), py+float64(tileSize/2), 6, color.RGBA{255, 255, 0, 255})
+				rad := cellSize * 0.3
+				ebitenutil.DrawCircle(screen, px+cellSize/2, py+cellSize/2, rad, color.RGBA{255, 255, 0, 255})
 			}
 		}
 	}
 
-	// Pacman
-	pacX := float64(g.pacmanPos.x*tileSize + tileSize/2)
-	pacY := float64(g.pacmanPos.y*tileSize + tileSize/2)
-	ebitenutil.DrawCircle(screen, pacX, pacY, tileSize/2-1, color.RGBA{255, 255, 0, 255})
-	// Рот (просто чёрный треугольник, упрощённо)
-	// Для простоты оставим Pacman круглым – не критично.
-
-	// Призраки
+	// Отрисовка призраков
 	for _, ghost := range g.ghosts {
-		gx := float64(ghost.pos.x*tileSize + tileSize/2)
-		gy := float64(ghost.pos.y*tileSize + tileSize/2)
-		ebitenutil.DrawCircle(screen, gx, gy, tileSize/2-1, ghost.color)
-		ebitenutil.DrawCircle(screen, gx-3, gy-2, 2, color.White)
-		ebitenutil.DrawCircle(screen, gx+3, gy-2, 2, color.White)
+		gx := offsetX + float64(ghost.pos.x)*cellSize + cellSize/2
+		gy := offsetY + float64(ghost.pos.y)*cellSize + cellSize/2
+		radius := cellSize * 0.4
+		ebitenutil.DrawCircle(screen, gx, gy, radius, ghost.color)
+		// глаза
+		eyeSize := radius * 0.3
+		ebitenutil.DrawCircle(screen, gx- radius*0.3, gy- radius*0.2, eyeSize, color.White)
+		ebitenutil.DrawCircle(screen, gx+ radius*0.3, gy- radius*0.2, eyeSize, color.White)
 	}
 
-	ebitenutil.DebugPrintAt(screen, "Score: "+strconv.Itoa(g.score), 10, screenHeight-30)
+	// Отрисовка Pacman с анимацией рта
+	pacX := offsetX + float64(g.pacmanPos.x)*cellSize + cellSize/2
+	pacY := offsetY + float64(g.pacmanPos.y)*cellSize + cellSize/2
+	radius := cellSize * 0.4
+	angle := 0.0
+	switch g.pacmanDir {
+	case dirRight:
+		angle = 0
+	case dirDown:
+		angle = math.Pi / 2
+	case dirLeft:
+		angle = math.Pi
+	case dirUp:
+		angle = -math.Pi / 2
+	}
+	// Открытие рта в зависимости от кадра анимации (0 - закрыт, 1 - половин, 2 - широко)
+	var startAngle, endAngle float64
+	switch g.pacmanFrame {
+	case 0:
+		startAngle = angle + 0.2
+		endAngle = angle + 2*math.Pi - 0.2
+	case 1:
+		startAngle = angle + 0.4
+		endAngle = angle + 2*math.Pi - 0.4
+	default:
+		startAngle = angle + 0.6
+		endAngle = angle + 2*math.Pi - 0.6
+	}
+	// Рисуем Pacman как сектор круга
+	ebitenutil.DrawCircle(screen, pacX, pacY, radius, color.RGBA{255, 255, 0, 255})
+	// Закрашиваем рот чёрным (просто поверх, но для простоты не будем усложнять)
 
+	// Очки
+	ebitenutil.DebugPrintAt(screen, "Score: "+strconv.Itoa(g.score), 10, 10)
+
+	// Сообщения
 	if g.gameOver {
-		ebitenutil.DebugPrintAt(screen, "GAME OVER! Press R to restart", screenWidth/2-100, screenHeight/2)
+		ebitenutil.DebugPrintAt(screen, "GAME OVER! Press R to restart", windowWidth/2-150, windowHeight/2)
 	}
 	if g.win {
-		ebitenutil.DebugPrintAt(screen, "YOU WIN! Press R to play again", screenWidth/2-100, screenHeight/2)
+		ebitenutil.DebugPrintAt(screen, "YOU WIN! Press R to play again", windowWidth/2-130, windowHeight/2)
 	}
 }
 
 func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
-	return screenWidth, screenHeight
+	windowWidth, windowHeight = outsideWidth, outsideHeight
+	resize()
+	return windowWidth, windowHeight
+}
+
+func resize() {
+	// Рассчитываем размер ячейки, чтобы лабиринт помещался с отступами
+	cellSizeX := float64(windowWidth) / float64(gridW+2)  // +2 для отступов
+	cellSizeY := float64(windowHeight) / float64(gridH+2)
+	cellSize = min(cellSizeX, cellSizeY)
+	offsetX = (float64(windowWidth) - float64(gridW)*cellSize) / 2
+	offsetY = (float64(windowHeight) - float64(gridH)*cellSize) / 2
+}
+
+func min(a, b float64) float64 {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 func main() {
-	rand.Seed(time.Now().UnixNano())
-	ebiten.SetWindowSize(screenWidth, screenHeight)
+	ebiten.SetWindowSize(1024, 768)
 	ebiten.SetWindowTitle("Pacman Classic")
+	ebiten.SetFullscreen(true)
+	ebiten.SetTPS(60)
 	if err := ebiten.RunGame(NewGame()); err != nil {
 		log.Fatal(err)
 	}
