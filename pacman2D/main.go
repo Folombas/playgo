@@ -90,7 +90,6 @@ type Ghost struct {
 	dir   direction
 	color color.Color
 	name  string
-	moveTimer float64
 }
 
 func NewGame() *Game {
@@ -111,10 +110,10 @@ func NewGame() *Game {
 		pacmanFrame:    0,
 	}
 	g.ghosts = []*Ghost{
-		{pos: pos{9, 9}, dir: dirLeft, color: color.RGBA{255, 0, 0, 255}, name: "Blinky", moveTimer: 0},
-		{pos: pos{10, 9}, dir: dirRight, color: color.RGBA{255, 184, 255, 255}, name: "Pinky", moveTimer: 0},
-		{pos: pos{8, 10}, dir: dirUp, color: color.RGBA{0, 255, 255, 255}, name: "Inky", moveTimer: 0},
-		{pos: pos{10, 10}, dir: dirDown, color: color.RGBA{255, 184, 82, 255}, name: "Clyde", moveTimer: 0},
+		{pos: pos{9, 9}, dir: dirLeft, color: color.RGBA{255, 0, 0, 255}, name: "Blinky"},
+		{pos: pos{10, 9}, dir: dirRight, color: color.RGBA{255, 184, 255, 255}, name: "Pinky"},
+		{pos: pos{8, 10}, dir: dirUp, color: color.RGBA{0, 255, 255, 255}, name: "Inky"},
+		{pos: pos{10, 10}, dir: dirDown, color: color.RGBA{255, 184, 82, 255}, name: "Clyde"},
 	}
 	return g
 }
@@ -312,24 +311,14 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		ebitenutil.DrawCircle(screen, gx+ radius*0.3, gy- radius*0.2, eyeSize, color.White)
 	}
 
-	// Рисуем Pacman с открывающимся ртом
+	// Рисуем Pacman
 	pacX := offsetX + float64(g.pacmanPos.x)*cellSize + cellSize/2
 	pacY := offsetY + float64(g.pacmanPos.y)*cellSize + cellSize/2
 	radius := cellSize * 0.4
-	// Угол направления
-	angle := 0.0
-	switch g.pacmanDir {
-	case dirRight:
-		angle = 0
-	case dirDown:
-		angle = math.Pi / 2
-	case dirLeft:
-		angle = math.Pi
-	case dirUp:
-		angle = -math.Pi / 2
-	}
-	// Угол открытия рта
-	var mouthAngle float64
+	ebitenutil.DrawCircle(screen, pacX, pacY, radius, color.RGBA{255, 255, 0, 255})
+
+	// Рисуем рот чёрными линиями от центра к краям
+	mouthAngle := 0.0
 	switch g.pacmanFrame {
 	case 0:
 		mouthAngle = 0.3
@@ -338,9 +327,27 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	default:
 		mouthAngle = 0.7
 	}
-	start := angle + mouthAngle
-	end := angle + 2*math.Pi - mouthAngle
-	ebitenutil.DrawArc(screen, pacX, pacY, radius, start, end, color.RGBA{255, 255, 0, 255})
+	dirAngle := 0.0
+	switch g.pacmanDir {
+	case dirRight:
+		dirAngle = 0
+	case dirDown:
+		dirAngle = math.Pi / 2
+	case dirLeft:
+		dirAngle = math.Pi
+	case dirUp:
+		dirAngle = -math.Pi / 2
+	}
+	start := dirAngle + mouthAngle
+	end := dirAngle + 2*math.Pi - mouthAngle
+	segments := 20
+	for i := 0; i <= segments; i++ {
+		theta := start + float64(i)/float64(segments)*(end-start)
+		cx := pacX + radius*math.Cos(theta)
+		cy := pacY + radius*math.Sin(theta)
+		ebitenutil.DrawLine(screen, pacX, pacY, cx, cy, color.RGBA{0, 0, 0, 255})
+	}
+	// Дополнительно можно нарисовать чёрный треугольник, но линии дают достаточный эффект.
 
 	ebitenutil.DebugPrintAt(screen, "Score: "+strconv.Itoa(g.score), 10, 10)
 
