@@ -13,12 +13,11 @@ import (
 )
 
 const (
-	tileSize   = 20   // базовый размер тайла, будет масштабироваться
-	gridW      = 19   // ширина лабиринта в клетках
-	gridH      = 21   // высота лабиринта в клетках
+	tileSize   = 20
+	gridW      = 19
+	gridH      = 21
 )
 
-// Тайлы лабиринта
 const (
 	cellWall = iota
 	cellEmpty
@@ -26,7 +25,6 @@ const (
 	cellPowerPellet
 )
 
-// Лабиринт (классическая компоновка)
 var maze = [gridH][gridW]int{
 	{1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1},
 	{1,2,2,2,2,2,2,2,2,1,1,2,2,2,2,2,2,2,1},
@@ -50,7 +48,7 @@ var maze = [gridH][gridW]int{
 	{1,2,2,2,2,2,2,2,2,1,1,2,2,2,2,2,2,2,1},
 	{1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1},
 }
-// Реальные размеры окна
+
 var (
 	windowWidth  int
 	windowHeight int
@@ -84,7 +82,7 @@ type Game struct {
 	moveDelay      float64
 	ghostMoveTimers []float64
 	frameCounter   int
-	pacmanFrame    int  // для анимации рта
+	pacmanFrame    int
 }
 
 type Ghost struct {
@@ -108,7 +106,7 @@ func NewGame() *Game {
 		win:            false,
 		remainingPellets: countPellets(),
 		moveTimer:      0,
-		moveDelay:      0.12, // задержка между шагами (сек)
+		moveDelay:      0.12,
 		ghostMoveTimers: make([]float64, 4),
 		pacmanFrame:    0,
 	}
@@ -117,9 +115,6 @@ func NewGame() *Game {
 		{pos: pos{10, 9}, dir: dirRight, color: color.RGBA{255, 184, 255, 255}, name: "Pinky", moveTimer: 0},
 		{pos: pos{8, 10}, dir: dirUp, color: color.RGBA{0, 255, 255, 255}, name: "Inky", moveTimer: 0},
 		{pos: pos{10, 10}, dir: dirDown, color: color.RGBA{255, 184, 82, 255}, name: "Clyde", moveTimer: 0},
-	}
-	for i := range g.ghostMoveTimers {
-		g.ghostMoveTimers[i] = 0
 	}
 	return g
 }
@@ -137,17 +132,16 @@ func countPellets() int {
 }
 
 func (g *Game) Update() error {
-	dt := 1.0 / 60.0 // 60 FPS
+	dt := 1.0 / 60.0
 
 	if g.gameOver || g.win {
 		if ebiten.IsKeyPressed(ebiten.KeyR) {
 			*g = *NewGame()
-			resize() // пересчёт размеров при новом окне
+			resize()
 		}
 		return nil
 	}
 
-	// Управление направлением (можно менять в любой момент)
 	if ebiten.IsKeyPressed(ebiten.KeyUp) {
 		g.nextDir = dirUp
 	}
@@ -161,21 +155,18 @@ func (g *Game) Update() error {
 		g.nextDir = dirRight
 	}
 
-	// Анимация кадров Pacman
 	g.frameCounter++
 	if g.frameCounter >= 6 {
 		g.frameCounter = 0
 		g.pacmanFrame = (g.pacmanFrame + 1) % 3
 	}
 
-	// Движение Pacman с задержкой
 	g.moveTimer += dt
 	if g.moveTimer >= g.moveDelay {
 		g.moveTimer = 0
 		g.movePacman()
 	}
 
-	// Режим power-mode
 	if g.powerMode {
 		g.powerTimer -= dt
 		if g.powerTimer <= 0 {
@@ -183,7 +174,6 @@ func (g *Game) Update() error {
 		}
 	}
 
-	// Движение призраков
 	for i, ghost := range g.ghosts {
 		g.ghostMoveTimers[i] += dt
 		if g.ghostMoveTimers[i] >= g.moveDelay {
@@ -192,7 +182,6 @@ func (g *Game) Update() error {
 		}
 	}
 
-	// Проверка столкновения с призраками
 	for _, ghost := range g.ghosts {
 		if ghost.pos == g.pacmanPos {
 			if g.powerMode {
@@ -217,7 +206,6 @@ func (g *Game) Update() error {
 }
 
 func (g *Game) movePacman() {
-	// Попытка повернуть
 	newX, newY := g.pacmanPos.x, g.pacmanPos.y
 	switch g.nextDir {
 	case dirUp:
@@ -232,7 +220,6 @@ func (g *Game) movePacman() {
 	if !g.isWall(newX, newY) {
 		g.pacmanDir = g.nextDir
 	}
-	// Движение в текущем направлении
 	newX, newY = g.pacmanPos.x, g.pacmanPos.y
 	switch g.pacmanDir {
 	case dirUp:
@@ -248,8 +235,6 @@ func (g *Game) movePacman() {
 		g.pacmanPos.x = newX
 		g.pacmanPos.y = newY
 	}
-
-	// Съедание еды
 	if maze[g.pacmanPos.y][g.pacmanPos.x] == cellPellet {
 		maze[g.pacmanPos.y][g.pacmanPos.x] = cellEmpty
 		g.score += 10
@@ -261,7 +246,6 @@ func (g *Game) movePacman() {
 		g.powerMode = true
 		g.powerTimer = 10.0
 	}
-
 	if g.remainingPellets == 0 {
 		g.win = true
 	}
@@ -301,7 +285,6 @@ func (g *Game) moveGhost(ghost *Ghost) {
 func (g *Game) Draw(screen *ebiten.Image) {
 	screen.Fill(color.RGBA{0, 0, 0, 255})
 
-	// Отрисовка лабиринта
 	for y := 0; y < gridH; y++ {
 		for x := 0; x < gridW; x++ {
 			px := offsetX + float64(x)*cellSize
@@ -319,22 +302,21 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		}
 	}
 
-	// Отрисовка призраков
 	for _, ghost := range g.ghosts {
 		gx := offsetX + float64(ghost.pos.x)*cellSize + cellSize/2
 		gy := offsetY + float64(ghost.pos.y)*cellSize + cellSize/2
 		radius := cellSize * 0.4
 		ebitenutil.DrawCircle(screen, gx, gy, radius, ghost.color)
-		// глаза
 		eyeSize := radius * 0.3
 		ebitenutil.DrawCircle(screen, gx- radius*0.3, gy- radius*0.2, eyeSize, color.White)
 		ebitenutil.DrawCircle(screen, gx+ radius*0.3, gy- radius*0.2, eyeSize, color.White)
 	}
 
-	// Отрисовка Pacman с анимацией рта
+	// Рисуем Pacman с открывающимся ртом
 	pacX := offsetX + float64(g.pacmanPos.x)*cellSize + cellSize/2
 	pacY := offsetY + float64(g.pacmanPos.y)*cellSize + cellSize/2
 	radius := cellSize * 0.4
+	// Угол направления
 	angle := 0.0
 	switch g.pacmanDir {
 	case dirRight:
@@ -346,27 +328,22 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	case dirUp:
 		angle = -math.Pi / 2
 	}
-	// Открытие рта в зависимости от кадра анимации (0 - закрыт, 1 - половин, 2 - широко)
-	var startAngle, endAngle float64
+	// Угол открытия рта
+	var mouthAngle float64
 	switch g.pacmanFrame {
 	case 0:
-		startAngle = angle + 0.2
-		endAngle = angle + 2*math.Pi - 0.2
+		mouthAngle = 0.3
 	case 1:
-		startAngle = angle + 0.4
-		endAngle = angle + 2*math.Pi - 0.4
+		mouthAngle = 0.5
 	default:
-		startAngle = angle + 0.6
-		endAngle = angle + 2*math.Pi - 0.6
+		mouthAngle = 0.7
 	}
-	// Рисуем Pacman как сектор круга
-	ebitenutil.DrawCircle(screen, pacX, pacY, radius, color.RGBA{255, 255, 0, 255})
-	// Закрашиваем рот чёрным (просто поверх, но для простоты не будем усложнять)
+	start := angle + mouthAngle
+	end := angle + 2*math.Pi - mouthAngle
+	ebitenutil.DrawArc(screen, pacX, pacY, radius, start, end, color.RGBA{255, 255, 0, 255})
 
-	// Очки
 	ebitenutil.DebugPrintAt(screen, "Score: "+strconv.Itoa(g.score), 10, 10)
 
-	// Сообщения
 	if g.gameOver {
 		ebitenutil.DebugPrintAt(screen, "GAME OVER! Press R to restart", windowWidth/2-150, windowHeight/2)
 	}
@@ -382,8 +359,7 @@ func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
 }
 
 func resize() {
-	// Рассчитываем размер ячейки, чтобы лабиринт помещался с отступами
-	cellSizeX := float64(windowWidth) / float64(gridW+2)  // +2 для отступов
+	cellSizeX := float64(windowWidth) / float64(gridW+2)
 	cellSizeY := float64(windowHeight) / float64(gridH+2)
 	cellSize = min(cellSizeX, cellSizeY)
 	offsetX = (float64(windowWidth) - float64(gridW)*cellSize) / 2
