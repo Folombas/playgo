@@ -3,7 +3,6 @@ package main
 import (
 	"image/color"
 	"log"
-	"math"
 	"math/rand"
 	"strconv"
 	"time"
