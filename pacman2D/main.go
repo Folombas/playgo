@@ -494,10 +494,7 @@ func (g *Game) moveGhost(ghost *Ghost) {
 	dirs := []direction{dirUp, dirDown, dirLeft, dirRight}
 	rand.Shuffle(len(dirs), func(i, j int) { dirs[i], dirs[j] = dirs[j], dirs[i] })
 	bestDir := ghost.dir
-	bestDist := math.Inf(1)
-	dx := float64(ghost.pos.x - g.pacmanPos.x)
-	dy := float64(ghost.pos.y - g.pacmanPos.y)
-	currentDist := dx*dx + dy*dy
+	minDist := math.Inf(1)
 	for _, d := range dirs {
 		nx, ny := ghost.pos.x, ghost.pos.y
 		switch d {
@@ -511,24 +508,41 @@ func (g *Game) moveGhost(ghost *Ghost) {
 			nx++
 		}
 		if !g.isWall(nx, ny) {
-			ndx := float64(nx - g.pacmanPos.x)
-			ndy := float64(ny - g.pacmanPos.y)
-			ndist := ndx*ndx + ndy*ndy
+			dx := float64(nx - g.pacmanPos.x)
+			dy := float64(ny - g.pacmanPos.y)
+			dist := dx*dx + dy*dy
 			if g.powerMode {
-				// убегаем
-				if ndist > bestDist {
-					bestDist = ndist
+				if dist > minDist {
+					minDist = dist
 					bestDir = d
 				}
 			} else {
-				// преследуем
-				if ndist < bestDist {
-					bestDist = ndist
+				if dist < minDist {
+					minDist = dist
 					bestDir = d
 				}
 			}
 		}
 	}
+	if bestDir != ghost.dir || g.isWall(ghost.pos.x, ghost.pos.y) {
+		ghost.dir = bestDir
+	}
+	switch ghost.dir {
+	case dirUp:
+		ghost.pos.y--
+	case dirDown:
+		ghost.pos.y++
+	case dirLeft:
+		ghost.pos.x--
+	case dirRight:
+		ghost.pos.x++
+	}
+	if ghost.pos.x < 0 && ghost.pos.y == 9 {
+		ghost.pos.x = gridW - 1
+	} else if ghost.pos.x >= gridW && ghost.pos.y == 9 {
+		ghost.pos.x = 0
+	}
+}
 	// если не нашли, оставляем текущее
 	if bestDir != ghost.dir || g.isWall(ghost.pos.x, ghost.pos.y) {
 		ghost.dir = bestDir
