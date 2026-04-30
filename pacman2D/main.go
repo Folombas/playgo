@@ -1,10 +1,7 @@
 package main
 
 import (
-	"bytes"
-	"encoding/binary"
 	"image/color"
-	"io"
 	"log"
 	"math"
 	"math/rand"
@@ -12,8 +9,6 @@ import (
 	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/audio"
-	"github.com/hajimehoshi/ebiten/v2/audio/wav"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 )
 
@@ -71,7 +66,9 @@ const (
 	dirRight
 )
 
-type pos struct{ x, y int }
+type pos struct {
+	x, y int
+}
 
 type Game struct {
 	pacmanPos         pos
@@ -92,13 +89,6 @@ type Game struct {
 	pacmanFrame       int
 	powerFlashCounter int
 	powerBlink        bool
-	audioContext      *audio.Context
-	sndPellet         *audio.Player
-	sndPowerPellet    *audio.Player
-	sndGhostEat       *audio.Player
-	sndDeath          *audio.Player
-	sndWin            *audio.Player
-	gameStart         bool
 }
 
 type Ghost struct {
@@ -107,7 +97,6 @@ type Ghost struct {
 	color   color.Color
 	name    string
 	homePos pos
-	dead    bool
 }
 
 func NewGame() *Game {
@@ -129,7 +118,6 @@ func NewGame() *Game {
 		pacmanFrame:       0,
 		powerFlashCounter: 0,
 		powerBlink:        false,
-		gameStart:         true,
 	}
 	g.ghosts = []*Ghost{
 		{pos: pos{9, 9}, dir: dirLeft, color: color.RGBA{255, 0, 0, 255}, name: "Blinky", homePos: pos{9, 9}},
@@ -137,13 +125,6 @@ func NewGame() *Game {
 		{pos: pos{8, 10}, dir: dirUp, color: color.RGBA{0, 255, 255, 255}, name: "Inky", homePos: pos{8, 10}},
 		{pos: pos{10, 10}, dir: dirDown, color: color.RGBA{255, 184, 82, 255}, name: "Clyde", homePos: pos{10, 10}},
 	}
-	// Аудио
-	g.audioContext = audio.NewContext(44100)
-	g.sndPellet = newSound(g.audioContext, sndPellet())
-	g.sndPowerPellet = newSound(g.audioContext, sndPowerPellet())
-	g.sndGhostEat = newSound(g.audioContext, sndGhostEat())
-	g.sndDeath = newSound(g.audioContext, sndDeath())
-	g.sndWin = newSound(g.audioContext, sndWin())
 	return g
 }
 
@@ -159,158 +140,8 @@ func countPellets() int {
 	return cnt
 }
 
-// ---- синтез звуков ----
-func synthWave(sr int, dur, freq, amp float64, wave string, freqSweep float64) []int16 {
-	n := int(float64(sr) * dur)
-	out := make([]int16, n)
-	for i := 0; i < n; i++ {
-		t := float64(i) / float64(sr)
-		f := freq + freqSweep*t
-		var s float64
-		switch wave {
-		case "sine":
-			s = math.Sin(2 * math.Pi * f * t)
-		case "square":
-			if math.Sin(2*math.Pi*f*t) >= 0 {
-				s = 1
-			} else {
-				s = -1
-			}
-		case "noise":
-			s = rand.NormFloat64()
-		default:
-			s = math.Sin(2 * math.Pi * f * t)
-		}
-		// ADSR envelope
-		att, dec, sus, rel := 0.005, 0.02, 0.6, dur*0.3
-		env := 1.0
-		if t < att {
-			env = t / att
-		} else if t < att+dec {
-			env = 1 - (t-att)/dec*(1-sus)
-		} else if t > dur-rel {
-			env = sus * (dur - t) / rel
-		} else {
-			env = sus
-		}
-		val := s * amp * env
-		if val > 1 {
-			val = 1
-		} else if val < -1 {
-			val = -1
-		}
-		out[i] = int16(val * 32767)
-	}
-	return out
-}
-
-func mixToWAV(sr int, tracks [][]int16) []byte {
-	maxLen := 0
-	for _, t := range tracks {
-		if len(t) > maxLen {
-			maxLen = len(t)
-		}
-	}
-	mix := make([]int32, maxLen)
-	for _, t := range tracks {
-		for i := 0; i < len(t); i++ {
-			mix[i] += int32(t[i])
-		}
-	}
-	var peak int32
-	for _, v := range mix {
-		if v < 0 {
-			v = -v
-		}
-		if v > peak {
-			peak = v
-		}
-	}
-	scale := 1.0
-	if peak > 32767 {
-		scale = 32767.0 / float64(peak)
-	}
-	buf := &bytes.Buffer{}
-	dataSize := maxLen * 2
-	buf.WriteString("RIFF")
-	writeLEUint32(buf, uint32(36+dataSize))
-	buf.WriteString("WAVEfmt ")
-	writeLEUint32(buf, 16)
-	writeLEUint16(buf, 1)
-	writeLEUint16(buf, 1)
-	writeLEUint32(buf, uint32(sr))
-	writeLEUint32(buf, uint32(sr*2))
-	writeLEUint16(buf, 2)
-	writeLEUint16(buf, 16)
-	buf.WriteString("data")
-	writeLEUint32(buf, uint32(dataSize))
-	for i := 0; i < maxLen; i++ {
-		v := int16(float64(mix[i]) * scale)
-		_ = binary.Write(buf, binary.LittleEndian, v)
-	}
-	return buf.Bytes()
-}
-
-func writeLEUint16(w io.Writer, v uint16) { _ = binary.Write(w, binary.LittleEndian, v) }
-func writeLEUint32(w io.Writer, v uint32) { _ = binary.Write(w, binary.LittleEndian, v) }
-
-func sndPellet() []byte {
-	sr := 44100
-	t1 := synthWave(sr, 0.07, 800, 0.4, "sine", -300)
-	return mixToWAV(sr, [][]int16{t1})
-}
-func sndPowerPellet() []byte {
-	sr := 44100
-	t1 := synthWave(sr, 0.15, 400, 0.5, "sine", 300)
-	t2 := synthWave(sr, 0.15, 800, 0.4, "sine", -200)
-	return mixToWAV(sr, [][]int16{t1, t2})
-}
-func sndGhostEat() []byte {
-	sr := 44100
-	t1 := synthWave(sr, 0.2, 200, 0.6, "square", -100)
-	t2 := synthWave(sr, 0.2, 100, 0.5, "noise", 0)
-	return mixToWAV(sr, [][]int16{t1, t2})
-}
-func sndDeath() []byte {
-	sr := 44100
-	t1 := synthWave(sr, 0.3, 300, 0.8, "sine", -200)
-	t2 := synthWave(sr, 0.3, 150, 0.6, "square", -100)
-	return mixToWAV(sr, [][]int16{t1, t2})
-}
-func sndWin() []byte {
-	sr := 44100
-	t1 := synthWave(sr, 0.5, 880, 0.5, "sine", -400)
-	t2 := synthWave(sr, 0.5, 440, 0.5, "sine", 200)
-	return mixToWAV(sr, [][]int16{t1, t2})
-}
-
-func newSound(ctx *audio.Context, data []byte) *audio.Player {
-	d, err := wav.Decode(ctx, bytes.NewReader(data))
-	if err != nil {
-		log.Printf("wav decode err: %v", err)
-		return nil
-	}
-	p, err := audio.NewPlayer(ctx, d)
-	if err != nil {
-		log.Printf("audio player err: %v", err)
-		return nil
-	}
-	return p
-}
-
-func (g *Game) playSound(p *audio.Player) {
-	if p != nil {
-		p.Rewind()
-		p.Play()
-	}
-}
-
 func (g *Game) Update() error {
 	dt := 1.0 / 60.0
-
-	if g.gameStart {
-		g.gameStart = false
-	}
 
 	if g.gameOver || g.win {
 		if ebiten.IsKeyPressed(ebiten.KeyR) {
@@ -323,7 +154,6 @@ func (g *Game) Update() error {
 		g.gameOver = true
 	}
 
-	// ввод
 	if ebiten.IsKeyPressed(ebiten.KeyUp) {
 		g.nextDir = dirUp
 	}
@@ -337,21 +167,18 @@ func (g *Game) Update() error {
 		g.nextDir = dirRight
 	}
 
-	// анимация рта
 	g.frameCounter++
 	if g.frameCounter >= 6 {
 		g.frameCounter = 0
 		g.pacmanFrame = (g.pacmanFrame + 1) % 3
 	}
 
-	// движение pacman
 	g.moveTimer += dt
 	if g.moveTimer >= g.moveDelay {
 		g.moveTimer = 0
 		g.movePacman()
 	}
 
-	// режим страха
 	if g.powerMode {
 		g.powerTimer -= dt
 		if g.powerTimer <= 0 {
@@ -366,7 +193,6 @@ func (g *Game) Update() error {
 		}
 	}
 
-	// движение призраков
 	for i, ghost := range g.ghosts {
 		g.ghostMoveTimers[i] += dt
 		if g.ghostMoveTimers[i] >= g.moveDelay {
@@ -375,18 +201,14 @@ func (g *Game) Update() error {
 		}
 	}
 
-	// столкновения с привидениями
 	for _, ghost := range g.ghosts {
-		if ghost.pos == g.pacmanPos && !ghost.dead {
+		if ghost.pos == g.pacmanPos {
 			if g.powerMode {
-				ghost.dead = true
 				g.score += 200
-				g.playSound(g.sndGhostEat)
 				ghost.pos = ghost.homePos
 				ghost.dir = dirLeft
 			} else {
 				g.lives--
-				g.playSound(g.sndDeath)
 				if g.lives <= 0 {
 					g.gameOver = true
 				} else {
@@ -395,7 +217,6 @@ func (g *Game) Update() error {
 			}
 		}
 	}
-
 	return nil
 }
 
@@ -403,9 +224,6 @@ func (g *Game) respawn() {
 	g.pacmanPos = pos{9, 15}
 	g.pacmanDir = dirRight
 	g.nextDir = dirRight
-	for _, ghost := range g.ghosts {
-		ghost.dead = false
-	}
 	g.ghosts[0].pos = pos{9, 9}
 	g.ghosts[1].pos = pos{10, 9}
 	g.ghosts[2].pos = pos{8, 10}
@@ -418,13 +236,11 @@ func (g *Game) respawn() {
 }
 
 func (g *Game) movePacman() {
-	// телепортация
 	if g.pacmanPos.x == 0 && g.pacmanPos.y == 9 && g.nextDir == dirLeft {
 		g.pacmanPos.x = gridW - 1
 	} else if g.pacmanPos.x == gridW-1 && g.pacmanPos.y == 9 && g.nextDir == dirRight {
 		g.pacmanPos.x = 0
 	} else {
-		// проверить nextDir
 		newX, newY := g.pacmanPos.x, g.pacmanPos.y
 		switch g.nextDir {
 		case dirUp:
@@ -439,7 +255,6 @@ func (g *Game) movePacman() {
 		if !g.isWall(newX, newY) && !g.isTeleport(newX, newY) {
 			g.pacmanDir = g.nextDir
 		}
-		// движение в текущем направлении
 		newX, newY = g.pacmanPos.x, g.pacmanPos.y
 		switch g.pacmanDir {
 		case dirUp:
@@ -456,13 +271,10 @@ func (g *Game) movePacman() {
 			g.pacmanPos.y = newY
 		}
 	}
-
-	// поедание
 	if maze[g.pacmanPos.y][g.pacmanPos.x] == cellPellet {
 		maze[g.pacmanPos.y][g.pacmanPos.x] = cellEmpty
 		g.score += 10
 		g.remainingPellets--
-		g.playSound(g.sndPellet)
 	} else if maze[g.pacmanPos.y][g.pacmanPos.x] == cellPowerPellet {
 		maze[g.pacmanPos.y][g.pacmanPos.x] = cellEmpty
 		g.score += 50
@@ -471,11 +283,9 @@ func (g *Game) movePacman() {
 		g.powerTimer = 10.0
 		g.powerBlink = false
 		g.powerFlashCounter = 0
-		g.playSound(g.sndPowerPellet)
 	}
-	if g.remainingPellets == 0 && !g.win {
+	if g.remainingPellets == 0 {
 		g.win = true
-		g.playSound(g.sndWin)
 	}
 }
 
@@ -543,27 +353,6 @@ func (g *Game) moveGhost(ghost *Ghost) {
 		ghost.pos.x = 0
 	}
 }
-	// если не нашли, оставляем текущее
-	if bestDir != ghost.dir || g.isWall(ghost.pos.x, ghost.pos.y) {
-		ghost.dir = bestDir
-	}
-	switch ghost.dir {
-	case dirUp:
-		ghost.pos.y--
-	case dirDown:
-		ghost.pos.y++
-	case dirLeft:
-		ghost.pos.x--
-	case dirRight:
-		ghost.pos.x++
-	}
-	// телепорт
-	if ghost.pos.x < 0 && ghost.pos.y == 9 {
-		ghost.pos.x = gridW - 1
-	} else if ghost.pos.x >= gridW && ghost.pos.y == 9 {
-		ghost.pos.x = 0
-	}
-}
 
 func (g *Game) Draw(screen *ebiten.Image) {
 	screen.Fill(color.RGBA{0, 0, 0, 255})
@@ -586,9 +375,6 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	}
 
 	for _, ghost := range g.ghosts {
-		if ghost.dead {
-			continue
-		}
 		gx := offsetX + float64(ghost.pos.x)*cellSize + cellSize/2
 		gy := offsetY + float64(ghost.pos.y)*cellSize + cellSize/2
 		radius := cellSize * 0.4
@@ -601,10 +387,10 @@ func (g *Game) Draw(screen *ebiten.Image) {
 			}
 		}
 		ebitenutil.DrawCircle(screen, gx, gy, radius, curColor)
-		eyeSize := radius * 0.3
-		ebitenutil.DrawCircle(screen, gx-radius*0.3, gy-radius*0.2, eyeSize, color.White)
-		ebitenutil.DrawCircle(screen, gx+radius*0.3, gy-radius*0.2, eyeSize, color.White)
-		pupil := eyeSize * 0.5
+		eyes := radius * 0.3
+		ebitenutil.DrawCircle(screen, gx-radius*0.3, gy-radius*0.2, eyes, color.White)
+		ebitenutil.DrawCircle(screen, gx+radius*0.3, gy-radius*0.2, eyes, color.White)
+		pupil := eyes * 0.5
 		ebitenutil.DrawCircle(screen, gx-radius*0.3, gy-radius*0.2, pupil, color.Black)
 		ebitenutil.DrawCircle(screen, gx+radius*0.3, gy-radius*0.2, pupil, color.Black)
 	}
@@ -613,6 +399,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	pacY := offsetY + float64(g.pacmanPos.y)*cellSize + cellSize/2
 	radius := cellSize * 0.4
 	ebitenutil.DrawCircle(screen, pacX, pacY, radius, color.RGBA{255, 255, 0, 255})
+
 	mouthAngle := 0.0
 	switch g.pacmanFrame {
 	case 0:
@@ -642,10 +429,6 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		cy := pacY + radius*math.Sin(theta)
 		ebitenutil.DrawLine(screen, pacX, pacY, cx, cy, color.RGBA{0, 0, 0, 255})
 	}
-	// чёрный глаз
-	eyeRad := radius * 0.2
-	ebitenutil.DrawCircle(screen, pacX+radius*0.3, pacY-radius*0.2, eyeRad, color.Black)
-	ebitenutil.DrawCircle(screen, pacX+radius*0.3+2, pacY-radius*0.2-1, eyeRad*0.4, color.White)
 
 	ebitenutil.DebugPrintAt(screen, "Score: "+strconv.Itoa(g.score), 10, 10)
 	livesStr := "Lives: "
@@ -680,7 +463,7 @@ func resize() {
 
 func main() {
 	ebiten.SetWindowSize(1024, 768)
-	ebiten.SetWindowTitle("Pacman Classic - Pro Sound")
+	ebiten.SetWindowTitle("Pacman Classic - Fresh Look")
 	ebiten.SetFullscreen(true)
 	ebiten.SetTPS(60)
 	if err := ebiten.RunGame(NewGame()); err != nil {
